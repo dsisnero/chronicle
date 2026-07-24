@@ -22,6 +22,11 @@ module Clarity
       @timestamp : Time,
       @payload : String,
     )
+      begin
+        JSON.parse(@payload)
+      rescue JSON::ParseException
+        raise ArgumentError.new("payload must be valid JSON")
+      end
     end
 
     # Produces the byte-stable envelope used for log persistence and hashing.

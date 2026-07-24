@@ -39,4 +39,19 @@ describe Clarity::Event do
       %({"schema_version":1,"sequence":42,"id":"evt_000042","type":"goal.created","actor":"user","caused_by":"evt_000041","timestamp":"2026-07-24T12:00:00Z","payload":{"goal":"ship deterministic routing"}})
     )
   end
+
+  it "rejects a payload that cannot be embedded as JSON" do
+    expect_raises(ArgumentError, "payload must be valid JSON") do
+      Clarity::Event.new(
+        schema_version: 1_u16,
+        sequence: 42_u64,
+        id: "evt_000042",
+        type: "goal.created",
+        actor: "user",
+        caused_by: nil,
+        timestamp: Time.utc(2026, 7, 24, 12, 0, 0),
+        payload: "not-json"
+      )
+    end
+  end
 end
