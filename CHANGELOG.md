@@ -16,3 +16,5 @@ All notable changes to this project are documented in this file.
   and raw canonical payload preservation covered by specs.
 - `Clarity::EventLog`, in-memory append-only event storage that rejects
   non-increasing event sequences and returns defensive snapshots to callers.
+- `Clarity::RunProjection`, a pure fold that derives the current objective from
+  ordered `goal.created` events without mutating prior projections.
