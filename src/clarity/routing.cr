@@ -47,6 +47,7 @@ module Clarity
       getter token_count : Int32
       getter path : String?
       getter? restricted_for_remote : Bool
+      getter? required : Bool
 
       def initialize(
         @id : String,
@@ -54,6 +55,7 @@ module Clarity
         @token_count : Int32,
         @path : String?,
         @restricted_for_remote : Bool,
+        @required : Bool = false,
       )
       end
     end
@@ -238,8 +240,9 @@ module Clarity
         classification = classify(request, policy)
         rule = select_rule(classification.intent, request.paths, policy.routing_rules)
         target, override_used = selected_target(request, policy, rule)
-        fallbacks = rule.try(&.fallbacks) || policy.default_fallbacks
-        selected_target, fallback_used = available_target(target, fallbacks, available_targets)
+        fallbacks = override_used ? ([] of Target) : (rule.try(&.fallbacks) || policy.default_fallbacks)
+        requires_local = request.context.any? { |candidate| candidate.required? && candidate.restricted_for_remote? }
+        selected_target, fallback_used = available_target(target, fallbacks, available_targets, requires_local)
         permissions = effective_permissions(policy.default_permissions, rule)
         included, excluded = select_context(request, policy.token_budget, selected_target)
         cost = estimate_cost(included, request.estimated_completion_tokens, selected_target)
@@ -311,12 +314,16 @@ module Clarity
         target : Target,
         fallbacks : Array(Target),
         available_targets : Array(Target),
+        requires_local : Bool,
       ) : {Target, Bool}
         candidates = [target] + fallbacks
         candidates.each_with_index do |candidate, index|
-          return {candidate, index > 0} if available_targets.includes?(candidate)
+          if available_targets.includes?(candidate) && (!requires_local || !candidate.remote?)
+            return {candidate, index > 0}
+          end
         end
 
+        raise NoLocalTargetError.new("no eligible local target") if requires_local
         raise NoRouteError.new("no eligible target")
       end
 
@@ -373,8 +380,17 @@ module Clarity
 
         candidates.sort_by! { |candidate| {-context_score(candidate, request.focus_path), candidate.id} }
         included = [] of ContextCandidate
-        remaining = token_budget
+        required_candidates = candidates.select(&.required?)
+        required_tokens = required_candidates.sum(&.token_count)
+        if required_tokens > token_budget
+          raise ContextBudgetError.new("required context exceeds token budget")
+        end
+
+        included.concat(required_candidates)
+        remaining = token_budget - required_tokens
         candidates.each do |candidate|
+          next if candidate.required?
+
           if candidate.token_count <= remaining
             included << candidate
             remaining -= candidate.token_count

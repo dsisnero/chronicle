@@ -24,6 +24,8 @@ All notable changes to this project are documented in this file.
 - Deterministic routing policy evaluation with ordered intent classification,
   precedence rules, privacy filtering, context budgeting, permission
   narrowing, target fallback, cost estimates, and explainable route previews.
+- Required restricted context now forces local-only target eligibility and is
+  never trimmed; discardable restricted context is excluded from remote prompts.
 - `Clarity::EventLog`, in-memory append-only event storage that rejects
   non-increasing event sequences, duplicate IDs, missing causal parents, and
   returns defensive snapshots to callers.

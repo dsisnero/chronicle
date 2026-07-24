@@ -52,8 +52,9 @@ module RoutingSpecHelper
     tokens : Int32,
     path : String? = nil,
     restricted : Bool = false,
+    required : Bool = false,
   ) : Clarity::Routing::ContextCandidate
-    Clarity::Routing::ContextCandidate.new(id, kind, tokens, path, restricted)
+    Clarity::Routing::ContextCandidate.new(id, kind, tokens, path, restricted, required)
   end
 end
 
@@ -205,6 +206,73 @@ describe Clarity::Routing::Router do
 
     decision.target.should eq(fallback)
     decision.fallback_used?.should be_true
+  end
+
+  it "forces required restricted context onto an available local fallback" do
+    remote = RoutingSpecHelper.target("openai", "remote")
+    local = RoutingSpecHelper.target("local", "fallback", false)
+    policy = RoutingSpecHelper.policy(default_target: remote, default_fallbacks: [local])
+    request = RoutingSpecHelper.request(
+      "review attached policy",
+      context: [
+        RoutingSpecHelper.context(
+          "policy",
+          RoutingContextKind::ExplicitlyAttached,
+          4,
+          restricted: true,
+          required: true
+        ),
+      ]
+    )
+
+    decision = Clarity::Routing::Router.new.preview(request, policy, [remote, local])
+
+    decision.target.should eq(local)
+    decision.fallback_used?.should be_true
+    decision.included_context.map(&.id).should eq(["policy"])
+  end
+
+  it "rejects required context that exceeds the token budget" do
+    local = RoutingSpecHelper.target("local", "model", false)
+    policy = RoutingSpecHelper.policy(default_target: local, token_budget: 3)
+    request = RoutingSpecHelper.request(
+      "read attached policy",
+      context: [
+        RoutingSpecHelper.context(
+          "policy",
+          RoutingContextKind::ExplicitlyAttached,
+          4,
+          required: true
+        ),
+      ]
+    )
+
+    expect_raises(Clarity::ContextBudgetError, "required context exceeds token budget") do
+      Clarity::Routing::Router.new.preview(request, policy, [local])
+    end
+  end
+
+  it "does not let a remote explicit override bypass required restricted context" do
+    remote = RoutingSpecHelper.target("openai", "remote")
+    local = RoutingSpecHelper.target("local", "fallback", false)
+    policy = RoutingSpecHelper.policy(default_target: remote, default_fallbacks: [local])
+    request = RoutingSpecHelper.request(
+      "review attached policy",
+      explicit_target: remote,
+      context: [
+        RoutingSpecHelper.context(
+          "policy",
+          RoutingContextKind::ExplicitlyAttached,
+          4,
+          restricted: true,
+          required: true
+        ),
+      ]
+    )
+
+    expect_raises(Clarity::NoLocalTargetError, "no eligible local target") do
+      Clarity::Routing::Router.new.preview(request, policy, [remote, local])
+    end
   end
 
   it "rejects a route when no primary or fallback target is available" do

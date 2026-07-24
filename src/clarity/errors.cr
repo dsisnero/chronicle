@@ -23,4 +23,10 @@ module Clarity
 
   class OverrideNotAllowedError < DomainError
   end
+
+  class NoLocalTargetError < DomainError
+  end
+
+  class ContextBudgetError < DomainError
+  end
 end

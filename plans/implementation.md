@@ -101,6 +101,12 @@ Evaluate one fixed pipeline:
 7. Return a previewable decision containing chosen target, matched rule,
    overrides/fallbacks, permissions, selected/excluded context, and cost range.
 
+Classify constrained context as either required or discardable. Required
+restricted context makes remote targets ineligible—including an explicit remote
+override—and must fit the token budget or fail deterministically. Discardable
+restricted context is excluded from remote prompts and recorded in the route
+trace.
+
 Route decisions are first-class events. A direct/local route produces an effect
 request without a model request; a remote route produces a content-addressed
 model request only after its privacy and permission checks pass.
