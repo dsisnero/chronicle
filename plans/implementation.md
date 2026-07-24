@@ -188,7 +188,7 @@ compares projected objects, relations, and patches—not opaque serialized state
 
 ### Phase 3a — HTTP/1 conformance
 
-- [ ] Replace the initial request-only adapter with a complete Sans-IO HTTP/1
+- [x] Replace the initial request-only adapter with a complete Sans-IO HTTP/1
   connection state machine for requests and responses. Keep all socket and
   timer ownership at the platform edge.
 - [x] Adopt focused, normalized MIT-licensed h11 conformance fixtures for
@@ -201,11 +201,11 @@ compares projected objects, relations, and patches—not opaque serialized state
 - [x] Define a pure, token-aware connection-persistence policy: HTTP/1.1 is
   persistent unless `Connection` includes `close`; HTTP/1.0 is close by
   default.
-- [ ] Support HTTP/1.0 and HTTP/1.1 connection persistence, EOF-delimited
+- [x] Support HTTP/1.0 and HTTP/1.1 connection persistence, EOF-delimited
   response bodies, informational responses, HEAD/CONNECT/upgrade body rules,
   configured incomplete-message and header limits, and deterministic outbound
   serialization.
-- [ ] Add a non-vendored fixture-import/check script pinned to h11's upstream
+- [x] Add a non-vendored fixture-import/check script pinned to h11's upstream
   commit. Keep GPL fuzz projects, including HTTP Garden, outside this source
   tree and run them only as external differential/security harnesses.
 

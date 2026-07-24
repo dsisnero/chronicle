@@ -14,6 +14,12 @@ All notable changes to this project are documented in this file.
   EOF-delimited bodies, including status-driven no-body responses.
 - A pure h11-aligned HTTP connection-persistence policy with case-insensitive,
   token-aware `Connection: close` handling.
+- A role-aware Sans-IO HTTP/1 connection state machine covering request and
+  response pipelining, informational responses, HEAD framing, protocol upgrade
+  and CONNECT transitions, trailing protocol bytes, EOF failures, and bounded
+  incomplete input.
+- Deterministic HTTP response serialization and a `make http-fixtures` gate
+  that verifies the pinned h11 fixture provenance without vendoring h11.
 - Project development scaffolding, quality gates, and contributor guidance.
 - An implementation plan for a log-primary, Sans-IO agent runtime with
   deterministic routing and CML-based platform-edge coordination.

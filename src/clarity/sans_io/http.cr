@@ -3,6 +3,21 @@ module Clarity
     class HttpProtocolError < Exception
     end
 
+    struct HttpLimits
+      getter max_header_bytes : Int32
+      getter max_incomplete_bytes : Int32
+
+      def initialize(@max_header_bytes : Int32 = 64 * 1024, @max_incomplete_bytes : Int32 = 1024 * 1024)
+        raise ArgumentError.new("max_header_bytes must be positive") unless @max_header_bytes > 0
+        raise ArgumentError.new("max_incomplete_bytes must be positive") unless @max_incomplete_bytes > 0
+      end
+    end
+
+    enum HttpRole
+      Client
+      Server
+    end
+
     module HttpConnectionPolicy
       extend self
 
@@ -66,6 +81,12 @@ module Clarity
     # separately; this adapter preserves complete inbound request boundaries.
     class HttpParser
       @buffer = ""
+
+      def finish : Array(HttpRequest)
+        raise HttpProtocolError.new("unexpected EOF in HTTP request") unless @buffer.empty?
+
+        [] of HttpRequest
+      end
 
       def feed(chunk : String) : Array(HttpRequest)
         @buffer += chunk
@@ -229,6 +250,24 @@ module Clarity
     class HttpResponseParser
       @buffer = ""
       @eof_response : EofResponse? = nil
+      @request_method : String? = nil
+      @upgrade_requested = false
+      @switched_protocol = false
+      @trailing_data = ""
+
+      getter trailing_data : String
+
+      def request_method=(method : String?) : String?
+        @request_method = method
+      end
+
+      def upgrade_requested=(value : Bool) : Bool
+        @upgrade_requested = value
+      end
+
+      def switched_protocol? : Bool
+        @switched_protocol
+      end
 
       private struct EofResponse
         getter status : Int32
@@ -240,20 +279,27 @@ module Clarity
         end
       end
 
-      def feed(chunk : String) : Array(HttpResponse)
+      def feed(chunk : String, max_messages : Int32? = nil) : Array(HttpResponse)
+        raise HttpProtocolError.new("HTTP parser already switched protocols") if @switched_protocol && !chunk.empty?
+
         @buffer += chunk
         return [] of HttpResponse if @eof_response
 
         responses = [] of HttpResponse
         while response = next_response
           responses << response
+          break if @switched_protocol
+          break if max_messages && responses.size >= max_messages
         end
         responses
       end
 
       # Signals a peer EOF. Only an EOF-delimited response can complete here.
       def finish : Array(HttpResponse)
-        return [] of HttpResponse unless response = @eof_response
+        unless response = @eof_response
+          raise HttpProtocolError.new("unexpected EOF in HTTP response") unless @buffer.empty?
+          return [] of HttpResponse
+        end
 
         @eof_response = nil
         body = @buffer
@@ -267,7 +313,9 @@ module Clarity
 
         status, reason, version, headers, values = parse_response_head(header_end)
         body_start = header_end + 4
-        return consume_bodyless_response(status, reason, version, headers, body_start) if bodyless_status?(status)
+        if bodyless_status?(status) || @request_method == "HEAD" || successful_connect?(status)
+          return consume_bodyless_response(status, reason, version, headers, values, body_start)
+        end
 
         content_lengths = values["content-length"]? || [] of String
         transfer_encodings = values["transfer-encoding"]? || [] of String
@@ -305,10 +353,28 @@ module Clarity
         reason : String,
         version : String,
         headers : Hash(String, String),
+        values : Hash(String, Array(String)),
         body_start : Int32,
       ) : HttpResponse
-        consume(body_start)
+        content_lengths = values["content-length"]? || [] of String
+        length = @request_method == "HEAD" ? parse_content_length(content_lengths) : 0
+        consume(body_start + length)
+        capture_protocol_switch! if upgrade_switch?(status) || successful_connect?(status)
         HttpResponse.new(status, reason, headers, "", http_version: version)
+      end
+
+      private def successful_connect?(status : Int32) : Bool
+        @request_method == "CONNECT" && status >= 200 && status < 300
+      end
+
+      private def upgrade_switch?(status : Int32) : Bool
+        status == 101 && @upgrade_requested
+      end
+
+      private def capture_protocol_switch! : Nil
+        @switched_protocol = true
+        @trailing_data = @buffer
+        @buffer = ""
       end
 
       private def bodyless_status?(status : Int32) : Bool
@@ -426,12 +492,153 @@ module Clarity
       end
     end
 
+    # Role-aware Sans-I/O HTTP/1 connection coordinator. It only consumes and
+    # emits bytes/messages; socket ownership remains at the platform edge.
+    class HttpConnection
+      alias Message = HttpRequest | HttpResponse
+
+      @request_parser = HttpParser.new
+      @response_parser = HttpResponseParser.new
+      @pending_requests = [] of HttpRequest
+      @expected_response_methods = [] of String
+      @expected_response_upgrades = [] of Bool
+      @incomplete_input = ""
+      @switched_protocol = false
+      @trailing_data = ""
+      @active_request : HttpRequest? = nil
+
+      def initialize(@role : HttpRole, @limits : HttpLimits = HttpLimits.new)
+      end
+
+      def receive(chunk : String) : Array(Message)
+        raise HttpProtocolError.new("HTTP parser already switched protocols") if @switched_protocol && !chunk.empty?
+
+        track_incomplete_input(chunk)
+        messages = @role.server? ? receive_requests(chunk) : receive_responses(chunk)
+        @incomplete_input = "" unless messages.empty?
+        messages
+      end
+
+      def send_request(
+        method : String,
+        path : String,
+        body : String,
+        headers : Hash(String, String) = {} of String => String,
+      ) : String
+        raise HttpProtocolError.new("only a client connection can send requests") unless @role.client?
+
+        @expected_response_methods << method
+        @expected_response_upgrades << headers.any? { |name, _| name.downcase == "upgrade" }
+        HttpSerializer.request(method, path, body, headers)
+      end
+
+      def send_response(
+        status : Int32,
+        reason : String,
+        body : String,
+        headers : Hash(String, String) = {} of String => String,
+      ) : String
+        raise HttpProtocolError.new("only a server connection can send responses") unless @role.server?
+        request = @active_request || raise HttpProtocolError.new("no active request for response")
+
+        @switched_protocol = true if accepts_protocol_switch?(request, status)
+        @active_request = nil unless (100..199).includes?(status) && status != 101
+        HttpSerializer.response(status, reason, body, headers)
+      end
+
+      def start_next_cycle : Array(Message)
+        return [] of Message unless @role.server?
+        return [] of Message if @active_request
+        return [] of Message if @pending_requests.empty?
+
+        request = @pending_requests.shift
+        @active_request = request
+        [request.as(Message)]
+      end
+
+      def paused? : Bool
+        @role.server? && !@pending_requests.empty?
+      end
+
+      def switched_protocol? : Bool
+        @switched_protocol
+      end
+
+      getter trailing_data : String
+
+      def finish : Array(Message)
+        if @role.server?
+          @request_parser.finish.map { |request| request.as(Message) }
+        else
+          @response_parser.finish.map { |response| response.as(Message) }
+        end
+      end
+
+      private def receive_requests(chunk : String) : Array(Message)
+        requests = @request_parser.feed(chunk)
+        @pending_requests.concat(requests)
+        start_next_cycle
+      end
+
+      private def receive_responses(chunk : String) : Array(Message)
+        responses = [] of HttpResponse
+        next_chunk = chunk
+        loop do
+          @response_parser.request_method = @expected_response_methods.first?
+          @response_parser.upgrade_requested = @expected_response_upgrades.first? || false
+          parsed = @response_parser.feed(next_chunk, 1)
+          next_chunk = ""
+          break if parsed.empty?
+
+          response = parsed.first
+          responses << response
+          if response.status >= 200 || @response_parser.switched_protocol?
+            @expected_response_methods.shift
+            @expected_response_upgrades.shift
+          end
+          break if @response_parser.switched_protocol?
+        end
+        if @response_parser.switched_protocol?
+          @switched_protocol = true
+          @trailing_data = @response_parser.trailing_data
+        end
+        responses.map { |response| response.as(Message) }
+      end
+
+      private def track_incomplete_input(chunk : String) : Nil
+        @incomplete_input += chunk
+        if !@incomplete_input.includes?("\r\n\r\n") && @incomplete_input.bytesize > @limits.max_header_bytes
+          raise HttpProtocolError.new("header exceeds configured limit")
+        end
+        return unless @incomplete_input.bytesize > @limits.max_incomplete_bytes
+
+        raise HttpProtocolError.new("incomplete message exceeds configured limit")
+      end
+
+      private def accepts_protocol_switch?(request : HttpRequest, status : Int32) : Bool
+        return true if request.method == "CONNECT" && status >= 200 && status < 300
+        return false unless status == 101
+
+        request.headers.any? { |name, _| name.downcase == "upgrade" }
+      end
+    end
+
     module HttpSerializer
       extend self
 
       def request(method : String, path : String, body : String, headers : Hash(String, String) = {} of String => String) : String
         serialized_headers = headers.reject { |name, _| name == "Content-Length" }
         lines = ["#{method} #{path} HTTP/1.1"]
+        serialized_headers.keys.sort!.each do |name|
+          lines << "#{name}: #{serialized_headers[name]}"
+        end
+        lines << "Content-Length: #{body.bytesize}"
+        "#{lines.join("\r\n")}\r\n\r\n#{body}"
+      end
+
+      def response(status : Int32, reason : String, body : String, headers : Hash(String, String) = {} of String => String) : String
+        serialized_headers = headers.reject { |name, _| name == "Content-Length" }
+        lines = ["HTTP/1.1 #{status} #{reason}"]
         serialized_headers.keys.sort!.each do |name|
           lines << "#{name}: #{serialized_headers[name]}"
         end

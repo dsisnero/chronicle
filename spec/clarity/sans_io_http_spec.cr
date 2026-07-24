@@ -148,3 +148,126 @@ describe Clarity::SansIO::HttpResponseParser do
     end
   end
 end
+
+describe Clarity::SansIO::HttpConnection do
+  # Adapted from h11/h11/tests/test_connection.py at
+  # 62c5068c971579d61fa1b55373390e12f25fd856: test_pipelining,
+  # test_protocol_switch, test_connection_drop, and test_HEAD_framing_headers
+  # (MIT; https://github.com/python-hyper/h11). Normalized to Clarity's
+  # complete-message Sans-I/O API on 2026-07-24.
+  it "pauses server-side pipelining until the application advances the cycle" do
+    connection = Clarity::SansIO::HttpConnection.new(Clarity::SansIO::HttpRole::Server)
+    messages = connection.receive(
+      "GET /one HTTP/1.1\r\nHost: example.com\r\n\r\n" \
+      "GET /two HTTP/1.1\r\nHost: example.com\r\n\r\n"
+    )
+
+    messages.map(&.as(Clarity::SansIO::HttpRequest).path).should eq(["/one"])
+    connection.paused?.should be_true
+    connection.start_next_cycle.should be_empty
+    connection.send_response(200, "OK", "")
+    connection.start_next_cycle.map(&.as(Clarity::SansIO::HttpRequest).path).should eq(["/two"])
+  end
+
+  it "suppresses a HEAD response body using the tracked request method" do
+    connection = Clarity::SansIO::HttpConnection.new(Clarity::SansIO::HttpRole::Client)
+    connection.send_request("HEAD", "/", "", {"Host" => "example.com"})
+
+    responses = connection.receive("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello")
+
+    responses.first.as(Clarity::SansIO::HttpResponse).body.should eq("")
+  end
+
+  it "keeps the request method through informational responses" do
+    connection = Clarity::SansIO::HttpConnection.new(Clarity::SansIO::HttpRole::Client)
+    connection.send_request("GET", "/", "", {"Host" => "example.com"})
+
+    responses = connection.receive(
+      "HTTP/1.1 100 Continue\r\n\r\n" \
+      "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+    )
+
+    responses.map(&.as(Clarity::SansIO::HttpResponse).status).should eq([100, 200])
+  end
+
+  it "advances the tracked method between pipelined client responses" do
+    connection = Clarity::SansIO::HttpConnection.new(Clarity::SansIO::HttpRole::Client)
+    connection.send_request("HEAD", "/headers", "", {"Host" => "example.com"})
+    connection.send_request("GET", "/body", "", {"Host" => "example.com"})
+
+    responses = connection.receive(
+      "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n" \
+      "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+    )
+
+    responses.map(&.as(Clarity::SansIO::HttpResponse).body).should eq(["", "ok"])
+  end
+
+  it "switches protocols for a 101 upgrade and retains non-http trailing data" do
+    connection = Clarity::SansIO::HttpConnection.new(Clarity::SansIO::HttpRole::Client)
+    connection.send_request("GET", "/", "", {"Host" => "example.com", "Upgrade" => "websocket"})
+
+    responses = connection.receive("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\nframe")
+
+    responses.first.as(Clarity::SansIO::HttpResponse).status.should eq(101)
+    connection.switched_protocol?.should be_true
+    connection.trailing_data.should eq("frame")
+  end
+
+  it "does not switch for a 101 response without an upgrade proposal" do
+    connection = Clarity::SansIO::HttpConnection.new(Clarity::SansIO::HttpRole::Client)
+    connection.send_request("GET", "/", "", {"Host" => "example.com"})
+
+    connection.receive("HTTP/1.1 101 Switching Protocols\r\n\r\n")
+
+    connection.switched_protocol?.should be_false
+  end
+
+  it "switches protocols for a successful CONNECT response" do
+    connection = Clarity::SansIO::HttpConnection.new(Clarity::SansIO::HttpRole::Client)
+    connection.send_request("CONNECT", "example.com:443", "", {"Host" => "example.com"})
+
+    connection.receive("HTTP/1.1 200 Connection Established\r\n\r\ntunnel")
+
+    connection.switched_protocol?.should be_true
+    connection.trailing_data.should eq("tunnel")
+  end
+
+  it "rejects an incomplete header that exceeds its configured limit" do
+    limits = Clarity::SansIO::HttpLimits.new(max_header_bytes: 32, max_incomplete_bytes: 64)
+    connection = Clarity::SansIO::HttpConnection.new(Clarity::SansIO::HttpRole::Server, limits)
+
+    expect_raises(Clarity::SansIO::HttpProtocolError, /header exceeds configured limit/) do
+      connection.receive("GET / HTTP/1.1\r\nEndless: 123456789")
+    end
+  end
+
+  it "raises at EOF when a content-length request body is incomplete" do
+    connection = Clarity::SansIO::HttpConnection.new(Clarity::SansIO::HttpRole::Server)
+    connection.receive("POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 3\r\n\r\na")
+
+    expect_raises(Clarity::SansIO::HttpProtocolError, /unexpected EOF/) do
+      connection.finish
+    end
+  end
+
+  it "raises at EOF when a content-length response body is incomplete" do
+    connection = Clarity::SansIO::HttpConnection.new(Clarity::SansIO::HttpRole::Client)
+    connection.send_request("GET", "/", "", {"Host" => "example.com"})
+    connection.receive("HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\na")
+
+    expect_raises(Clarity::SansIO::HttpProtocolError, /unexpected EOF/) do
+      connection.finish
+    end
+  end
+
+  it "switches a server connection when it accepts an upgrade response" do
+    connection = Clarity::SansIO::HttpConnection.new(Clarity::SansIO::HttpRole::Server)
+    connection.receive("GET / HTTP/1.1\r\nHost: example.com\r\nUpgrade: websocket\r\n\r\n")
+
+    output = connection.send_response(101, "Switching Protocols", "", {"Upgrade" => "websocket"})
+
+    output.should eq("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nContent-Length: 0\r\n\r\n")
+    connection.switched_protocol?.should be_true
+  end
+end
