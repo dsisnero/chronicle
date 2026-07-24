@@ -24,6 +24,12 @@ module Clarity
         raise ArgumentError.new("event id must be unique")
       end
 
+      if caused_by = event.caused_by
+        unless @event_ids.includes?(caused_by)
+          raise ArgumentError.new("caused_by event must exist")
+        end
+      end
+
       @events << event
       @event_ids << event.id
       @last_sequence = event.sequence

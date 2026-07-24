@@ -135,7 +135,8 @@ compares projected objects, relations, and patches—not opaque serialized state
 - [ ] Define request/content hashes and dedicated domain error types.
 - [ ] Create replay fixtures that include successful and failed model/tool
   effects.
-- [ ] Add causality and no-I/O core-interface invariants.
+- [x] Add a causal-parent invariant for events appended to the log.
+- [ ] Add no-I/O core-interface invariants.
 
 ### Phase 1 — Deterministic routing
 

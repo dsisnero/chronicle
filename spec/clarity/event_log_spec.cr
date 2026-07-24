@@ -46,4 +46,18 @@ describe Clarity::EventLog do
       log.append(EventLogSpecHelper.event(sequence: 2_u64, id: "evt_000001"))
     end
   end
+
+  it "rejects an event whose causal parent is absent" do
+    log = Clarity::EventLog.new
+
+    expect_raises(ArgumentError, "caused_by event must exist") do
+      log.append(
+        EventLogSpecHelper.event(
+          sequence: 1_u64,
+          id: "evt_000001",
+          caused_by: "evt_000000"
+        )
+      )
+    end
+  end
 end
