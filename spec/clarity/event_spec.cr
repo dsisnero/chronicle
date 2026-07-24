@@ -41,7 +41,7 @@ describe Clarity::Event do
   end
 
   it "rejects a payload that cannot be embedded as JSON" do
-    expect_raises(ArgumentError, "payload must be valid JSON") do
+    expect_raises(Clarity::InvalidEventError, "payload must be valid JSON") do
       Clarity::Event.new(
         schema_version: 1_u16,
         sequence: 42_u64,
@@ -53,5 +53,32 @@ describe Clarity::Event do
         payload: "not-json"
       )
     end
+  end
+
+  it "hashes its canonical envelope" do
+    first = Clarity::Event.new(
+      schema_version: 1_u16,
+      sequence: 42_u64,
+      id: "evt_000042",
+      type: "goal.created",
+      actor: "user",
+      caused_by: nil,
+      timestamp: Time.utc(2026, 7, 24, 12, 0, 0),
+      payload: %({"goal":"ship deterministic routing"})
+    )
+    second = Clarity::Event.new(
+      schema_version: 1_u16,
+      sequence: 43_u64,
+      id: "evt_000043",
+      type: "goal.created",
+      actor: "user",
+      caused_by: nil,
+      timestamp: Time.utc(2026, 7, 24, 12, 0, 0),
+      payload: %({"goal":"ship deterministic routing"})
+    )
+
+    first.content_hash.should eq(first.content_hash)
+    first.content_hash.size.should eq(64)
+    first.content_hash.should_not eq(second.content_hash)
   end
 end

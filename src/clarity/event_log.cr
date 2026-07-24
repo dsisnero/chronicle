@@ -16,17 +16,17 @@ module Clarity
     def append(event : Event) : Nil
       if last_sequence = @last_sequence
         if event.sequence <= last_sequence
-          raise ArgumentError.new("event sequence must increase")
+          raise EventSequenceError.new("event sequence must increase")
         end
       end
 
       if @event_ids.includes?(event.id)
-        raise ArgumentError.new("event id must be unique")
+        raise DuplicateEventError.new("event id must be unique")
       end
 
       if caused_by = event.caused_by
         unless @event_ids.includes?(caused_by)
-          raise ArgumentError.new("caused_by event must exist")
+          raise CausalParentError.new("caused_by event must exist")
         end
       end
 

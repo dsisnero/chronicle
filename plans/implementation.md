@@ -132,11 +132,13 @@ compares projected objects, relations, and patches—not opaque serialized state
 - [x] Enforce append-only ordering and unique event IDs in in-memory storage.
 - [x] Write initial invariants for event ordering, ID uniqueness, payload
   validity, canonical serialization, and immutable projections.
-- [ ] Define request/content hashes and dedicated domain error types.
-- [ ] Create replay fixtures that include successful and failed model/tool
-  effects.
+- [x] Define a reusable canonical-content SHA-256 primitive and dedicated
+  domain error types for invalid events, ordering, duplicate IDs, and causality.
+- [x] Create replay fixtures that include successful model and failed tool
+  effects in causal order.
 - [x] Add a causal-parent invariant for events appended to the log.
-- [ ] Add no-I/O core-interface invariants.
+- [x] Add a source-policy invariant that prohibits direct I/O, clocks,
+  randomness, environment, and process capabilities in the core.
 
 ### Phase 1 — Deterministic routing
 

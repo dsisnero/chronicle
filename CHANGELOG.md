@@ -16,6 +16,11 @@ All notable changes to this project are documented in this file.
   canonical event envelopes.
 - Byte-stable canonical JSON encoding for event envelopes, with field ordering
   and raw canonical payload preservation covered by specs.
+- A reusable canonical-content SHA-256 primitive and `Event#content_hash`.
+- Domain-specific event errors for invalid payloads, ordering, duplicate IDs,
+  and missing causal parents.
+- Replay fixtures covering successful model and failed tool effects, plus a
+  source-policy test that prevents direct I/O capabilities in the core.
 - `Clarity::EventLog`, in-memory append-only event storage that rejects
   non-increasing event sequences, duplicate IDs, missing causal parents, and
   returns defensive snapshots to callers.

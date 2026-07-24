@@ -25,7 +25,7 @@ module Clarity
       begin
         JSON.parse(@payload)
       rescue JSON::ParseException
-        raise ArgumentError.new("payload must be valid JSON")
+        raise InvalidEventError.new("payload must be valid JSON")
       end
     end
 
@@ -46,6 +46,11 @@ module Clarity
           end
         end
       end
+    end
+
+    # SHA-256 digest of the exact canonical envelope bytes.
+    def content_hash : String
+      ContentHash.digest(canonical_json)
     end
   end
 end

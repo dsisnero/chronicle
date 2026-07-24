@@ -33,7 +33,7 @@ describe Clarity::EventLog do
     log = Clarity::EventLog.new
     log.append(EventLogSpecHelper.event(sequence: 2_u64, id: "evt_000002"))
 
-    expect_raises(ArgumentError, "event sequence must increase") do
+    expect_raises(Clarity::EventSequenceError, "event sequence must increase") do
       log.append(EventLogSpecHelper.event(sequence: 2_u64, id: "evt_000002b"))
     end
   end
@@ -42,7 +42,7 @@ describe Clarity::EventLog do
     log = Clarity::EventLog.new
     log.append(EventLogSpecHelper.event(sequence: 1_u64, id: "evt_000001"))
 
-    expect_raises(ArgumentError, "event id must be unique") do
+    expect_raises(Clarity::DuplicateEventError, "event id must be unique") do
       log.append(EventLogSpecHelper.event(sequence: 2_u64, id: "evt_000001"))
     end
   end
@@ -50,7 +50,7 @@ describe Clarity::EventLog do
   it "rejects an event whose causal parent is absent" do
     log = Clarity::EventLog.new
 
-    expect_raises(ArgumentError, "caused_by event must exist") do
+    expect_raises(Clarity::CausalParentError, "caused_by event must exist") do
       log.append(
         EventLogSpecHelper.event(
           sequence: 1_u64,
