@@ -1,11 +1,15 @@
+require "set"
+
 module Clarity
   # Append-only ordered storage for events accepted by the runtime boundary.
   class EventLog
     @events : Array(Event)
+    @event_ids : Set(String)
     @last_sequence : UInt64?
 
     def initialize
       @events = [] of Event
+      @event_ids = Set(String).new
       @last_sequence = nil
     end
 
@@ -16,7 +20,12 @@ module Clarity
         end
       end
 
+      if @event_ids.includes?(event.id)
+        raise ArgumentError.new("event id must be unique")
+      end
+
       @events << event
+      @event_ids << event.id
       @last_sequence = event.sequence
     end
 

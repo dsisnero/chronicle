@@ -37,4 +37,13 @@ describe Clarity::EventLog do
       log.append(EventLogSpecHelper.event(sequence: 2_u64, id: "evt_000002b"))
     end
   end
+
+  it "rejects an event ID that is already present" do
+    log = Clarity::EventLog.new
+    log.append(EventLogSpecHelper.event(sequence: 1_u64, id: "evt_000001"))
+
+    expect_raises(ArgumentError, "event id must be unique") do
+      log.append(EventLogSpecHelper.event(sequence: 2_u64, id: "evt_000001"))
+    end
+  end
 end

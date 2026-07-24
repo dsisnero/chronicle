@@ -15,6 +15,7 @@ All notable changes to this project are documented in this file.
 - Byte-stable canonical JSON encoding for event envelopes, with field ordering
   and raw canonical payload preservation covered by specs.
 - `Clarity::EventLog`, in-memory append-only event storage that rejects
-  non-increasing event sequences and returns defensive snapshots to callers.
+  non-increasing event sequences, duplicate event IDs, and returns defensive
+  snapshots to callers.
 - `Clarity::RunProjection`, a pure fold that derives the current objective from
   ordered `goal.created` events without mutating prior projections.
