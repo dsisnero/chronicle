@@ -5,6 +5,27 @@ require "../spec_helper"
 # Normalized to this adapter's complete-message API on 2026-07-24.
 H11_HTTP_FIXTURE_SOURCE = "python-hyper/h11@62c5068c971579d61fa1b55373390e12f25fd856:h11/tests/test_connection.py (MIT)"
 
+describe Clarity::SansIO::HttpConnectionPolicy do
+  # Adapted from h11/h11/tests/test_connection.py at
+  # 62c5068c971579d61fa1b55373390e12f25fd856, test__keep_alive (MIT;
+  # https://github.com/python-hyper/h11). Normalized to a pure policy API on
+  # 2026-07-24.
+  it "keeps HTTP/1.1 connections alive by default" do
+    Clarity::SansIO::HttpConnectionPolicy.keep_alive?("HTTP/1.1", {"Host" => "example.com"}).should be_true
+  end
+
+  it "recognizes a case-insensitive close token among connection tokens" do
+    Clarity::SansIO::HttpConnectionPolicy.keep_alive?(
+      "HTTP/1.1",
+      {"Connection" => "a, b, cLOse, foo"}
+    ).should be_false
+  end
+
+  it "does not keep HTTP/1.0 connections alive" do
+    Clarity::SansIO::HttpConnectionPolicy.keep_alive?("HTTP/1.0", {} of String => String).should be_false
+  end
+end
+
 describe Clarity::SansIO::HttpParser do
   it "emits a request only after its complete body arrives" do
     parser = Clarity::SansIO::HttpParser.new

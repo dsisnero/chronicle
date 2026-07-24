@@ -3,6 +3,26 @@ module Clarity
     class HttpProtocolError < Exception
     end
 
+    module HttpConnectionPolicy
+      extend self
+
+      # h11-compatible HTTP/1 persistence policy. HTTP/1.0 is deliberately
+      # close-by-default; HTTP/1.1 remains persistent unless a Connection
+      # header contains the case-insensitive `close` token.
+      def keep_alive?(http_version : String, headers : Hash(String, String)) : Bool
+        return false unless http_version == "HTTP/1.1"
+
+        !connection_tokens(headers).includes?("close")
+      end
+
+      private def connection_tokens(headers : Hash(String, String)) : Array(String)
+        headers.each_with_object([] of String) do |(name, value), tokens|
+          next unless name.downcase == "connection"
+          value.split(',').each { |token| tokens << token.strip.downcase }
+        end
+      end
+    end
+
     struct HttpRequest
       getter method : String
       getter path : String

@@ -12,6 +12,8 @@ All notable changes to this project are documented in this file.
   pipelining, HTTP/1.0 recognition, and rejection of ambiguous body framing.
 - Incremental Sans-IO HTTP response framing for content-length, chunked, and
   EOF-delimited bodies, including status-driven no-body responses.
+- A pure h11-aligned HTTP connection-persistence policy with case-insensitive,
+  token-aware `Connection: close` handling.
 - Project development scaffolding, quality gates, and contributor guidance.
 - An implementation plan for a log-primary, Sans-IO agent runtime with
   deterministic routing and CML-based platform-edge coordination.
