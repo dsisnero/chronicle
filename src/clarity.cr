@@ -1,6 +1,6 @@
-# TODO: Write documentation for `Clarity`
+require "./clarity/event"
+
+# Log-primary primitives for deterministic agent execution.
 module Clarity
   VERSION = "0.1.0"
-
-  # TODO: Put your code here
 end
