@@ -6,6 +6,10 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- An explicit HTTP/1 Sans-IO conformance phase, backed by focused,
+  attribution-preserving h11 fixtures rather than vendored upstream code.
+- Safer incremental HTTP request framing: chunked bodies and trailers,
+  pipelining, HTTP/1.0 recognition, and rejection of ambiguous body framing.
 - Project development scaffolding, quality gates, and contributor guidance.
 - An implementation plan for a log-primary, Sans-IO agent runtime with
   deterministic routing and CML-based platform-edge coordination.

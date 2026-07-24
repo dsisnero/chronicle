@@ -175,8 +175,9 @@ compares projected objects, relations, and patches—not opaque serialized state
 
 ### Phase 3 — Sans-IO transports and edge adapters
 
-- [x] Implement incremental HTTP/1.1 framing and deterministic serialization
-  behind typed Sans-IO ingress and egress APIs.
+- [x] Implement an initial incremental HTTP/1.1 request-framing adapter and
+  deterministic request serialization behind typed Sans-IO ingress and egress
+  APIs.
 - [x] Add a CML-based platform edge that composes socket, effect-result,
   approval, cancellation, and timeout signals. A single sequencer wraps each
   selected signal as a typed ingress envelope before it reaches the core.
@@ -184,6 +185,26 @@ compares projected objects, relations, and patches—not opaque serialized state
   designated platform-edge adapter; policy specs forbid CML in core modules.
 - [x] Add an approval adapter for file writes, shell commands, network access,
   and restricted-context disclosure.
+
+### Phase 3a — HTTP/1 conformance
+
+- [ ] Replace the initial request-only adapter with a complete Sans-IO HTTP/1
+  connection state machine for requests and responses. Keep all socket and
+  timer ownership at the platform edge.
+- [ ] Adopt focused, normalized MIT-licensed h11 conformance fixtures for
+  incremental headers, content-length framing, chunked bodies and trailers,
+  pipelining, no-body responses, and malformed framing. Each copied or adapted
+  case records upstream path, commit, test name, and license attribution.
+- [ ] Reject ambiguous or unsafe framing deterministically: invalid start
+  lines/header syntax, unsupported transfer codings, conflicting
+  Content-Length values, and Transfer-Encoding plus Content-Length.
+- [ ] Support HTTP/1.0 and HTTP/1.1 connection persistence, EOF-delimited
+  response bodies, informational responses, HEAD/CONNECT/upgrade body rules,
+  configured incomplete-message and header limits, and deterministic outbound
+  serialization.
+- [ ] Add a non-vendored fixture-import/check script pinned to h11's upstream
+  commit. Keep GPL fuzz projects, including HTTP Garden, outside this source
+  tree and run them only as external differential/security harnesses.
 
 ### Phase 4 — Operational hardening
 
@@ -208,9 +229,17 @@ compares projected objects, relations, and patches—not opaque serialized state
 - Sans-IO core and protocol tests run without live sockets or provider access.
 - CML-edge tests prove cancellation cleanup and verify that only sequenced typed
   ingress events—not CML values or wall-clock reads—cross into the core.
+- HTTP/1 conformance fixtures pass without live sockets and malformed framing
+  cannot cause an ambiguous message boundary.
 
 ## Research References
 
 - [Nakajima, *The Log is the Agent* (2026)](https://arxiv.org/html/2605.21997v1): log-primary state, deterministic projection, recorded effect replay, fork/diff, and behavior-based coordination.
 - [smista.ai repository](https://github.com/smista-ai/smista.ai) and [routing configuration documentation](https://docs.smista.ai/configuration/cli.html): deterministic intent classification, policy precedence, least-context selection, route preview, and explainable traces.
 - [Smista DeepWiki](https://deepwiki.com/smista-ai/smista.ai): consult before changing deterministic-routing semantics; validate any guidance against the pinned source/configuration and record the adopted rule in this plan.
+- [h11 test suite](https://github.com/python-hyper/h11/tree/master/h11/tests)
+  (MIT): primary Sans-IO HTTP/1 conformance reference. Import focused cases as
+  attributed local fixtures rather than vendoring the implementation. The
+  initial fixture set is pinned to `62c5068c971579d61fa1b55373390e12f25fd856`.
+- [httparse](https://docs.rs/httparse) (MIT/Apache-2.0): supplemental
+  request/response syntax and chunk-parser reference.

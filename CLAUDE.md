@@ -48,3 +48,13 @@ context, then validate the recommendation against Smista's source and
 configuration documentation. Record the adopted precedence, tie-break, privacy,
 or fallback rule in `plans/implementation.md` and cover it with a deterministic
 test; DeepWiki is guidance, not the source of truth.
+
+## Sans-IO HTTP/1 Guidance
+
+Before changing HTTP/1 framing or connection-state semantics, consult
+[h11's DeepWiki](https://deepwiki.com/python-hyper/h11) and the upstream
+[`python-hyper/h11`](https://github.com/python-hyper/h11) source/tests. Treat
+DeepWiki as guidance and h11's pinned source plus the HTTP RFCs as the
+conformance reference. Add focused, MIT-attributed normalized fixtures under
+`spec/`; do not vendor h11 as a submodule or import GPL fuzz projects into this
+repository.
