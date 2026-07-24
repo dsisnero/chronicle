@@ -142,13 +142,17 @@ compares projected objects, relations, and patches—not opaque serialized state
 
 ### Phase 1 — Deterministic routing
 
-- Implement policy/config types, ordered intent classification, route matching,
-  privacy filtering, context budgeting, and provider fallback resolution.
-- Implement `route preview` as the same pure function used by execution.
-- Emit decision traces with selected rule, tie-break rationale, excluded
-  context, required approvals, and estimated cost.
-- Add table-driven tests for override, priority, specificity, declaration-order
-  ties, restricted context, unavailable provider, budget overflow, and no-route.
+- [x] Implement policy/config types, ordered intent classification, route
+  matching, privacy filtering, context budgeting, permission narrowing, and
+  provider fallback resolution.
+- [x] Implement pure `route preview` through `Routing::Router#preview`; it
+  returns a decision and performs no model or tool execution.
+- [x] Emit decision traces with selected rule, classification source,
+  precedence rationale, excluded context, required permissions, and a cost
+  range.
+- [x] Add deterministic tests for override, priority, specificity,
+  declaration-order ties, restricted context, unavailable targets, budget
+  overflow, and no-route behavior.
 
 ### Phase 2 — Log, projection, and agent runner
 

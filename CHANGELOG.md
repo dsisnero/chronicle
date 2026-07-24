@@ -21,6 +21,9 @@ All notable changes to this project are documented in this file.
   and missing causal parents.
 - Replay fixtures covering successful model and failed tool effects, plus a
   source-policy test that prevents direct I/O capabilities in the core.
+- Deterministic routing policy evaluation with ordered intent classification,
+  precedence rules, privacy filtering, context budgeting, permission
+  narrowing, target fallback, cost estimates, and explainable route previews.
 - `Clarity::EventLog`, in-memory append-only event storage that rejects
   non-increasing event sequences, duplicate IDs, missing causal parents, and
   returns defensive snapshots to callers.
