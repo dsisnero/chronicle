@@ -35,4 +35,7 @@ module Clarity
 
   class ReplayDivergenceError < DomainError
   end
+
+  class ApprovalError < DomainError
+  end
 end

@@ -175,15 +175,15 @@ compares projected objects, relations, and patches—not opaque serialized state
 
 ### Phase 3 — Sans-IO transports and edge adapters
 
-- Implement incremental HTTP framing/serialization behind typed ingress and
-  egress APIs.
-- Add a CML-based Crystal platform adapter that composes socket, effect-result,
-  approval, cancellation, and timeout events. A single sequencer converts each
-  selected outcome to a typed ingress event before it reaches the core.
-- Keep sockets, process execution, provider connections, and CML channels/event
-  values exclusively in the platform adapter.
-- Add an approval adapter for file writes, shell commands, network access, and
-  restricted-context disclosure.
+- [x] Implement incremental HTTP/1.1 framing and deterministic serialization
+  behind typed Sans-IO ingress and egress APIs.
+- [x] Add a CML-based platform edge that composes socket, effect-result,
+  approval, cancellation, and timeout signals. A single sequencer wraps each
+  selected signal as a typed ingress envelope before it reaches the core.
+- [x] Keep CML channels/events and socket/process/provider concerns in the
+  designated platform-edge adapter; policy specs forbid CML in core modules.
+- [x] Add an approval adapter for file writes, shell commands, network access,
+  and restricted-context disclosure.
 
 ### Phase 4 — Operational hardening
 

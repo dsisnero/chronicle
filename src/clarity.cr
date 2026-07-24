@@ -8,6 +8,9 @@ require "./clarity/graph_projection"
 require "./clarity/effect"
 require "./clarity/behavior_runner"
 require "./clarity/replay"
+require "./clarity/sans_io/http"
+require "./clarity/approval"
+require "./clarity/platform_edge"
 
 # Log-primary primitives for deterministic agent execution.
 module Clarity

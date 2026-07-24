@@ -31,6 +31,10 @@ All notable changes to this project are documented in this file.
   fan-out.
 - Recorded effect replay in permissive and strict modes, with divergence
   reporting and event-log forks.
+- Incremental Sans-IO HTTP framing and deterministic request serialization.
+- CML-composed platform-edge signals sequenced into typed ingress envelopes.
+- Approval mediation for file writes, shell commands, network, and restricted
+  context disclosure.
 - `Clarity::EventLog`, in-memory append-only event storage that rejects
   non-increasing event sequences, duplicate IDs, missing causal parents, and
   returns defensive snapshots to callers.
