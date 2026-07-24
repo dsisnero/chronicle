@@ -1,3 +1,5 @@
+require "json"
+
 module Clarity
   # An immutable input to the log projection, supplied by the platform edge.
   struct Event
@@ -20,6 +22,25 @@ module Clarity
       @timestamp : Time,
       @payload : String,
     )
+    end
+
+    # Produces the byte-stable envelope used for log persistence and hashing.
+    # Payload is supplied as already-canonical JSON by the platform edge.
+    def canonical_json : String
+      JSON.build do |json|
+        json.object do
+          json.field "schema_version", schema_version
+          json.field "sequence", sequence
+          json.field "id", id
+          json.field "type", type
+          json.field "actor", actor
+          json.field "caused_by", caused_by
+          json.field "timestamp", timestamp.to_rfc3339
+          json.field "payload" do
+            json.raw(payload)
+          end
+        end
+      end
     end
   end
 end

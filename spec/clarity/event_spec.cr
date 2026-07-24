@@ -22,4 +22,21 @@ describe Clarity::Event do
     event.timestamp.should eq(Time.utc(2026, 7, 24, 12, 0, 0))
     event.payload.should eq(%({"goal":"ship deterministic routing"}))
   end
+
+  it "serializes its envelope with a stable field order" do
+    event = Clarity::Event.new(
+      schema_version: 1_u16,
+      sequence: 42_u64,
+      id: "evt_000042",
+      type: "goal.created",
+      actor: "user",
+      caused_by: "evt_000041",
+      timestamp: Time.utc(2026, 7, 24, 12, 0, 0),
+      payload: %({"goal":"ship deterministic routing"})
+    )
+
+    event.canonical_json.should eq(
+      %({"schema_version":1,"sequence":42,"id":"evt_000042","type":"goal.created","actor":"user","caused_by":"evt_000041","timestamp":"2026-07-24T12:00:00Z","payload":{"goal":"ship deterministic routing"}})
+    )
+  end
 end
