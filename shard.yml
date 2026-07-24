@@ -1,0 +1,17 @@
+name: clarity
+version: 0.1.0
+
+authors:
+  - Dominic Sisneros <dsisnero@gmail.com>
+
+targets:
+  clarity:
+    main: src/clarity.cr
+
+crystal: '>= 1.21.0'
+
+dependencies:
+  cml:
+    github: dsisnero/cml
+
+license: MIT

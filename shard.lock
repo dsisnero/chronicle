@@ -1,0 +1,114 @@
+version: 2.0
+shards:
+  ansi:
+    git: https://github.com/dsisnero/ansi.git
+    version: 0.1.0+git.commit.4cf33c14c2ff5da0ac7ed38a2f0aa7eb4128f209
+
+  baked_file_system:
+    git: https://github.com/schovi/baked_file_system.git
+    version: 0.14.1+git.commit.393b620d5e98138006d20f4d47e40a9e0d5ce6c3
+
+  cellwrap:
+    git: https://github.com/dsisnero/cellwrap.git
+    version: 0.1.0+git.commit.d898f154af8cdf6ac85cfc72a24f4a354be3d88b
+
+  cml:
+    git: https://github.com/dsisnero/cml.git
+    version: 0.5.0+git.commit.890caf7cde91b4fcf3d5ace146546b6cbd94865f
+
+  colorful:
+    git: https://github.com/dsisnero/colorful.git
+    version: 0.1.0+git.commit.f6fbe31e048dab06783e34b82f52d7527763f7eb
+
+  colorprofile:
+    git: https://github.com/dsisnero/colorprofile.git
+    version: 0.1.0+git.commit.c689a6d8a71c5d8fb3b863a1eb6dc10e7fa0f931
+
+  crimage:
+    git: https://github.com/naqvis/crimage.git
+    version: 1.0.5+git.commit.7d3244a3850646e3d398cef071f7c3e3f52c7518
+
+  csuuid:
+    git: https://github.com/wyhaines/csuuid.cr.git
+    version: 1.0.2
+
+  db:
+    git: https://github.com/crystal-lang/crystal-db.git
+    version: 0.14.0
+
+  debug:
+    git: https://github.com/sija/debug.cr.git
+    version: 2.0.4
+
+  lipgloss:
+    git: https://github.com/dsisnero/lipgloss.git
+    version: 2.0.3
+
+  mosaic:
+    git: https://github.com/dsisnero/mosaic.git
+    version: 0.1.0+git.commit.efe05c232d6da4cf24ccceafa5b26a01314bfa94
+
+  nbchannel:
+    git: https://github.com/wyhaines/nbchannel.cr.git
+    version: 0.1.0
+
+  opentelemetry-api:
+    git: https://github.com/wyhaines/opentelemetry-api.cr.git
+    version: 0.5.1
+
+  opentelemetry-sdk:
+    git: https://github.com/wyhaines/opentelemetry-sdk.cr.git
+    version: 0.6.2
+
+  parse_date:
+    git: https://github.com/wyhaines/parsedate.cr.git
+    version: 0.1.2
+
+  protobuf:
+    git: https://github.com/jeromegn/protobuf.cr.git
+    version: 2.3.1
+
+  retriable:
+    git: https://github.com/sija/retriable.cr.git
+    version: 0.2.5
+
+  similar:
+    git: https://github.com/dsisnero/similar.cr.git
+    version: 0.1.0+git.commit.52cfbb2cf1295fabc0a4bf2405819181bcae6046
+
+  splay_tree_map:
+    git: https://github.com/wyhaines/splay_tree_map.cr.git
+    version: 0.4.0
+
+  stumpy_core:
+    git: https://github.com/stumpycr/stumpy_core.git
+    version: 1.9.1
+
+  stumpy_png:
+    git: https://github.com/stumpycr/stumpy_png.git
+    version: 5.0.1
+
+  terminfo:
+    git: https://github.com/docelic/terminfo.git
+    version: 0.8.1
+
+  textseg:
+    git: https://github.com/naqvis/uni_text_seg.git
+    version: 0.1.3
+
+  time-ext:
+    git: https://github.com/wyhaines/time-ext.cr.git
+    version: 1.0.1
+
+  tracing:
+    git: https://github.com/dsisnero/tracing.cr.git
+    version: 0.5.1+git.commit.57b76d8b88f3c954284c5fd2cf4e2e887e0fb47c
+
+  ultraviolet:
+    git: https://github.com/dsisnero/ultraviolet.git
+    version: 1.0.1
+
+  uniwidth:
+    git: https://github.com/naqvis/uni_char_width.git
+    version: 0.1.3
+

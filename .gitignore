@@ -1,0 +1,6 @@
+/lib/
+/bin/
+/.shards/
+*.dwarf
+.crystal-cache/
+temp/
