@@ -1,0 +1,14 @@
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+## [Unreleased]
+
+### Added
+
+- Project development scaffolding, quality gates, and contributor guidance.
+- An implementation plan for a log-primary, Sans-IO agent runtime with
+  deterministic routing and CML-based platform-edge coordination.
+- The `cml` shard dependency and its locked transitive dependencies.
+- `Clarity::Event`, an immutable event envelope carrying boundary-supplied
+  replay metadata.
