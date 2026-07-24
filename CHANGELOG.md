@@ -26,6 +26,11 @@ All notable changes to this project are documented in this file.
   narrowing, target fallback, cost estimates, and explainable route previews.
 - Required restricted context now forces local-only target eligibility and is
   never trimmed; discardable restricted context is excluded from remote prompts.
+- Typed graph projection and structural diffs over object and relation events.
+- Deterministic behavior scheduling with lifecycle records and bounded effect
+  fan-out.
+- Recorded effect replay in permissive and strict modes, with divergence
+  reporting and event-log forks.
 - `Clarity::EventLog`, in-memory append-only event storage that rejects
   non-increasing event sequences, duplicate IDs, missing causal parents, and
   returns defensive snapshots to callers.

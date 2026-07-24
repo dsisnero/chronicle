@@ -35,6 +35,17 @@ module Clarity
       @last_sequence = event.sequence
     end
 
+    def fork_at(sequence : UInt64) : EventLog
+      prefix = @events.take_while { |event| event.sequence <= sequence }
+      self.class.from_events(prefix)
+    end
+
+    def self.from_events(events : Array(Event)) : EventLog
+      log = new
+      events.each { |event| log.append(event) }
+      log
+    end
+
     # Returns a snapshot so callers cannot mutate the log's internal storage.
     def events : Array(Event)
       @events.dup

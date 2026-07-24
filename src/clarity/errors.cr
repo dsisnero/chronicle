@@ -29,4 +29,10 @@ module Clarity
 
   class ContextBudgetError < DomainError
   end
+
+  class GraphProjectionError < DomainError
+  end
+
+  class ReplayDivergenceError < DomainError
+  end
 end

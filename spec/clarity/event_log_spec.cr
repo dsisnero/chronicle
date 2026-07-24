@@ -60,4 +60,18 @@ describe Clarity::EventLog do
       )
     end
   end
+
+  it "forks an independent suffix from a shared event prefix" do
+    log = Clarity::EventLog.new
+    first = EventLogSpecHelper.event(sequence: 1_u64, id: "evt_000001")
+    second = EventLogSpecHelper.event(sequence: 2_u64, id: "evt_000002", caused_by: first.id)
+    log.append(first)
+    log.append(second)
+
+    fork = log.fork_at(1_u64)
+    fork.append(EventLogSpecHelper.event(sequence: 2_u64, id: "evt_fork_000002", caused_by: first.id))
+
+    log.events.map(&.id).should eq(["evt_000001", "evt_000002"])
+    fork.events.map(&.id).should eq(["evt_000001", "evt_fork_000002"])
+  end
 end

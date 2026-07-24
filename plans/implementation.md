@@ -164,12 +164,14 @@ compares projected objects, relations, and patches—not opaque serialized state
 
 - [x] Implement append-only in-memory storage and an initial pure run-state
   fold for `goal.created` events.
-- [ ] Extend the projection to typed graph objects and relations.
-- [ ] Implement behavior subscription evaluation and deterministic queue
-  scheduling.
-- [ ] Model effects as requests and results; add strict/permissive replay and
-  divergence reporting.
-- [ ] Implement branch creation and structural diff from a shared log prefix.
+- [x] Extend the projection to typed graph objects and relations, including
+  object patches and structural diffs.
+- [x] Implement behavior subscription evaluation, deterministic queue ordering,
+  lifecycle records, and bounded fan-out/pending effects.
+- [x] Model effects as requests and recorded results; add strict/permissive
+  replay with first-divergence reporting.
+- [x] Implement branch creation from an event-log prefix and structural graph
+  diffs between parent and fork projections.
 
 ### Phase 3 — Sans-IO transports and edge adapters
 
