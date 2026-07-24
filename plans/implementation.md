@@ -211,7 +211,9 @@ compares projected objects, relations, and patches—not opaque serialized state
 
 ### Phase 4 — Operational hardening
 
-- Persist versioned logs and content-addressed effect artifacts.
+- [x] Persist versioned event logs through a pure, newline-delimited codec with
+  explicit format versioning and canonical round-trip checks.
+- [ ] Add content-addressed effect artifacts.
 - Add trace export, log inspection, route preview, replay, fork, and diff CLI
   surfaces.
 - Measure routing bypass rate, token/cost avoided, replay divergence rate,

@@ -20,6 +20,8 @@ All notable changes to this project are documented in this file.
   incomplete input.
 - Deterministic HTTP response serialization and a `make http-fixtures` gate
   that verifies the pinned h11 fixture provenance without vendoring h11.
+- A pure, versioned newline-delimited event-log codec with canonical round-trip
+  validation and malformed-record rejection.
 - Project development scaffolding, quality gates, and contributor guidance.
 - An implementation plan for a log-primary, Sans-IO agent runtime with
   deterministic routing and CML-based platform-edge coordination.

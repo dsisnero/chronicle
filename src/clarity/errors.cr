@@ -38,4 +38,7 @@ module Clarity
 
   class ApprovalError < DomainError
   end
+
+  class InvalidLogEncodingError < DomainError
+  end
 end

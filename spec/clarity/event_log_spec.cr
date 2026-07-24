@@ -75,3 +75,36 @@ describe Clarity::EventLog do
     fork.events.map(&.id).should eq(["evt_000001", "evt_fork_000002"])
   end
 end
+
+describe Clarity::EventLogCodec do
+  it "encodes and decodes a versioned log without changing canonical events" do
+    first = EventLogSpecHelper.event(sequence: 1_u64, id: "evt_000001")
+    second = EventLogSpecHelper.event(sequence: 2_u64, id: "evt_000002", caused_by: first.id)
+    log = Clarity::EventLog.from_events([first, second])
+
+    encoded = Clarity::EventLogCodec.encode(log)
+    decoded = Clarity::EventLogCodec.decode(encoded)
+
+    encoded.should eq(
+      %({"format":"clarity.event-log","version":1}\n#{first.canonical_json}\n#{second.canonical_json}\n)
+    )
+    decoded.events.map(&.canonical_json).should eq(log.events.map(&.canonical_json))
+    Clarity::EventLogCodec.encode(decoded).should eq(encoded)
+  end
+
+  it "rejects an unsupported log format version" do
+    encoded = %({"format":"clarity.event-log","version":2}\n)
+
+    expect_raises(Clarity::InvalidLogEncodingError, /unsupported event log format version/) do
+      Clarity::EventLogCodec.decode(encoded)
+    end
+  end
+
+  it "rejects a malformed event record" do
+    encoded = %({"format":"clarity.event-log","version":1}\n{"sequence":1}\n)
+
+    expect_raises(Clarity::InvalidLogEncodingError, /invalid event record/) do
+      Clarity::EventLogCodec.decode(encoded)
+    end
+  end
+end
