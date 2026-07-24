@@ -10,6 +10,8 @@ All notable changes to this project are documented in this file.
   attribution-preserving h11 fixtures rather than vendored upstream code.
 - Safer incremental HTTP request framing: chunked bodies and trailers,
   pipelining, HTTP/1.0 recognition, and rejection of ambiguous body framing.
+- Incremental Sans-IO HTTP response framing for content-length, chunked, and
+  EOF-delimited bodies, including status-driven no-body responses.
 - Project development scaffolding, quality gates, and contributor guidance.
 - An implementation plan for a log-primary, Sans-IO agent runtime with
   deterministic routing and CML-based platform-edge coordination.

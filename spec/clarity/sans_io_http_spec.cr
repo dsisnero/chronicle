@@ -69,3 +69,61 @@ describe Clarity::SansIO::HttpParser do
     end
   end
 end
+
+describe Clarity::SansIO::HttpResponseParser do
+  # Adapted from h11/h11/tests/test_connection.py at
+  # 62c5068c971579d61fa1b55373390e12f25fd856, test__body_framing (MIT;
+  # https://github.com/python-hyper/h11). Normalized to complete response
+  # messages on 2026-07-24.
+  it "emits a response only after its content-length body arrives" do
+    parser = Clarity::SansIO::HttpResponseParser.new
+
+    parser.feed("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhel").should be_empty
+    responses = parser.feed("lo")
+
+    responses.size.should eq(1)
+    responses.first.status.should eq(200)
+    responses.first.reason.should eq("OK")
+    responses.first.body.should eq("hello")
+  end
+
+  it "treats 204 responses as bodyless despite framing headers" do
+    parser = Clarity::SansIO::HttpResponseParser.new
+    responses = parser.feed(
+      "HTTP/1.1 204 No Content\r\nContent-Length: 99\r\n\r\n" \
+      "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+    )
+
+    responses.map(&.status).should eq([204, 200])
+    responses.map(&.body).should eq(["", "ok"])
+  end
+
+  it "frames an incremental chunked response and retains trailers" do
+    parser = Clarity::SansIO::HttpResponseParser.new
+
+    parser.feed("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhel").should be_empty
+    responses = parser.feed("lo\r\n0\r\nX-Checksum: ok\r\n\r\n")
+
+    responses.first.body.should eq("hello")
+    responses.first.trailers.should eq({"X-Checksum" => "ok"})
+  end
+
+  it "waits for EOF to complete an unframed response body" do
+    parser = Clarity::SansIO::HttpResponseParser.new
+
+    parser.feed("HTTP/1.0 200 OK\r\n\r\nhel").should be_empty
+    parser.feed("lo").should be_empty
+    responses = parser.finish
+
+    responses.first.body.should eq("hello")
+    responses.first.http_version.should eq("HTTP/1.0")
+  end
+
+  it "rejects ambiguous response transfer and content-length framing" do
+    parser = Clarity::SansIO::HttpResponseParser.new
+
+    expect_raises(Clarity::SansIO::HttpProtocolError, /both Transfer-Encoding and Content-Length/) do
+      parser.feed("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 3\r\n\r\n")
+    end
+  end
+end
