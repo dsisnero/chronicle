@@ -126,11 +126,16 @@ compares projected objects, relations, and patches—not opaque serialized state
 
 ### Phase 0 — Contracts and fixtures
 
-- Define canonical event encoding, IDs, hashes, schema versioning, and error
-  types.
-- Create replay fixtures that include successful and failed model/tool effects.
-- Write invariants for ordering, causality, canonical serialization, and no-I/O
-  core interfaces.
+- [x] Define a versioned event envelope with a monotonic sequence, stable ID,
+  causal ID, recorded timestamp, validated JSON payload, and canonical JSON
+  encoding.
+- [x] Enforce append-only ordering and unique event IDs in in-memory storage.
+- [x] Write initial invariants for event ordering, ID uniqueness, payload
+  validity, canonical serialization, and immutable projections.
+- [ ] Define request/content hashes and dedicated domain error types.
+- [ ] Create replay fixtures that include successful and failed model/tool
+  effects.
+- [ ] Add causality and no-I/O core-interface invariants.
 
 ### Phase 1 — Deterministic routing
 
@@ -144,11 +149,14 @@ compares projected objects, relations, and patches—not opaque serialized state
 
 ### Phase 2 — Log, projection, and agent runner
 
-- Implement append-only in-memory storage and a pure graph fold.
-- Implement behavior subscription evaluation and deterministic queue scheduling.
-- Model effects as requests and results; add strict/permissive replay and
+- [x] Implement append-only in-memory storage and an initial pure run-state
+  fold for `goal.created` events.
+- [ ] Extend the projection to typed graph objects and relations.
+- [ ] Implement behavior subscription evaluation and deterministic queue
+  scheduling.
+- [ ] Model effects as requests and results; add strict/permissive replay and
   divergence reporting.
-- Implement branch creation and structural diff from a shared log prefix.
+- [ ] Implement branch creation and structural diff from a shared log prefix.
 
 ### Phase 3 — Sans-IO transports and edge adapters
 
