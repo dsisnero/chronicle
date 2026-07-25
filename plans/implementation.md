@@ -219,6 +219,66 @@ compares projected objects, relations, and patches—not opaque serialized state
 - Measure routing bypass rate, token/cost avoided, replay divergence rate,
   queue latency, and effect failure rate with recorded fixtures.
 
+## Adopted Routing Rule Schema (from smista.ai)
+
+The following routing rule fields and precedence rules are adopted from
+[smista.ai](https://github.com/smista-ai/smista.ai) and recorded here so that
+deterministic tests can reference them. DeepWiki guidance was consulted;
+the pinned source at `crates/smista-core/src/policy/routing.rs` and
+`crates/smista-router/src/router/resolver/policy_matcher.rs` is the
+conformance reference.
+
+### RouteRule fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | `String` | required | Human-readable rule name |
+| `priority` | `Int32` | `1000` | Evaluation order (lower = higher priority) |
+| `intent` | `Intent?` | `nil` | Required task intent |
+| `paths` | `Array(String)` | `[]` | File-path glob patterns (OR across globs) |
+| `local_only` | `Bool` | `false` | Restrict fallback chain to local models |
+| `model` | `String` | required | Primary model reference (`provider/model`) |
+| `fallbacks` | `Array(String)` | `[]` | Fallback chain when primary is unavailable |
+| `required_permissions` | `Hash(String, PermissionMode)` | `{}` | Tool permissions the route requires |
+| `cost_limit` | `Float64?` | `nil` | Per-task cost ceiling |
+
+### Precedence ladder (tie-breaking)
+
+1. **Explicit model override** — `request.explicit_target` bypasses all rules.
+2. **Priority** — lower `priority` value wins (default: `1000`).
+3. **Specificity** — `PathIntent` (3) > `Path` (2) > `Intent` (1) > `Default` (0).
+   Path + intent is more specific than either alone.
+4. **Declaration order** — earlier rule in the config wins.
+
+### Config format
+
+Routing rules are loaded from a YAML file (mirroring smista's TOML structure)
+using `YAML::Serializable`. Example:
+
+```yaml
+routing:
+  default:
+    model: openai/gpt-5.5-mini
+    fallbacks:
+      - ollama/qwen2.5-coder:7b
+  rules:
+    - name: review security-sensitive code locally
+      priority: 5
+      intent: review
+      paths:
+        - src/crypto/**
+        - src/auth/**
+      local_only: true
+      model: ollama/qwen2.5-coder:7b
+```
+
+### Differences from smista.ai
+
+Clarity omits `requires_capabilities`, `effort`, and `ToolsConfig` in the
+initial port. These can be added when the model-selection and capability
+systems mature. Clarity uses `Float64` for `cost_limit` instead of
+`rust_decimal::Decimal`.
+
 ## Acceptance Gates
 
 - Identical logs yield byte-identical canonical projections in strict replay.

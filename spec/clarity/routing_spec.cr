@@ -83,12 +83,17 @@ describe Clarity::Routing::Router do
 
   it "chooses lower priority before a more specific route" do
     general = Clarity::Routing::RouteRule.new(
-      "all edits", 10, RoutingIntent::Edit, nil,
-      RoutingSpecHelper.target("openai", "general")
+      "all edits",
+      RoutingSpecHelper.target("openai", "general"),
+      priority: 10,
+      intent: RoutingIntent::Edit,
     )
     specific = Clarity::Routing::RouteRule.new(
-      "auth edits", 20, RoutingIntent::Edit, "src/auth/",
-      RoutingSpecHelper.target("anthropic", "auth")
+      "auth edits",
+      RoutingSpecHelper.target("anthropic", "auth"),
+      priority: 20,
+      intent: RoutingIntent::Edit,
+      paths: ["src/auth/**"],
     )
     policy = RoutingSpecHelper.policy(routing_rules: [general, specific])
     request = RoutingSpecHelper.request("fix auth", explicit_intent: RoutingIntent::Edit, paths: ["src/auth/login.cr"])
@@ -106,12 +111,17 @@ describe Clarity::Routing::Router do
 
   it "chooses the more specific route when priorities tie" do
     general = Clarity::Routing::RouteRule.new(
-      "all edits", 10, RoutingIntent::Edit, nil,
-      RoutingSpecHelper.target("openai", "general")
+      "all edits",
+      RoutingSpecHelper.target("openai", "general"),
+      priority: 10,
+      intent: RoutingIntent::Edit,
     )
     specific = Clarity::Routing::RouteRule.new(
-      "auth edits", 10, RoutingIntent::Edit, "src/auth/",
-      RoutingSpecHelper.target("anthropic", "auth")
+      "auth edits",
+      RoutingSpecHelper.target("anthropic", "auth"),
+      priority: 10,
+      intent: RoutingIntent::Edit,
+      paths: ["src/auth/**"],
     )
     policy = RoutingSpecHelper.policy(routing_rules: [general, specific])
     request = RoutingSpecHelper.request("fix auth", explicit_intent: RoutingIntent::Edit, paths: ["src/auth/login.cr"])
@@ -128,12 +138,16 @@ describe Clarity::Routing::Router do
 
   it "uses declaration order when priority and specificity tie" do
     first = Clarity::Routing::RouteRule.new(
-      "first edit rule", 10, RoutingIntent::Edit, nil,
-      RoutingSpecHelper.target("openai", "first")
+      "first edit rule",
+      RoutingSpecHelper.target("openai", "first"),
+      priority: 10,
+      intent: RoutingIntent::Edit,
     )
     second = Clarity::Routing::RouteRule.new(
-      "second edit rule", 10, RoutingIntent::Edit, nil,
-      RoutingSpecHelper.target("anthropic", "second")
+      "second edit rule",
+      RoutingSpecHelper.target("anthropic", "second"),
+      priority: 10,
+      intent: RoutingIntent::Edit,
     )
     policy = RoutingSpecHelper.policy(routing_rules: [first, second])
 
@@ -149,7 +163,7 @@ describe Clarity::Routing::Router do
   it "uses a configured explicit target before rule selection" do
     rule_target = RoutingSpecHelper.target("openai", "rule")
     override_target = RoutingSpecHelper.target("local", "override", false)
-    rule = Clarity::Routing::RouteRule.new("edits", 10, RoutingIntent::Edit, nil, rule_target)
+    rule = Clarity::Routing::RouteRule.new("edits", rule_target, intent: RoutingIntent::Edit)
     policy = RoutingSpecHelper.policy(
       routing_rules: [rule],
       default_fallbacks: [override_target]
@@ -195,7 +209,7 @@ describe Clarity::Routing::Router do
   it "uses the declared fallback when the primary target is unavailable" do
     primary = RoutingSpecHelper.target("openai", "primary")
     fallback = RoutingSpecHelper.target("local", "fallback", false)
-    rule = Clarity::Routing::RouteRule.new("planning", 10, RoutingIntent::Plan, nil, primary, [fallback])
+    rule = Clarity::Routing::RouteRule.new("planning", primary, priority: 10, intent: RoutingIntent::Plan, fallbacks: [fallback])
     policy = RoutingSpecHelper.policy(routing_rules: [rule])
 
     decision = Clarity::Routing::Router.new.preview(
@@ -288,12 +302,182 @@ describe Clarity::Routing::Router do
     end
   end
 
+  it "matches paths with glob patterns" do
+    rule = Clarity::Routing::RouteRule.new(
+      "multi-glob",
+      RoutingSpecHelper.target("openai", "m"),
+      priority: 10,
+      paths: ["src/crypto/**", "src/auth/**"],
+    )
+    rule.matches?(RoutingIntent::Chat, ["src/crypto/aes.cr"]).should be_true
+    rule.matches?(RoutingIntent::Chat, ["src/auth/login.cr"]).should be_true
+    rule.matches?(RoutingIntent::Chat, ["src/main.cr"]).should be_false
+    rule.matches?(RoutingIntent::Chat, ["docs/readme.md"]).should be_false
+  end
+
+  it "honors local_only and cost_limit fields" do
+    rule = Clarity::Routing::RouteRule.new(
+      "expensive local",
+      RoutingSpecHelper.target("local", "m", false),
+      priority: 5,
+      local_only: true,
+      cost_limit: 0.50,
+    )
+    rule.local_only?.should be_true
+    rule.cost_limit.should eq(0.50)
+  end
+
+  it "loads a Policy from JSON matching the smista config format" do
+    json = %({
+      "routing_rules": [
+        {
+          "name": "review crypto",
+          "priority": 10,
+          "intent": "Review",
+          "paths": ["src/crypto/**"],
+          "target": { "provider": "openai", "model": "gpt-5", "remote": true, "input_token_cost": 0.001, "output_token_cost": 0.002 }
+        }
+      ],
+      "default_target": { "provider": "local", "model": "fallback", "remote": false, "input_token_cost": 0.0, "output_token_cost": 0.0 },
+      "token_budget": 100000
+    })
+
+    policy = Clarity::Routing::Policy.from_json(json)
+    policy.routing_rules.size.should eq(1)
+    policy.routing_rules.first.name.should eq("review crypto")
+    policy.routing_rules.first.paths.should eq(["src/crypto/**"])
+    policy.default_target.provider.should eq("local")
+    policy.token_budget.should eq(100000)
+  end
+
+  it "loads a Policy with the default route (no rules matched)" do
+    policy = Clarity::Routing::Policy.new(
+      default_target: RoutingSpecHelper.target("openai", "gpt-5.5-mini"),
+      default_fallbacks: [RoutingSpecHelper.target("ollama", "qwen")],
+    )
+    policy.default_target.model.should eq("gpt-5.5-mini")
+    policy.default_fallbacks.size.should eq(1)
+    policy.routing_rules.should be_empty
+  end
+
+  it "deserializes a RouteRule with local_only and cost_limit from JSON" do
+    json = %({
+      "name": "expensive local",
+      "target": { "provider": "local", "model": "m", "remote": false, "input_token_cost": 0.0, "output_token_cost": 0.0 },
+      "local_only": true,
+      "cost_limit": 0.50
+    })
+    rule = Clarity::Routing::RouteRule.from_json(json)
+    rule.local_only?.should be_true
+    rule.cost_limit.should eq(0.50)
+    rule.name.should eq("expensive local")
+  end
+
+  it "loads a Policy from YAML" do
+    yaml = <<-YAML
+    routing_rules:
+      - name: review crypto
+        priority: 10
+        intent: Review
+        paths:
+          - src/crypto/**
+        target:
+          provider: openai
+          model: gpt-5
+          remote: true
+          input_token_cost: 0.001
+          output_token_cost: 0.002
+    default_target:
+      provider: local
+      model: fallback
+      remote: false
+      input_token_cost: 0.0
+      output_token_cost: 0.0
+    token_budget: 100000
+    YAML
+
+    policy = Clarity::Routing::Config.from_yaml(yaml)
+    policy.routing_rules.size.should eq(1)
+    policy.routing_rules.first.name.should eq("review crypto")
+    policy.routing_rules.first.paths.should eq(["src/crypto/**"])
+    policy.default_target.provider.should eq("local")
+  end
+
+  it "loads a Policy from a YAML file" do
+    path = "/tmp/_clarity_routing_test.yml"
+    File.write(path, <<-YAML)
+    default_target:
+      provider: local
+      model: default
+      remote: false
+      input_token_cost: 0.0
+      output_token_cost: 0.0
+    token_budget: 50000
+    YAML
+
+    policy = Clarity::Routing::Config.from_file(path)
+    policy.default_target.model.should eq("default")
+    policy.token_budget.should eq(50000)
+    File.delete(path)
+  end
+
+  describe "Effort" do
+    it "defaults to Medium on RouteRule" do
+      rule = Clarity::Routing::RouteRule.new("test", RoutingSpecHelper.target("local", "m", false))
+      rule.effort.should eq(Clarity::Routing::Effort::Medium)
+    end
+
+    it "parses from JSON" do
+      json = %({
+        "name": "effort test",
+        "target": { "provider": "local", "model": "m", "remote": false, "input_token_cost": 0.0, "output_token_cost": 0.0 },
+        "effort": "Low"
+      })
+      rule = Clarity::Routing::RouteRule.from_json(json)
+      rule.effort.should eq(Clarity::Routing::Effort::Low)
+    end
+
+    it "serializes effort in routing reason" do
+      rule = Clarity::Routing::RouteRule.new(
+        "high effort", RoutingSpecHelper.target("openai", "m"),
+        priority: 10, intent: RoutingIntent::Edit,
+        effort: Clarity::Routing::Effort::High,
+      )
+      rule.effort.should eq(Clarity::Routing::Effort::High)
+    end
+  end
+
+  describe "ClassificationRule" do
+    it "matches keywords with typo tolerance (Levenshtein ≤ 1)" do
+      rule = Clarity::Routing::ClassificationRule.new("review", RoutingIntent::Review, 10, ["review"])
+
+      rule.matches?(RoutingSpecHelper.request("review this")).should be_true
+      rule.matches?(RoutingSpecHelper.request("revuew this")).should be_true
+      rule.matches?(RoutingSpecHelper.request("revue this")).should be_false
+    end
+
+    it "includes confidence on the result" do
+      policy = RoutingSpecHelper.policy(
+        classification_rules: [
+          Clarity::Routing::ClassificationRule.new("review", RoutingIntent::Review, 10, ["review", "audit"]),
+          Clarity::Routing::ClassificationRule.new("edit", RoutingIntent::Edit, 20, ["fix", "change"]),
+        ]
+      )
+      request = RoutingSpecHelper.request("review and audit this")
+      decision = Clarity::Routing::Router.new.preview(request, policy, [policy.default_target])
+
+      decision.classification.confidence.should be > 0
+    end
+  end
+
   it "rejects a rule that widens a default permission" do
     target = RoutingSpecHelper.target("openai", "remote")
     rule = Clarity::Routing::RouteRule.new(
-      "unsafe", 10, RoutingIntent::Edit, nil, target,
-      [] of Clarity::Routing::Target,
-      {"shell" => RoutingPermissionMode::Allow}
+      "unsafe",
+      target,
+      priority: 10,
+      intent: RoutingIntent::Edit,
+      required_permissions: {"shell" => RoutingPermissionMode::Allow},
     )
     policy = RoutingSpecHelper.policy(
       routing_rules: [rule],

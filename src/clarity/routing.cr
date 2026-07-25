@@ -24,7 +24,23 @@ module Clarity
       Deny
     end
 
+    enum Effort
+      Low
+      Medium
+      High
+    end
+
+    enum Confidence
+      VeryLow
+      Low
+      Medium
+      High
+      VeryHigh
+    end
+
     struct Target
+      include JSON::Serializable
+
       getter provider : String
       getter model : String
       getter? remote : Bool
@@ -34,9 +50,9 @@ module Clarity
       def initialize(
         @provider : String,
         @model : String,
-        @remote : Bool,
-        @input_token_cost : Float64,
-        @output_token_cost : Float64,
+        @remote : Bool = true,
+        @input_token_cost : Float64 = 0.001,
+        @output_token_cost : Float64 = 0.002,
       )
       end
     end
@@ -60,7 +76,45 @@ module Clarity
       end
     end
 
+    module KeywordMatch
+      # Levenshtein distance between two strings, capped at max_dist.
+      def self.levenshtein(a : String, b : String, max_dist : Int = 1) : Int
+        return 0 if a == b
+        return a.size if b.empty?
+        return b.size if a.empty?
+        return max_dist + 1 if (a.size - b.size).abs > max_dist
+
+        # Keep track of two rows to save memory
+        prev = (0..b.size).to_a
+        (1..a.size).each do |i|
+          curr = [i] of Int32
+          (1..b.size).each do |j|
+            cost = a[i - 1] == b[j - 1] ? 0 : 1
+            curr << Math.min(Math.min(curr[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost)
+          end
+          prev = curr
+          return max_dist + 1 if prev.min > max_dist
+        end
+        prev.last
+      end
+
+      # Returns true if text contains any keyword or a close typo (≤ max_dist edits).
+      def self.matches_any?(text : String, keywords : Array(String), max_dist : Int = 1) : Bool
+        return true if keywords.empty?
+        words = text.downcase.split(/\s+/)
+        keywords.each do |keyword|
+          kw = keyword.downcase
+          words.each do |word|
+            return true if levenshtein(word, kw, max_dist) <= max_dist
+          end
+        end
+        false
+      end
+    end
+
     struct ClassificationRule
+      include JSON::Serializable
+
       getter name : String
       getter intent : Intent
       getter priority : Int32
@@ -71,57 +125,115 @@ module Clarity
         @name : String,
         @intent : Intent,
         @priority : Int32,
-        @keywords : Array(String),
+        @keywords : Array(String) = [] of String,
         @requires_any_context : Array(ContextKind) = [] of ContextKind,
       )
       end
 
       def matches?(request : Request) : Bool
-        text_matches = @keywords.empty? || @keywords.any? do |keyword|
-          request.text.downcase.includes?(keyword.downcase)
-        end
+        text_matches = KeywordMatch.matches_any?(request.text, @keywords)
         context_matches = @requires_any_context.empty? || request.context.any? do |candidate|
           @requires_any_context.includes?(candidate.kind)
         end
-
         text_matches && context_matches
       end
+
+      def match_count(text : String) : Int32
+        return 0 if @keywords.empty?
+        words = text.downcase.split(/\s+/)
+        @keywords.count do |keyword|
+          words.any? { |word| KeywordMatch.levenshtein(word, keyword.downcase, 1) <= 1 }
+        end
+      end
     end
+
+    DEFAULT_RULE_PRIORITY = 1000
 
     struct RouteRule
       getter name : String
       getter priority : Int32
       getter intent : Intent?
-      getter path_prefix : String?
+      getter paths : Array(String)
       getter target : Target
       getter fallbacks : Array(Target)
       getter required_permissions : Hash(String, PermissionMode)
+      getter? local_only : Bool
+      getter cost_limit : Float64?
+      getter effort : Effort
 
       def initialize(
         @name : String,
-        @priority : Int32,
-        @intent : Intent?,
-        @path_prefix : String?,
         @target : Target,
+        @priority : Int32 = DEFAULT_RULE_PRIORITY,
+        @intent : Intent? = nil,
+        @paths : Array(String) = [] of String,
         @fallbacks : Array(Target) = [] of Target,
         @required_permissions : Hash(String, PermissionMode) = {} of String => PermissionMode,
+        @local_only : Bool = false,
+        @cost_limit : Float64? = nil,
+        @effort : Effort = Effort::Medium,
       )
       end
 
-      def matches?(intent : Intent, paths : Array(String)) : Bool
+      def self.from_json(string_or_io : String | IO) : self
+        new(JSON.parse(string_or_io).as_h)
+      end
+
+      def self.new(pull : JSON::PullParser) : self
+        obj = JSON.parse(pull).as_h
+        new(obj)
+      end
+
+      private def initialize(obj : Hash(String, JSON::Any))
+        @name = obj["name"].as_s
+        @priority = obj.fetch("priority", JSON::Any.new(DEFAULT_RULE_PRIORITY)).as_i.to_i32
+        @intent = obj["intent"]?.try { |value| Intent.parse(value.as_s) }
+        @paths = obj.fetch("paths", JSON::Any.new([] of JSON::Any)).as_a.map(&.as_s)
+        @target = Target.from_json(obj["target"].to_json)
+        @fallbacks = obj.fetch("fallbacks", JSON::Any.new([] of JSON::Any)).as_a.map { |entry| Target.from_json(entry.to_json) }
+        @required_permissions = obj.fetch("required_permissions", JSON::Any.new({} of String => JSON::Any)).as_h.transform_values { |value| PermissionMode.parse(value.as_s) }
+        @local_only = obj.fetch("local_only", JSON::Any.new(false)).as_bool
+        @cost_limit = obj["cost_limit"]?.try(&.as_f)
+        @effort = obj.fetch("effort", JSON::Any.new("Medium")).as_s.try { |value| Effort.parse(value) } || Effort::Medium
+      end
+
+      def to_json(json : JSON::Builder) : Nil
+        json.object do
+          json.field "name", @name
+          json.field "priority", @priority
+          json.field "intent", @intent.try(&.to_s)
+          json.field "paths", @paths
+          @target.to_json(json)
+          json.field "fallbacks" do
+            # ameba:disable Style/VerboseBlock
+            json.array { @fallbacks.each { |fallback| fallback.to_json(json) } }
+          end
+          json.field "required_permissions", @required_permissions
+          json.field "local_only", @local_only
+          json.field "cost_limit", @cost_limit
+        end
+      end
+
+      def to_json : String
+        io = IO::Memory.new
+        to_json(JSON::Builder.new(io))
+        io.to_s
+      end
+
+      def matches?(intent : Intent, candidate_paths : Array(String)) : Bool
         intent_matches = @intent.nil? || @intent == intent
-        path_matches = if path_prefix = @path_prefix
-                         paths.any?(&.starts_with?(path_prefix))
-                       else
-                         true
-                       end
+        path_matches = @paths.empty? || @paths.any? do |glob|
+          candidate_paths.any? { |cand_path| File.match?(glob, cand_path) }
+        end
         intent_matches && path_matches
       end
 
       def specificity : Int32
-        return 3 if @intent && @path_prefix
-        return 2 if @path_prefix
-        return 1 if @intent
+        has_path = !@paths.empty?
+        has_intent = !@intent.nil?
+        return 3 if has_path && has_intent
+        return 2 if has_path
+        return 1 if has_intent
 
         0
       end
@@ -136,14 +248,31 @@ module Clarity
       getter default_permissions : Hash(String, PermissionMode)
 
       def initialize(
-        @classification_rules : Array(ClassificationRule),
-        @routing_rules : Array(RouteRule),
-        @default_target : Target,
-        @default_fallbacks : Array(Target),
-        @token_budget : Int32,
-        @default_permissions : Hash(String, PermissionMode),
+        @classification_rules : Array(ClassificationRule) = [] of ClassificationRule,
+        @routing_rules : Array(RouteRule) = [] of RouteRule,
+        @default_target : Target = Target.new("local", "fallback", false),
+        @default_fallbacks : Array(Target) = [] of Target,
+        @token_budget : Int32 = 100_000,
+        @default_permissions : Hash(String, PermissionMode) = {} of String => PermissionMode,
       )
         raise InvalidRoutingPolicyError.new("token budget must not be negative") if @token_budget < 0
+      end
+
+      def self.from_json(string_or_io : String | IO) : self
+        obj = JSON.parse(string_or_io).as_h
+
+        classification_rules = obj.fetch("classification_rules", JSON::Any.new([] of JSON::Any)).as_a.map do |rule_node|
+          ClassificationRule.from_json(rule_node.to_json)
+        end
+        routing_rules = obj.fetch("routing_rules", JSON::Any.new([] of JSON::Any)).as_a.map do |rule_node|
+          RouteRule.from_json(rule_node.to_json)
+        end
+        default_target = Target.from_json(obj.fetch("default_target", JSON::Any.new({"provider" => JSON::Any.new("local"), "model" => JSON::Any.new("fallback"), "remote" => JSON::Any.new(false), "input_token_cost" => JSON::Any.new(0.0), "output_token_cost" => JSON::Any.new(0.0)})).to_json)
+        default_fallbacks = obj.fetch("default_fallbacks", JSON::Any.new([] of JSON::Any)).as_a.map { |entry| Target.from_json(entry.to_json) }
+        token_budget = obj.fetch("token_budget", JSON::Any.new(100_000)).as_i.to_i32
+        default_permissions = obj.fetch("default_permissions", JSON::Any.new({} of String => JSON::Any)).as_h.transform_values { |value| PermissionMode.parse(value.as_s) }
+
+        new(classification_rules, routing_rules, default_target, default_fallbacks, token_budget, default_permissions)
       end
 
       def configured_targets : Array(Target)
@@ -181,8 +310,9 @@ module Clarity
       getter intent : Intent
       getter matched_rule : String?
       getter? explicit : Bool
+      getter confidence : Float64
 
-      def initialize(@intent : Intent, @matched_rule : String?, @explicit : Bool)
+      def initialize(@intent : Intent, @matched_rule : String?, @explicit : Bool, @confidence : Float64 = 0.0)
       end
     end
 
@@ -264,17 +394,20 @@ module Clarity
 
       private def classify(request : Request, policy : Policy) : Classification
         if intent = request.explicit_intent
-          return Classification.new(intent, nil, true)
+          return Classification.new(intent, nil, true, 1.0)
         end
 
         matches = [] of {ClassificationRule, Int32}
         policy.classification_rules.each_with_index do |rule, index|
           matches << {rule, index} if rule.matches?(request)
         end
-        return Classification.new(Intent::Chat, nil, false) if matches.empty?
+        return Classification.new(Intent::Chat, nil, false, 0.0) if matches.empty?
 
         winner = matches.min_by { |entry| {entry[0].priority, entry[1]} }[0]
-        Classification.new(winner.intent, winner.name, false)
+        total = winner.keywords.size
+        matched = winner.match_count(request.text)
+        confidence = total > 0 ? matched.to_f / total.to_f : 0.0
+        Classification.new(winner.intent, winner.name, false, confidence)
       end
 
       private def select_rule(
