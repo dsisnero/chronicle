@@ -8,6 +8,10 @@ shards:
     git: https://github.com/schovi/baked_file_system.git
     version: 0.14.1+git.commit.393b620d5e98138006d20f4d47e40a9e0d5ce6c3
 
+  bidi:
+    git: https://github.com/dsisnero/bidi.git
+    version: 0.5.0
+
   cellwrap:
     git: https://github.com/dsisnero/cellwrap.git
     version: 0.1.0+git.commit.d898f154af8cdf6ac85cfc72a24f4a354be3d88b
@@ -23,6 +27,18 @@ shards:
   colorprofile:
     git: https://github.com/dsisnero/colorprofile.git
     version: 0.1.0+git.commit.c689a6d8a71c5d8fb3b863a1eb6dc10e7fa0f931
+
+  crig:
+    git: https://github.com/dsisnero/crig.git
+    version: 0.39.0
+
+  crig-postgres:
+    git: https://github.com/dsisnero/crig-postgres.git
+    version: 0.1.0+git.commit.24e5d9ff3342a4a030246e87cd1dad2a12fc542d
+
+  crig-sqlite:
+    git: https://github.com/dsisnero/crig-sqlite.git
+    version: 0.1.0+git.commit.913d45856ec0684634e881a00efc030288aea705
 
   crimage:
     git: https://github.com/naqvis/crimage.git
@@ -40,9 +56,21 @@ shards:
     git: https://github.com/sija/debug.cr.git
     version: 2.0.4
 
+  discordcr:
+    git: https://github.com/shardlab/discordcr.git
+    version: 0.4.1
+
+  json-schema:
+    git: https://github.com/spider-gazelle/json-schema.git
+    version: 1.3.3
+
   lipgloss:
     git: https://github.com/dsisnero/lipgloss.git
     version: 2.0.3
+
+  mcp:
+    git: https://github.com/dsisnero/mcp.cr.git
+    version: 0.5.7
 
   mosaic:
     git: https://github.com/dsisnero/mosaic.git
@@ -64,6 +92,14 @@ shards:
     git: https://github.com/wyhaines/parsedate.cr.git
     version: 0.1.2
 
+  pdfbox:
+    git: https://github.com/dsisnero/pdfbox.git
+    version: 0.1.0+git.commit.6d263f2c65c068b02d42885b2abd2fc9f592b2a8
+
+  pg:
+    git: https://github.com/will/crystal-pg.git
+    version: 0.29.0+git.commit.c16d54814405e2b9748d9bddc3d8ce0d41d2190f
+
   protobuf:
     git: https://github.com/jeromegn/protobuf.cr.git
     version: 2.3.1
@@ -80,6 +116,10 @@ shards:
     git: https://github.com/wyhaines/splay_tree_map.cr.git
     version: 0.4.0
 
+  sqlite3:
+    git: https://github.com/dsisnero/crystal-sqlite3.git
+    version: 0.22.0+git.commit.0f06a9de2c373e73496e25ed29f1a38f006d1003
+
   stumpy_core:
     git: https://github.com/stumpycr/stumpy_core.git
     version: 1.9.1
@@ -87,6 +127,10 @@ shards:
   stumpy_png:
     git: https://github.com/stumpycr/stumpy_png.git
     version: 5.0.1
+
+  sync-map:
+    git: https://github.com/dsisnero/sync-map.git
+    version: 0.1.4
 
   terminfo:
     git: https://github.com/docelic/terminfo.git
