@@ -1,0 +1,22 @@
+source_symbol	target_symbol	status	test_refs	notes
+activegraph.core.clock.Clock	Clarity::Clock	ported	spec/clarity/clock_spec.cr	Abstract clock interface (CONTRACT #8)
+activegraph.core.clock.WallClock	Clarity::WallClock	ported	spec/clarity/clock_spec.cr	Real wall-clock UTC
+activegraph.core.clock.FrozenClock	Clarity::FrozenClock	ported	spec/clarity/clock_spec.cr	Fixed timestamp for test determinism
+activegraph.core.clock.TickingClock	Clarity::TickingClock	ported	spec/clarity/clock_spec.cr	Monotonically advancing clock
+activegraph.core.event.Event	Clarity::Event	ported	spec/clarity/event_spec.cr	Immutable event with id, type, payload, actor, caused_by, timestamp
+activegraph.core.graph.Graph	Clarity::GraphProjection	ported	spec/clarity/graph_projection_spec.cr	Projection of objects+relations from event log
+activegraph.core.graph.Object	Clarity::GraphObject	ported	spec/clarity/graph_projection_spec.cr	Typed entity with id, type, data (missing version)
+activegraph.core.graph.Relation	Clarity::GraphRelation	ported	spec/clarity/graph_projection_spec.cr	Typed edge with source, target, type, data
+activegraph.core.patch.Patch	-	missing	-	Patch lifecycle: proposed→applied|rejected with expected_version
+activegraph.core.view.View	-	missing	-	Scoped graph subsets for behaviors (around, depth, types)
+activegraph.core.ids.IDGen	-	missing	-	Monotonic ID generator per type (object#, evt_NNN, rel_NNN)
+activegraph.core.graph_store.GraphStore	-	missing	-	Persistence layer (SQLite, Postgres, FalkorDB)
+activegraph.runtime.runtime.Runtime	Clarity::LogAgent	partial	spec/clarity/log_agent_spec.cr	Event loop + behavior execution; missing frame/patch/view integration
+activegraph.runtime.diff.compute_diff	Clarity::GraphProjection#diff	ported	spec/clarity/graph_projection_spec.cr	Structural diff between graph projections
+activegraph.llm.cache.LLMCache	Clarity::EffectArtifactStore	partial	spec/clarity/effect_artifact_spec.cr	Content-addressed cache; not wired into replay/fork yet
+activegraph.frame.Frame	-	missing	-	Bounded sub-context: frame_id on events, push/pop lifecycle
+activegraph.core.graph.emit	Clarity::GraphProjection#apply	ported	spec/clarity/graph_projection_spec.cr	Event→state projection
+activegraph.runtime.behavior_graph	Clarity::BehaviorRunner	ported	spec/clarity/behavior_runner_spec.cr	Behavior subscription and scheduling
+activegraph.store.base.EventStore	Clarity::EventLog	ported	spec/clarity/event_log_spec.cr	Append-only event storage
+activegraph.store.serde	Clarity::EventLogCodec	ported	spec/clarity/event_log_codec_spec.cr	JSON serialization/deserialization
+activegraph.runtime.replay	Clarity::ReplayEngine	ported	spec/clarity/replay_spec.cr	Strict/permissive replay modes

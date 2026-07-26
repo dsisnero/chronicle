@@ -1,0 +1,8 @@
+parity:
+  vendor_src: vendor/activegraph/activegraph
+  target_src: src/clarity
+  equivalences:
+    - pattern: ".py"
+      replacement: ".cr"
+    - pattern: "activegraph/core/"
+      replacement: "clarity/"
