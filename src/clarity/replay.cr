@@ -21,10 +21,13 @@ module Clarity
       mode : ReplayMode,
       emitted_events : Array(Event) = [] of Event,
       store : EffectArtifactStore? = nil,
+      llm_cache : LLMCache? = nil,
     ) : ReplayResult
       assert_strict_replay(recorded_events, emitted_events) if mode.strict?
 
-      effects = if s = store
+      effects = if c = llm_cache
+                  c.entries
+                elsif s = store
                   s.results
                 else
                   extract_effects(recorded_events)
