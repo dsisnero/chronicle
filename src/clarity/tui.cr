@@ -1,3 +1,5 @@
+require "bubbletea"
+
 module Clarity
   # Terminal UI for the Clarity agent harness using Bubble Tea.
   module TUI
@@ -174,7 +176,11 @@ module Clarity
       end
 
       def render : String
-        @core.render
+        text = @core.render
+        if @state.input? && !@input_buffer.empty?
+          text += @input_buffer
+        end
+        text
       end
 
       private def sync
@@ -182,6 +188,50 @@ module Clarity
         @messages = @core.messages
         @pending_approval = @core.pending_approval
       end
+    end
+
+    # Bubble Tea model that implements Tea::Model interface.
+    # Wraps Program and handles Tea messages (key presses).
+    class BubbleTeaModel
+      include Tea::Model
+
+      getter program : Program
+
+      def initialize
+        @program = Program.new
+      end
+
+      def init : Tea::Cmd?
+        nil
+      end
+
+      def update(msg : Tea::Msg) : Nil
+        case msg
+        when Tea::KeyPressMsg
+          if msg.code == Tea::KeyEnter
+            @program = @program.handle_enter
+          elsif msg.code == Tea::KeyBackspace
+            @program = @program.handle_backspace
+          elsif msg.code == 3 || msg.text == "\\x03"
+            # Ctrl+C
+            @program = @program.handle_quit
+          elsif msg.printable?
+            # Input one character at a time
+            msg.text.each_char { |char| @program = @program.handle_key(char) }
+          end
+        end
+      end
+
+      def view : Tea::View
+        Tea::View.new(content: @program.render)
+      end
+    end
+
+    # Run the TUI interactively.
+    def self.run
+      model = BubbleTeaModel.new
+      program = Tea.new_program(model)
+      program.run
     end
   end
 end
