@@ -1,4 +1,5 @@
 require "./clarity/errors"
+require "./clarity/clock"
 require "./clarity/content_hash"
 require "./clarity/event"
 require "./clarity/event_log"
