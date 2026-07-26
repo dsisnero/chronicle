@@ -282,10 +282,15 @@ routing:
 
 ### Differences from smista.ai
 
-Clarity omits `requires_capabilities`, `effort`, and `ToolsConfig` in the
-initial port. These can be added when the model-selection and capability
-systems mature. Clarity uses `Float64` for `cost_limit` instead of
-`rust_decimal::Decimal`.
+Clarity omits `requires_capabilities` in the initial port. This can be
+added when the model-selection and capability systems mature. Clarity
+uses `Float64` for `cost_limit` instead of `rust_decimal::Decimal`.
+
+Clarity's tool system follows activegraph's event-sourced pattern
+(tool.requested/tool.responded events, ToolCache by content hash) with
+Crig's ToolDyn/ToolServer at the platform edge for execution, rather
+than smista's client-mediated tool dispatch. Permission checking via
+`Routing::PermissionMode` is ported and available for tool gating.
 
 ## Acceptance Gates
 
