@@ -5,6 +5,12 @@
 .crystal-cache/
 temp/
 
+# macOS
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+
 # Local environment / secrets
 .env.enc.json
 mise.toml

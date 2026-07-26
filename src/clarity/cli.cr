@@ -3,7 +3,15 @@ require "../clarity"
 
 module Clarity
   module CLI
-    @[Clip::Doc("Clarity — log-primary Sans-IO agent runtime")]
+    @[Clip::Doc("Event-sourced Sans-IO agent runtime.\n" \
+                "Deterministic routing, replay, fork, diff, and interactive chat.\n" \
+                "Based on 'The Log is the Agent' (arxiv 2605.21997) and smista.ai.\n" \
+                "\n" \
+                "Get started:\n" \
+                "  export CLARITY_DEEPSEEK_API_KEY=sk-...\n" \
+                "  clarity-cli chat\n" \
+                "  clarity-cli route preview -c examples/routing_config.yml \\\n" \
+                "    -t 'Review auth code' -i Review")]
     abstract struct Root
       include Clip::Mapper
 
@@ -96,7 +104,15 @@ module Clarity
       getter file : String
     end
 
-    @[Clip::Doc("Preview a routing decision without executing a model")]
+    @[Clip::Doc("Preview a routing decision — no API call, no cost.\n" \
+                "Shows which intent was classified, which rule matched, and which\n" \
+                "model would be selected based on the routing policy.\n" \
+                "\n" \
+                "Example:\n" \
+                "  clarity-cli route preview \\\n" \
+                "    --config examples/routing_config.yml \\\n" \
+                "    --text 'Review this code for security' \\\n" \
+                "    --intent Review")]
     struct RoutePreview < Route
       include Clip::Mapper
 
@@ -160,7 +176,13 @@ module Clarity
     rescue ex : Clip::UnknownCommand
       io.puts Root.help
     rescue ex : Clip::Error
-      io.puts "ERROR: #{ex.message}"
+      msg = ex.message.to_s
+      if msg.includes?("option is required")
+        io.puts "ERROR: #{ex.message}"
+        io.puts "Run with --help to see all required options."
+      else
+        io.puts "ERROR: #{ex.message}"
+      end
     end
 
     private def self.execute_route_preview(cmd : RoutePreview, io : IO) : Nil
@@ -209,8 +231,9 @@ module Clarity
       api_key = config.providers.fetch("deepseek", ProviderConfig.new).api_key
 
       unless api_key
-        io.puts "ERROR: DEEPSEEK_API_KEY not set"
-        io.puts "Set CLARITY_DEEPSEEK_API_KEY or add providers.deepseek.api_key to config"
+        io.puts "ERROR: No API key found for DeepSeek."
+        io.puts "Set DEEPSEEK_API_KEY or CLARITY_DEEPSEEK_API_KEY in your environment,"
+        io.puts "or add providers.deepseek.api_key to your config file."
         return
       end
 

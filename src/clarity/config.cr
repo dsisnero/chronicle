@@ -57,7 +57,8 @@ module Clarity
       provs = base.providers.dup
 
       {"deepseek" => "DEEPSEEK", "openai" => "OPENAI", "anthropic" => "ANTHROPIC"}.each do |key, env_name|
-        ev = ENV["CLARITY_#{env_name}_API_KEY"]?
+        # Check namespaced (CLARITY_*) first, then bare env var
+        ev = ENV["CLARITY_#{env_name}_API_KEY"]? || ENV["#{env_name}_API_KEY"]?
         if ev && !ev.empty?
           existing = provs.fetch(key, ProviderConfig.new)
           provs[key] = ProviderConfig.new(api_key: ev, base_url: existing.base_url, disabled: existing.disabled?)
