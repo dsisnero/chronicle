@@ -184,9 +184,44 @@ module Clarity
     end
 
     private def self.execute_chat(cmd : ChatCmd, io : IO) : Nil
-      io.puts "Starting interactive chat..."
-      io.puts "Chat mode requires a Crystal runtime with model support."
-      io.puts "Use: crystal run src/clarity/cli.cr -- chat"
+      config = Config.load
+      api_key = config.providers.fetch("deepseek", ProviderConfig.new).api_key
+
+      unless api_key
+        io.puts "ERROR: DEEPSEEK_API_KEY not set"
+        io.puts "Set CLARITY_DEEPSEEK_API_KEY or add providers.deepseek.api_key to config"
+        return
+      end
+
+      store = SQLiteEventStore.new(
+        File.join(config.data_dir, "chat.db"),
+        "chat_#{Time.utc.to_unix}",
+      )
+
+      begin
+        client = Crig::Providers::DeepSeek::Client.new(api_key)
+        model = client.completion_model(Crig::Providers::DeepSeek::DEEPSEEK_V4_FLASH)
+        agent = Crig::Agent(Crig::Providers::DeepSeek::CompletionModel).new(
+          model: model,
+          preamble: "You are a helpful assistant.",
+        )
+        log_agent = LogAgent(Crig::Providers::DeepSeek::CompletionModel).new(agent, store: store)
+
+        runtime = Runtime(Crig::Providers::DeepSeek::CompletionModel).new(
+          store: store,
+          log_agent: log_agent,
+        )
+
+        io.puts "Starting chat session..."
+        TUI.run_with(runtime)
+      rescue ex : Exception
+        io.puts "ERROR: #{ex.message}"
+      end
+    end
+
+    # Execute a chat with a pre-built Runtime (for testing).
+    def self.execute_chat_with_runtime(runtime : Runtime(M)) forall M
+      TUI.run_with(runtime)
     end
 
     private def self.execute_fork(cmd : ForkCmd, io : IO) : Nil

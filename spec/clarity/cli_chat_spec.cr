@@ -17,9 +17,9 @@ class MockModel
 end
 
 describe "CLI chat" do
-  it "parses the chat command without error" do
+  it "reports missing API key without crash" do
     output = Clarity::CLI.run(["chat"])
-    output.should_not contain("ERROR")
+    output.should contain("API_KEY")
   end
 
   it "runs a headless chat with a prompt and records events" do

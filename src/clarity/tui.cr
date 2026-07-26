@@ -256,14 +256,14 @@ module Clarity
     # Run the TUI interactively without a Runtime.
     def self.run
       model = StandaloneBubbleTeaModel.new
-      program = Tea.new_program(model)
+      program = Tea::Program.new(model)
       program.run
     end
 
     # Run the TUI with a Runtime for agent execution.
     def self.run_with(runtime : Runtime(M)) forall M
       model = BubbleTeaModel(M).new(runtime)
-      program = Tea.new_program(model)
+      program = Tea::Program.new(model)
       program.run
     end
   end
