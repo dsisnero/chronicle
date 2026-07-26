@@ -82,12 +82,14 @@ module Clarity
     @relations : Hash(String, GraphRelation)
     @patches : Hash(String, Patch)
     @patch_ids_by_target : Hash(String, Array(String))
+    @applied_events : Array(Event)
 
     def initialize(
       @objects = {} of String => GraphObject,
       @relations = {} of String => GraphRelation,
       @patches = {} of String => Patch,
       @patch_ids_by_target = {} of String => Array(String),
+      @applied_events = [] of Event,
     )
     end
 
@@ -124,6 +126,8 @@ module Clarity
       relations = @relations.dup
       patches = @patches.dup
       patch_ids_by_target = @patch_ids_by_target.dup
+      applied_events = @applied_events.dup
+      applied_events << event
       payload = JSON.parse(event.payload).as_h
 
       case event.type
@@ -164,9 +168,32 @@ module Clarity
         patches[patch.id] = patch
       end
 
-      self.class.new(objects, relations, patches, patch_ids_by_target)
+      self.class.new(objects, relations, patches, patch_ids_by_target, applied_events)
     rescue KeyError | JSON::ParseException
       raise GraphProjectionError.new("invalid graph event payload")
+    end
+
+    def build_view(spec : ViewSpec = ViewSpec.new) : View
+      objs = @objects.values
+      rels = @relations.values
+
+      if types = spec.include_types
+        type_set = types.to_set
+        objs = objs.select { |obj| type_set.includes?(obj.type) }
+      end
+
+      if around = spec.around
+        center = @objects[around]?
+        objs = objs.select { |obj| obj.id == around } if center
+      end
+
+      recent = if spec.recent_events > 0
+                 @applied_events.last(Math.min(spec.recent_events, @applied_events.size))
+               else
+                 [] of Event
+               end
+
+      View.new(objects: objs, relations: rels, events: recent)
     end
 
     def propose_patch(

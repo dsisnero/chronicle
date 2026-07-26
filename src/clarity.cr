@@ -21,6 +21,7 @@ require "./clarity/platform_edge"
 require "./clarity/log_agent"
 require "./clarity/telemetry"
 require "./clarity/diff_formatter"
+require "./clarity/view"
 require "./clarity/cli"
 
 # Log-primary primitives for deterministic agent execution.
