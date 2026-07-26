@@ -14,6 +14,21 @@ module Clarity
     Rejected
   end
 
+  # Provenance metadata on every object, relation, and patch.
+  # Written by the runtime, never by behaviors.
+  struct Provenance
+    getter created_by : String
+    getter caused_by_event : String?
+    getter frame_id : String?
+
+    def initialize(
+      @created_by : String,
+      @caused_by_event : String? = nil,
+      @frame_id : String? = nil,
+    )
+    end
+  end
+
   struct Patch
     getter id : String
     getter target : String
@@ -23,6 +38,7 @@ module Clarity
     getter proposed_by : String
     getter status : PatchState
     getter rejection_reason : String?
+    getter provenance : Provenance?
 
     def initialize(
       @id : String,
@@ -33,6 +49,7 @@ module Clarity
       @proposed_by : String,
       @status : PatchState = PatchState::Proposed,
       @rejection_reason : String? = nil,
+      @provenance : Provenance? = nil,
     )
     end
   end
@@ -42,8 +59,15 @@ module Clarity
     getter type : String
     getter data : String
     getter version : Int64
+    getter provenance : Provenance
 
-    def initialize(@id : String, @type : String, @data : String, @version : Int64 = 1)
+    def initialize(
+      @id : String,
+      @type : String,
+      @data : String,
+      @version : Int64 = 1,
+      @provenance : Provenance = Provenance.new(created_by: "event"),
+    )
     end
   end
 
@@ -52,8 +76,24 @@ module Clarity
     getter type : String
     getter from_id : String
     getter to_id : String
+    getter provenance : Provenance
 
-    def initialize(@id : String, @type : String, @from_id : String, @to_id : String)
+    def initialize(
+      @id : String,
+      @type : String,
+      @from_id : String,
+      @to_id : String,
+      @provenance : Provenance = Provenance.new(created_by: "event"),
+    )
+    end
+  end
+
+  struct PatchResult
+    getter patch : Patch
+    getter graph : GraphProjection
+    getter diff : String?
+
+    def initialize(@patch : Patch, @graph : GraphProjection, @diff : String? = nil)
     end
   end
 
@@ -129,6 +169,7 @@ module Clarity
       applied_events = @applied_events.dup
       applied_events << event
       payload = JSON.parse(event.payload).as_h
+      provenance = Provenance.new(created_by: event.actor, caused_by_event: event.id)
 
       case event.type
       when "object.created", "object.patched"
@@ -139,14 +180,13 @@ module Clarity
         unless object_type
           raise GraphProjectionError.new("object type must be present")
         end
-        objects[id] = GraphObject.new(id, object_type, data, version)
+        objects[id] = GraphObject.new(id, object_type, data, version, provenance)
       when "relation.created"
         id = payload["id"].as_s
         relations[id] = GraphRelation.new(
-          id,
-          payload["type"].as_s,
-          payload["from_id"].as_s,
-          payload["to_id"].as_s
+          id, payload["type"].as_s,
+          payload["from_id"].as_s, payload["to_id"].as_s,
+          provenance,
         )
       when "patch.proposed"
         patch_data = payload["patch"].as_h
@@ -160,7 +200,7 @@ module Clarity
         patch = parse_patch(patch_data, PatchState::Applied)
         patches[patch.id] = patch
         if obj = objects[target_id]?
-          objects[target_id] = GraphObject.new(obj.id, obj.type, patch.value, obj.version + 1)
+          objects[target_id] = GraphObject.new(obj.id, obj.type, patch.value, obj.version + 1, provenance)
         end
       when "patch.rejected"
         patch_data = payload["patch"].as_h
@@ -171,6 +211,41 @@ module Clarity
       self.class.new(objects, relations, patches, patch_ids_by_target, applied_events)
     rescue KeyError | JSON::ParseException
       raise GraphProjectionError.new("invalid graph event payload")
+    end
+
+    # Auto-apply shortcut: build patch, version-check, emit applied/rejected in one step.
+    # Ported from activegraph.graph.Graph.patch_object.
+    def patch_object(
+      target : String,
+      value : String,
+      *,
+      actor : String = "system",
+      patch_id : String? = nil,
+    ) : PatchResult
+      obj = @objects[target]?
+      raise GraphProjectionError.new("unknown object: #{target}") unless obj
+
+      ver = obj.version
+      id = patch_id || "patch_#{@patches.size + 1}"
+      diff = compute_diff(obj.data, value)
+
+      applied = Patch.new(
+        id: id, target: target, op: PatchOp::Update,
+        value: value, expected_version: ver,
+        proposed_by: actor, status: PatchState::Applied,
+      )
+
+      objects = @objects.dup
+      patches = @patches.dup
+      applied_events = @applied_events.dup
+      patches[id] = applied
+      objects[target] = GraphObject.new(obj.id, obj.type, value, ver + 1)
+      ids = @patch_ids_by_target.fetch(target, [] of String)
+      patch_ids_by_target = @patch_ids_by_target.dup
+      patch_ids_by_target[target] = ids + [id]
+
+      graph = self.class.new(objects, @relations.dup, patches, patch_ids_by_target, applied_events)
+      PatchResult.new(patch: applied, graph: graph, diff: diff)
     end
 
     def build_view(spec : ViewSpec = ViewSpec.new) : View
@@ -209,12 +284,9 @@ module Clarity
       ver = expected_version || obj.try(&.version) || 0_i64
       patch = Patch.new(
         id: patch_id || "patch_#{@patches.size + 1}",
-        target: target,
-        op: PatchOp.parse(op),
-        value: value,
-        expected_version: ver,
-        proposed_by: proposed_by,
-        status: PatchState::Proposed,
+        target: target, op: PatchOp.parse(op),
+        value: value, expected_version: ver,
+        proposed_by: proposed_by, status: PatchState::Proposed,
       )
       @patches[patch.id] = patch
       ids = @patch_ids_by_target.fetch(target, [] of String)
@@ -248,8 +320,7 @@ module Clarity
       applied = Patch.new(
         id: patch.id, target: patch.target, op: patch.op,
         value: patch.value, expected_version: patch.expected_version,
-        proposed_by: patch.proposed_by,
-        status: PatchState::Applied,
+        proposed_by: patch.proposed_by, status: PatchState::Applied,
       )
       patches[patch.id] = applied
 
@@ -286,6 +357,37 @@ module Clarity
         other.patches.keys.reject { |id| @patches.has_key?(id) }.sort!,
         @patches.keys.reject { |id| other.patches.has_key?(id) }.sort!,
       )
+    end
+
+    private def compute_diff(old_data : String, new_value : String) : String?
+      return nil if old_data == new_value
+      # Simple field-level diff as JSON
+      old_h = JSON.parse(old_data).as_h? || {} of String => JSON::Any
+      new_h = JSON.parse(new_value).as_h? || {} of String => JSON::Any
+      added = new_h.reject { |k, _| old_h.has_key?(k) }
+      removed = old_h.reject { |k, _| new_h.has_key?(k) }
+      changed = old_h.select { |k, v| new_h[k]? != v && new_h.has_key?(k) }
+
+      JSON.build do |json|
+        json.object do
+          json.field "added", added
+          json.field "removed", removed.keys
+          json.field "changed" do
+            json.object do
+              changed.each do |k, v|
+                json.field k do
+                  json.object do
+                    json.field "from", v
+                    json.field "to", new_h[k]
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    rescue JSON::ParseException
+      nil
     end
 
     private def parse_patch(data : Hash(String, JSON::Any), status : PatchState) : Patch
