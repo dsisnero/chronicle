@@ -67,3 +67,13 @@ context on the event-sourced, reactive-graph design from the paper
 [The Log is the Agent](https://arxiv.org/html/2605.21997v1). DeepWiki is
 guidance, not the source of truth; validate against the paper and the pinned
 repo source.
+
+## Agent Harness Design
+
+Before changing agent harness, CLI loop, or orchestration semantics, consult
+[Codex CLI DeepWiki](https://deepwiki.com/openai/codex) for OpenAI's
+agent-runtime design (sandbox, tool execution, turn loop) and
+[OpenCode DeepWiki](https://deepwiki.com/opencode-ai/opencode) for the
+open-source agent CLI harness (session management, tool protocols,
+provider abstraction). DeepWiki is guidance, not the source of truth;
+validate against the pinned repo source and docs.
