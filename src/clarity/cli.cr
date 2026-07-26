@@ -205,11 +205,12 @@ module Clarity
     end
 
     private def self.execute_log_inspect(cmd : LogInspect, io : IO) : Nil
-      log = EventLogCodec.decode(File.read(cmd.file))
+      store = SessionStore.new(SessionStore.default_dir).load_store(cmd.file)
+      events = store.iter_events
       io.puts "Event log: #{cmd.file}"
-      io.puts "Events:    #{log.events.size}"
+      io.puts "Events:    #{events.size} (store count: #{store.count})"
       io.puts
-      log.events.each do |evt|
+      events.each do |evt|
         io.puts "  [#{evt.sequence}] #{evt.type} (#{evt.id})"
         io.puts "    actor: #{evt.actor}, time: #{evt.timestamp}"
         io.puts "    payload: #{evt.payload}"
@@ -222,16 +223,18 @@ module Clarity
     end
 
     private def self.execute_replay(cmd : ReplayCmd, io : IO) : Nil
-      log = EventLogCodec.decode(File.read(cmd.file))
-      result = ReplayEngine.new.replay(log.events, ReplayMode::Permissive)
+      store = SessionStore.new(SessionStore.default_dir).load_store(cmd.file)
+      events = store.iter_events
+      log_events = EventLogCodec.decode(File.read(cmd.file))
+      result = ReplayEngine.new.replay(events, ReplayMode::Permissive)
       io.puts "Replay complete"
-      io.puts "  Events:      #{log.events.size}"
+      io.puts "  Events:      #{log_events.events.size}"
       io.puts "  Objects:     #{result.projection.objects.size}"
       io.puts "  Relations:   #{result.projection.relations.size}"
       io.puts "  Effects:     #{result.effects.size}"
     rescue ex : File::NotFoundError
       io.puts "ERROR: file not found: #{cmd.file}"
-    rescue ex : InvalidLogEncodingError
+    rescue ex : Clarity::InvalidLogEncodingError
       io.puts "ERROR: invalid event log: #{ex.message}"
     rescue ex : ReplayDivergenceError
       io.puts "ERROR: replay diverged: #{ex.message}"

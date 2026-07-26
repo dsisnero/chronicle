@@ -26,6 +26,14 @@ module Clarity
       EventLogCodec.decode(content)
     end
 
+    # Load a file-backed MemoryEventStore for cursor-based access.
+    def load_store(path : String) : MemoryEventStore
+      log = load(path)
+      store = MemoryEventStore.new
+      log.events.each { |evt| store.append(evt) }
+      store
+    end
+
     # List all saved session file paths in the store directory.
     def list : Array(String)
       Dir.glob(File.join(@dir, "*.log")).sort
