@@ -1,7 +1,7 @@
 require "bubbletea"
 
 module Clarity
-  # Terminal UI for the Clarity agent harness using Bubble Tea.
+  # Terminal UI for the Clarity agent harness.
   module TUI
     enum State
       Input
@@ -262,27 +262,17 @@ module Clarity
 
     # Run the TUI interactively without a Runtime.
     def self.run
-      run_bubbletea(StandaloneBubbleTeaModel.new)
+      chat_loop(nil)
     end
 
     # Run the TUI with a Runtime for agent execution.
     def self.run_with(runtime : Runtime(M)) forall M
-      run_bubbletea(BubbleTeaModel(M).new(runtime))
+      chat_loop(runtime)
     end
 
-    private def self.run_bubbletea(model : Tea::Model)
-      program = Tea::Program.new(model)
-      program.run
-      nil
-    rescue ex
-      puts "TUI error: #{ex.message}"
-      puts "Falling back to simple input mode..."
-      simple_loop
-    end
-
-    # Simple readline-based fallback when TUI is unavailable.
-    private def self.simple_loop
-      puts "Clarity Agent (simple mode — type /quit to exit)"
+    # Terminal chat loop — reads input, sends to Runtime, displays response.
+    private def self.chat_loop(runtime : Runtime(M)?) forall M
+      puts "Clarity Agent — type /quit to exit"
       loop do
         print "> "
         input = gets
@@ -290,7 +280,17 @@ module Clarity
         text = input.strip
         break if text == "/quit"
         puts ">>> #{text}"
-        puts "(model execution not available in simple mode)"
+
+        if rt = runtime
+          begin
+            response = rt.run(text)
+            puts response
+          rescue ex
+            puts "Error: #{ex.message}"
+          end
+        else
+          puts "(no runtime — set DEEPSEEK_API_KEY and restart)"
+        end
       end
     end
   end
