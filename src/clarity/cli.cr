@@ -8,8 +8,10 @@ module Clarity
       include Clip::Mapper
 
       Clip.add_commands({
-        "route" => Route,
-        "diff"  => DiffCmd,
+        "route"  => Route,
+        "diff"   => DiffCmd,
+        "log"    => Log,
+        "replay" => ReplayCmd,
       })
     end
 
@@ -31,6 +33,31 @@ module Clarity
 
       @[Clip::Option("-b", "--after")]
       getter after : String
+    end
+
+    @[Clip::Doc("Log inspection commands")]
+    abstract struct Log < Root
+      include Clip::Mapper
+
+      Clip.add_commands({
+        "inspect" => LogInspect,
+      })
+    end
+
+    @[Clip::Doc("Show events in a log file")]
+    struct LogInspect < Log
+      include Clip::Mapper
+
+      @[Clip::Option("-f", "--file")]
+      getter file : String
+    end
+
+    @[Clip::Doc("Replay an event log and show results")]
+    struct ReplayCmd < Root
+      include Clip::Mapper
+
+      @[Clip::Option("-f", "--file")]
+      getter file : String
     end
 
     @[Clip::Doc("Preview a routing decision without executing a model")]
@@ -60,6 +87,10 @@ module Clarity
         execute_route_preview(cmd, io)
       when DiffCmd
         execute_diff(cmd, io)
+      when LogInspect
+        execute_log_inspect(cmd, io)
+      when ReplayCmd
+        execute_replay(cmd, io)
       else
         io.puts Root.help
       end
@@ -108,6 +139,39 @@ module Clarity
       rescue ex : InvalidRoutingPolicyError
         io.puts "ERROR: #{ex.message}"
       end
+    end
+
+    private def self.execute_log_inspect(cmd : LogInspect, io : IO) : Nil
+      log = EventLogCodec.decode(File.read(cmd.file))
+      io.puts "Event log: #{cmd.file}"
+      io.puts "Events:    #{log.events.size}"
+      io.puts
+      log.events.each do |evt|
+        io.puts "  [#{evt.sequence}] #{evt.type} (#{evt.id})"
+        io.puts "    actor: #{evt.actor}, time: #{evt.timestamp}"
+        io.puts "    payload: #{evt.payload}"
+        io.puts
+      end
+    rescue ex : File::NotFoundError
+      io.puts "ERROR: file not found: #{cmd.file}"
+    rescue ex : InvalidLogEncodingError
+      io.puts "ERROR: invalid event log: #{ex.message}"
+    end
+
+    private def self.execute_replay(cmd : ReplayCmd, io : IO) : Nil
+      log = EventLogCodec.decode(File.read(cmd.file))
+      result = ReplayEngine.new.replay(log.events, ReplayMode::Permissive)
+      io.puts "Replay complete"
+      io.puts "  Events:      #{log.events.size}"
+      io.puts "  Objects:     #{result.projection.objects.size}"
+      io.puts "  Relations:   #{result.projection.relations.size}"
+      io.puts "  Effects:     #{result.effects.size}"
+    rescue ex : File::NotFoundError
+      io.puts "ERROR: file not found: #{cmd.file}"
+    rescue ex : InvalidLogEncodingError
+      io.puts "ERROR: invalid event log: #{ex.message}"
+    rescue ex : ReplayDivergenceError
+      io.puts "ERROR: replay diverged: #{ex.message}"
     end
 
     private def self.execute_diff(cmd : DiffCmd, io : IO) : Nil

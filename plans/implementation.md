@@ -217,8 +217,13 @@ compares projected objects, relations, and patches—not opaque serialized state
   effect requests and results by SHA-256 payload hash. During replay, the
   store supplies recorded results without parsing `effect.responded` events.
   Deduplication is automatic (same payload → same hash → idempotent store).
-- Add trace export, log inspection, route preview, replay, fork, and diff CLI
-  surfaces.
+- [x] Add trace export via `tracing.cr`: `Clarity::Telemetry` emits structured
+  `route.preview` spans with decision attributes.
+- [x] Add `log inspect` CLI: read and display events from a persisted log file.
+- [x] Add `replay` CLI: replay a log file and show reconstructed graph state.
+- [x] Add `diff` CLI: compare two event logs and show structural diffs.
+- [x] Add `route preview` CLI: preview a routing decision without executing.
+- Add fork CLI surface.
 - Measure routing bypass rate, token/cost avoided, replay divergence rate,
   queue latency, and effect failure rate with recorded fixtures.
 
