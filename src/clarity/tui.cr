@@ -191,8 +191,9 @@ module Clarity
     end
 
     # Bubble Tea model that implements Tea::Model interface.
-    # Wraps Program and handles Tea messages (key presses).
-    class BubbleTeaModel
+    # Wraps Program and Runtime, handles Tea messages (key presses).
+    # Non-generic base Bubble Tea model (standalone, no runtime).
+    class StandaloneBubbleTeaModel
       include Tea::Model
 
       getter program : Program
@@ -213,10 +214,8 @@ module Clarity
           elsif msg.code == Tea::KeyBackspace
             @program = @program.handle_backspace
           elsif msg.code == 3 || msg.text == "\\x03"
-            # Ctrl+C
             @program = @program.handle_quit
           elsif msg.printable?
-            # Input one character at a time
             msg.text.each_char { |char| @program = @program.handle_key(char) }
           end
         end
@@ -227,9 +226,43 @@ module Clarity
       end
     end
 
-    # Run the TUI interactively.
+    # Generic Bubble Tea model with a Runtime for actual agent execution.
+    class BubbleTeaModel(M) < StandaloneBubbleTeaModel
+      getter runtime : Runtime(M)
+
+      def initialize(@runtime : Runtime(M))
+        super()
+      end
+
+      def update(msg : Tea::Msg) : Nil
+        case msg
+        when Tea::KeyPressMsg
+          if msg.code == Tea::KeyEnter
+            text = @program.input_buffer
+            @program = @program.handle_enter
+            response = @runtime.run(text)
+            @program = @program.handle_response(response)
+          elsif msg.code == Tea::KeyBackspace
+            @program = @program.handle_backspace
+          elsif msg.code == 3 || msg.text == "\\x03"
+            @program = @program.handle_quit
+          elsif msg.printable?
+            msg.text.each_char { |char| @program = @program.handle_key(char) }
+          end
+        end
+      end
+    end
+
+    # Run the TUI interactively without a Runtime.
     def self.run
-      model = BubbleTeaModel.new
+      model = StandaloneBubbleTeaModel.new
+      program = Tea.new_program(model)
+      program.run
+    end
+
+    # Run the TUI with a Runtime for agent execution.
+    def self.run_with(runtime : Runtime(M)) forall M
+      model = BubbleTeaModel(M).new(runtime)
       program = Tea.new_program(model)
       program.run
     end

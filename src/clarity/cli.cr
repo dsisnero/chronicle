@@ -14,6 +14,7 @@ module Clarity
         "replay"  => ReplayCmd,
         "session" => Session,
         "fork"    => ForkCmd,
+        "chat"    => ChatCmd,
       })
     end
 
@@ -77,6 +78,11 @@ module Clarity
       getter output_path : String?
     end
 
+    @[Clip::Doc("Start an interactive chat session")]
+    struct ChatCmd < Root
+      include Clip::Mapper
+    end
+
     @[Clip::Doc("List saved sessions")]
     struct SessionList < Session
       include Clip::Mapper
@@ -125,6 +131,8 @@ module Clarity
         execute_session_list(cmd, io)
       when ForkCmd
         execute_fork(cmd, io)
+      when ChatCmd
+        execute_chat(cmd, io)
       else
         io.puts Root.help
       end
@@ -173,6 +181,12 @@ module Clarity
       rescue ex : InvalidRoutingPolicyError
         io.puts "ERROR: #{ex.message}"
       end
+    end
+
+    private def self.execute_chat(cmd : ChatCmd, io : IO) : Nil
+      io.puts "Starting interactive chat..."
+      io.puts "Chat mode requires a Crystal runtime with model support."
+      io.puts "Use: crystal run src/clarity/cli.cr -- chat"
     end
 
     private def self.execute_fork(cmd : ForkCmd, io : IO) : Nil

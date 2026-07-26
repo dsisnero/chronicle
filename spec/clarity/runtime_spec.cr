@@ -26,11 +26,12 @@ describe Clarity::Runtime do
     log_agent = Clarity::LogAgent(MockModel).new(crig_agent, store: store)
     runtime = Clarity::Runtime(MockModel).new(store: store, log_agent: log_agent)
 
-    runtime.run("Hello")
+    response = runtime.run("Hello")
 
     store.count.should be >= 1
     events = store.iter_events
     events.any? { |e| e.type == "goal.created" }.should be_true
+    response.should_not be_empty
   end
 
   it "applies budget limits" do

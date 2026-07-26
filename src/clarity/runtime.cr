@@ -28,7 +28,9 @@ module Clarity
     # 2. Routes (if policy provided)
     # 3. Drives the LogAgent through the model/tool loop
     # 4. Records all events to the store
-    def run(prompt : String) : Nil
+    @response_text : String = ""
+
+    def run(prompt : String) : String
       # Emit goal.created
       goal_event = Event.new(
         schema_version: 1_u16, sequence: next_seq, id: "goal_created",
@@ -36,7 +38,7 @@ module Clarity
         timestamp: Time.utc, payload: %({"goal":"#{prompt}"}),
       )
       @store.append(goal_event)
-      return if budget_exhausted?
+      return @response_text if budget_exhausted?
 
       # Route if we have a policy
       if policy = @policy
@@ -68,9 +70,13 @@ module Clarity
         in .call_tools?
           drive_tools(step)
         in .done?
+          if resp = step.response
+            @response_text = resp.output
+          end
           break
         end
       end
+      @response_text
     end
 
     # Load a Runtime from an EventStore with recorded events.
@@ -85,6 +91,10 @@ module Clarity
 
     def decision : Routing::RouteDecision?
       @decision
+    end
+
+    def response : String
+      @response_text
     end
 
     private def next_seq : UInt64
