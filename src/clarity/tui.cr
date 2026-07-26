@@ -222,8 +222,15 @@ module Clarity
       end
 
       def view : Tea::View
-        Tea::View.new(content: @program.render)
+        Clarity::TUI.disabled_view(@program.render)
       end
+    end
+
+    def self.disabled_view(content : String) : Tea::View
+      view = Tea::View.new(content)
+      view.keyboard_enhancements = Tea::KeyboardEnhancements.new
+      view.mouse_mode = Tea::MouseMode::None
+      view
     end
 
     # Generic Bubble Tea model with a Runtime for actual agent execution.
@@ -258,6 +265,7 @@ module Clarity
       model = StandaloneBubbleTeaModel.new
       program = Tea::Program.new(model)
       program.run
+      nil
     end
 
     # Run the TUI with a Runtime for agent execution.
@@ -265,6 +273,7 @@ module Clarity
       model = BubbleTeaModel(M).new(runtime)
       program = Tea::Program.new(model)
       program.run
+      nil
     end
   end
 end
