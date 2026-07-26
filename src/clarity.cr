@@ -23,6 +23,7 @@ require "./clarity/telemetry"
 require "./clarity/diff_formatter"
 require "./clarity/view"
 require "./clarity/frame"
+require "./clarity/sqlite_event_store"
 require "./clarity/cli"
 
 # Log-primary primitives for deterministic agent execution.
