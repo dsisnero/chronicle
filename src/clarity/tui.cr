@@ -24,6 +24,7 @@ module Clarity
       end
     end
 
+    # Core state machine model (testable without Bubble Tea).
     struct Model
       getter state : State
       getter messages : Array(Message)
@@ -90,10 +91,10 @@ module Clarity
             lines << "  [Tool: #{msg.tool_name}] #{msg.content}"
           when "approval"
             lines << ""
-            lines << "  ✓ #{msg.content}"
+            lines << "  \u{2713} #{msg.content}"
           when "rejection"
             lines << ""
-            lines << "  ✗ #{msg.content}"
+            lines << "  \u{2717} #{msg.content}"
           end
         end
         if pa = @pending_approval
@@ -105,6 +106,81 @@ module Clarity
           lines << "> "
         end
         lines.join("\n")
+      end
+    end
+
+    # Bubble Tea program model — wraps the core Model with key handling.
+    class Program
+      getter state : State
+      getter messages : Array(Message)
+      getter pending_approval : PendingApproval?
+      getter input_buffer : String
+
+      @core : Model
+
+      def initialize
+        @core = Model.new
+        @state = @core.state
+        @messages = @core.messages
+        @pending_approval = @core.pending_approval
+        @input_buffer = ""
+      end
+
+      def handle_key(char : Char) : Program
+        return self if @state.done?
+        if @pending_approval
+          if char == 'y'
+            @core = @core.approve_pending
+          elsif char == 'n'
+            @core = @core.reject_pending
+          end
+          sync
+          return self
+        end
+        @input_buffer += char.to_s
+        self
+      end
+
+      def handle_backspace : Program
+        return self if @state.done?
+        @input_buffer = @input_buffer.rchop
+        self
+      end
+
+      def handle_enter : Program
+        return self if @state.done?
+        text = @input_buffer
+        @input_buffer = ""
+        @core = @core.handle_input(text)
+        sync
+        self
+      end
+
+      def handle_response(text : String) : Program
+        @core = @core.handle_response(text)
+        sync
+        self
+      end
+
+      def handle_tool_call(tool_name : String, args : String, requires_approval : Bool = false) : Program
+        @core = @core.handle_tool_call(tool_name, args, requires_approval: requires_approval)
+        sync
+        self
+      end
+
+      def handle_quit : Program
+        @state = State::Done
+        self
+      end
+
+      def render : String
+        @core.render
+      end
+
+      private def sync
+        @state = @core.state
+        @messages = @core.messages
+        @pending_approval = @core.pending_approval
       end
     end
   end
