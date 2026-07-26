@@ -262,18 +262,36 @@ module Clarity
 
     # Run the TUI interactively without a Runtime.
     def self.run
-      model = StandaloneBubbleTeaModel.new
-      program = Tea::Program.new(model)
-      program.run
-      nil
+      run_bubbletea(StandaloneBubbleTeaModel.new)
     end
 
     # Run the TUI with a Runtime for agent execution.
     def self.run_with(runtime : Runtime(M)) forall M
-      model = BubbleTeaModel(M).new(runtime)
+      run_bubbletea(BubbleTeaModel(M).new(runtime))
+    end
+
+    private def self.run_bubbletea(model : Tea::Model)
       program = Tea::Program.new(model)
       program.run
       nil
+    rescue ex
+      puts "TUI error: #{ex.message}"
+      puts "Falling back to simple input mode..."
+      simple_loop
+    end
+
+    # Simple readline-based fallback when TUI is unavailable.
+    private def self.simple_loop
+      puts "Clarity Agent (simple mode — type /quit to exit)"
+      loop do
+        print "> "
+        input = gets
+        break unless input
+        text = input.strip
+        break if text == "/quit"
+        puts ">>> #{text}"
+        puts "(model execution not available in simple mode)"
+      end
     end
   end
 end
