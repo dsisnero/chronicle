@@ -20,18 +20,28 @@ module Clarity
       recorded_events : Array(Event),
       mode : ReplayMode,
       emitted_events : Array(Event) = [] of Event,
+      store : EffectArtifactStore? = nil,
     ) : ReplayResult
       assert_strict_replay(recorded_events, emitted_events) if mode.strict?
 
+      effects = if s = store
+                  s.results
+                else
+                  extract_effects(recorded_events)
+                end
+      ReplayResult.new(GraphProjection.replay(recorded_events), effects)
+    end
+
+    private def extract_effects(events : Array(Event)) : Hash(String, EffectResult)
       effects = {} of String => EffectResult
-      recorded_events.each do |event|
+      events.each do |event|
         next unless event.type == "effect.responded"
 
         payload = JSON.parse(event.payload).as_h
         hash = payload["hash"].as_s
         effects[hash] = EffectResult.new(hash, payload["success"].as_bool, payload["payload"].to_json)
       end
-      ReplayResult.new(GraphProjection.replay(recorded_events), effects)
+      effects
     rescue KeyError | JSON::ParseException
       raise ReplayDivergenceError.new("invalid recorded effect result")
     end

@@ -48,6 +48,41 @@ describe Clarity::ReplayEngine do
     end
   end
 
+  it "replays from an artifact store instead of parsing effect.responded events" do
+    # Build an artifact store with pre-recorded results
+    store = Clarity::EffectArtifactStore.new
+    request = Clarity::EffectRequest.new("req_001", Clarity::EffectKind::Tool, %({"tool":"ping"}))
+    store.store(request)
+    store.record(request.content_hash, Clarity::EffectResult.new(request.content_hash, true, %({"pong":true})))
+
+    # Events — no effect.responded events, only the request
+    event = ReplaySpecHelper.event(
+      1_u64, "evt_000001", "effect.requested",
+      %({"hash":"#{request.content_hash}","kind":"tool"})
+    )
+
+    result = Clarity::ReplayEngine.new.replay([event], Clarity::ReplayMode::Permissive, store: store)
+
+    result.effects[request.content_hash].should_not be_nil
+    result.effects[request.content_hash].success?.should be_true
+  end
+
+  it "falls back to event-parsed results when no store is given" do
+    request = ReplaySpecHelper.event(
+      1_u64, "evt_000001", "effect.requested",
+      %({"hash":"abc123","kind":"tool"})
+    )
+    response = ReplaySpecHelper.event(
+      2_u64, "evt_000002", "effect.responded",
+      %({"hash":"abc123","success":true,"payload":{"status":"ok"}}),
+      request.id
+    )
+
+    result = Clarity::ReplayEngine.new.replay([request, response], Clarity::ReplayMode::Permissive)
+
+    result.effects["abc123"].success?.should be_true
+  end
+
   it "accepts an identical emitted stream during strict replay" do
     event = ReplaySpecHelper.event(1_u64, "evt_000001", "goal.created", %({"goal":"one"}))
 

@@ -15,5 +15,8 @@ test:
 http-fixtures:
 	sh ./scripts/check_h11_fixture_provenance.sh
 
+example:
+	crystal examples/deepseek_routing.cr
+
 clean:
 	find temp -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true

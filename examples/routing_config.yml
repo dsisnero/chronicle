@@ -1,0 +1,41 @@
+routing_rules:
+  - name: chat with flash
+    priority: 10
+    intent: Chat
+    target:
+      provider: deepseek
+      model: deepseek-v4-flash
+      remote: true
+      input_token_cost: 0.000001
+      output_token_cost: 0.000002
+
+  - name: review with pro (reasoning)
+    priority: 10
+    intent: Review
+    effort: High
+    target:
+      provider: deepseek
+      model: deepseek-v4-pro
+      remote: true
+      input_token_cost: 0.000004
+      output_token_cost: 0.000016
+
+  - name: plan with flash
+    priority: 10
+    intent: Plan
+    effort: Medium
+    target:
+      provider: deepseek
+      model: deepseek-v4-flash
+      remote: true
+      input_token_cost: 0.000001
+      output_token_cost: 0.000002
+
+default_target:
+  provider: deepseek
+  model: deepseek-v4-flash
+  remote: true
+  input_token_cost: 0.000001
+  output_token_cost: 0.000002
+
+token_budget: 100000

@@ -213,7 +213,10 @@ compares projected objects, relations, and patches—not opaque serialized state
 
 - [x] Persist versioned event logs through a pure, newline-delimited codec with
   explicit format versioning and canonical round-trip checks.
-- [ ] Add content-addressed effect artifacts.
+- [x] Add content-addressed effect artifacts: `EffectArtifactStore` indexes
+  effect requests and results by SHA-256 payload hash. During replay, the
+  store supplies recorded results without parsing `effect.responded` events.
+  Deduplication is automatic (same payload → same hash → idempotent store).
 - Add trace export, log inspection, route preview, replay, fork, and diff CLI
   surfaces.
 - Measure routing bypass rate, token/cost avoided, replay divergence rate,
