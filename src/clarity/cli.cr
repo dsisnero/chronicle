@@ -9,6 +9,7 @@ module Clarity
 
       Clip.add_commands({
         "route" => Route,
+        "diff"  => DiffCmd,
       })
     end
 
@@ -19,6 +20,17 @@ module Clarity
       Clip.add_commands({
         "preview" => RoutePreview,
       })
+    end
+
+    @[Clip::Doc("Compare two event logs and show structural diff")]
+    struct DiffCmd < Root
+      include Clip::Mapper
+
+      @[Clip::Option("-a", "--before")]
+      getter before : String
+
+      @[Clip::Option("-b", "--after")]
+      getter after : String
     end
 
     @[Clip::Doc("Preview a routing decision without executing a model")]
@@ -46,6 +58,8 @@ module Clarity
       case cmd
       when RoutePreview
         execute_route_preview(cmd, io)
+      when DiffCmd
+        execute_diff(cmd, io)
       else
         io.puts Root.help
       end
@@ -94,6 +108,21 @@ module Clarity
       rescue ex : InvalidRoutingPolicyError
         io.puts "ERROR: #{ex.message}"
       end
+    end
+
+    private def self.execute_diff(cmd : DiffCmd, io : IO) : Nil
+      before_log = EventLogCodec.decode(File.read(cmd.before))
+      after_log = EventLogCodec.decode(File.read(cmd.after))
+
+      before_proj = GraphProjection.replay(before_log.events)
+      after_proj = GraphProjection.replay(after_log.events)
+
+      diff = after_proj.diff(before_proj)
+      DiffFormatter.format(diff, io)
+    rescue ex : File::NotFoundError
+      io.puts "ERROR: file not found: #{ex.message}"
+    rescue ex : InvalidLogEncodingError
+      io.puts "ERROR: invalid event log: #{ex.message}"
     end
   end
 end

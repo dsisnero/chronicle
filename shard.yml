@@ -19,5 +19,9 @@ dependencies:
     github: dsisnero/crig
   clip:
     github: erdnaxeli/clip
+  similar:
+    github: dsisnero/similar.cr
+  bubbles:
+    github: dsisnero/bubbles
 
 license: MIT

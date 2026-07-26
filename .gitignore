@@ -4,3 +4,10 @@
 *.dwarf
 .crystal-cache/
 temp/
+
+# Local environment / secrets
+.env.enc.json
+mise.toml
+
+# Lattice cache
+.lattice-cache/

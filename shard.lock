@@ -12,6 +12,18 @@ shards:
     git: https://github.com/dsisnero/bidi.git
     version: 0.5.0
 
+  bubbles:
+    git: https://github.com/dsisnero/bubbles.git
+    version: 2.1.1
+
+  bubbletea:
+    git: https://github.com/dsisnero/bubbletea.cr.git
+    version: 2.0.6
+
+  cancel_reader:
+    git: https://github.com/dsisnero/cancel_reader.git
+    version: 0.1.0+git.commit.c727d5163e61afa406a22f6daef4dbcc417adeef
+
   cellwrap:
     git: https://github.com/dsisnero/cellwrap.git
     version: 0.1.0+git.commit.d898f154af8cdf6ac85cfc72a24f4a354be3d88b
@@ -64,6 +76,14 @@ shards:
     git: https://github.com/shardlab/discordcr.git
     version: 0.4.1
 
+  easyclip:
+    git: https://github.com/kojix2/easyclip.git
+    version: 0.2.0
+
+  harmonica:
+    git: https://github.com/dsisnero/harmonica.git
+    version: 0.8.0
+
   json-schema:
     git: https://github.com/spider-gazelle/json-schema.git
     version: 1.3.3
@@ -83,6 +103,10 @@ shards:
   nbchannel:
     git: https://github.com/wyhaines/nbchannel.cr.git
     version: 0.1.0
+
+  nucleoc:
+    git: https://github.com/dsisnero/nucleoc.git
+    version: 0.1.0+git.commit.2c822209690d1b82f5b7c8f0b13d433a1663b7ba
 
   opentelemetry-api:
     git: https://github.com/wyhaines/opentelemetry-api.cr.git
