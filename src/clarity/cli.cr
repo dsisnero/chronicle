@@ -232,7 +232,7 @@ module Clarity
 
       unless api_key
         io.puts "ERROR: No API key found for DeepSeek."
-        io.puts "Set DEEPSEEK_API_KEY or CLARITY_DEEPSEEK_API_KEY in your environment,"
+        io.puts "Set DEEPSEEK_API_KEY in your environment,"
         io.puts "or add providers.deepseek.api_key to your config file."
         return
       end
