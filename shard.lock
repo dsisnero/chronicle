@@ -16,6 +16,10 @@ shards:
     git: https://github.com/dsisnero/cellwrap.git
     version: 0.1.0+git.commit.d898f154af8cdf6ac85cfc72a24f4a354be3d88b
 
+  clip:
+    git: https://github.com/erdnaxeli/clip.git
+    version: 0.2.4
+
   cml:
     git: https://github.com/dsisnero/cml.git
     version: 0.5.0+git.commit.890caf7cde91b4fcf3d5ace146546b6cbd94865f

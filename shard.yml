@@ -7,6 +7,8 @@ authors:
 targets:
   clarity:
     main: src/clarity.cr
+  clarity-cli:
+    main: src/clarity/cli.cr
 
 crystal: '>= 1.21.0'
 
@@ -15,5 +17,7 @@ dependencies:
     github: dsisnero/cml
   crig:
     github: dsisnero/crig
+  clip:
+    github: erdnaxeli/clip
 
 license: MIT

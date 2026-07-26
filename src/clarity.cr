@@ -15,6 +15,7 @@ require "./clarity/sans_io/http"
 require "./clarity/approval"
 require "./clarity/platform_edge"
 require "./clarity/log_agent"
+require "./clarity/cli"
 
 # Log-primary primitives for deterministic agent execution.
 module Clarity
