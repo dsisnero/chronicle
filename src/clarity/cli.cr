@@ -13,6 +13,7 @@ module Clarity
         "log"     => Log,
         "replay"  => ReplayCmd,
         "session" => Session,
+        "fork"    => ForkCmd,
       })
     end
 
@@ -62,6 +63,20 @@ module Clarity
       })
     end
 
+    @[Clip::Doc("Fork an event log at a given sequence point")]
+    struct ForkCmd < Root
+      include Clip::Mapper
+
+      @[Clip::Option("-f", "--from")]
+      getter from : String
+
+      @[Clip::Option("-a", "--at")]
+      getter at : Int64
+
+      @[Clip::Option("-o", "--out")]
+      getter output_path : String?
+    end
+
     @[Clip::Doc("List saved sessions")]
     struct SessionList < Session
       include Clip::Mapper
@@ -108,6 +123,8 @@ module Clarity
         execute_replay(cmd, io)
       when SessionList
         execute_session_list(cmd, io)
+      when ForkCmd
+        execute_fork(cmd, io)
       else
         io.puts Root.help
       end
@@ -156,6 +173,24 @@ module Clarity
       rescue ex : InvalidRoutingPolicyError
         io.puts "ERROR: #{ex.message}"
       end
+    end
+
+    private def self.execute_fork(cmd : ForkCmd, io : IO) : Nil
+      source_log = EventLogCodec.decode(File.read(cmd.from))
+      target_seq = cmd.at.to_u64
+
+      fork = source_log.fork_at(target_seq)
+      out_path = cmd.output_path || File.join(File.dirname(cmd.from), "fork_at_#{target_seq}.log")
+      encoded = EventLogCodec.encode(fork)
+      File.write(out_path, encoded)
+
+      io.puts "Forked at sequence #{target_seq}"
+      io.puts "  Source: #{cmd.from} (#{source_log.events.size} events)"
+      io.puts "  Fork:   #{out_path} (#{fork.events.size} events)"
+    rescue ex : File::NotFoundError
+      io.puts "ERROR: file not found: #{cmd.from}"
+    rescue ex : Clarity::InvalidLogEncodingError
+      io.puts "ERROR: invalid event log: #{ex.message}"
     end
 
     private def self.execute_session_list(cmd : SessionList, io : IO) : Nil

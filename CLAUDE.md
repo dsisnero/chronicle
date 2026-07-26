@@ -58,3 +58,12 @@ DeepWiki as guidance and h11's pinned source plus the HTTP RFCs as the
 conformance reference. Add focused, MIT-attributed normalized fixtures under
 `spec/`; do not vendor h11 as a submodule or import GPL fuzz projects into this
 repository.
+
+## Log-Primary Agent Design (The Log is the Agent)
+
+Before changing fork, replay, or log-projection semantics, consult
+[activegraph DeepWiki](https://deepwiki.com/yoheinakajima/activegraph) for
+context on the event-sourced, reactive-graph design from the paper
+[The Log is the Agent](https://arxiv.org/html/2605.21997v1). DeepWiki is
+guidance, not the source of truth; validate against the paper and the pinned
+repo source.
