@@ -1,5 +1,5 @@
 require "clip"
-require "./routing_config"
+require "../clarity"
 
 module Clarity
   module CLI
@@ -116,6 +116,7 @@ module Clarity
       io.to_s
     end
 
+    # ameba:disable Metrics/CyclomaticComplexity
     def self.exec(args : Array(String), io : IO) : Nil
       cmd = Root.parse(args)
       case cmd
@@ -137,6 +138,26 @@ module Clarity
         io.puts Root.help
       end
     rescue ex : Clip::MissingCommand
+      # Show contextual help based on the first argument
+      case args.first?
+      when "route"
+        io.puts Clarity::CLI::Route.help rescue io.puts Root.help
+      when "log"
+        io.puts Clarity::CLI::Log.help rescue io.puts Root.help
+      when "session"
+        io.puts Clarity::CLI::Session.help rescue io.puts Root.help
+      when "diff"
+        io.puts Clarity::CLI::DiffCmd.help rescue io.puts Root.help
+      when "replay"
+        io.puts Clarity::CLI::ReplayCmd.help rescue io.puts Root.help
+      when "fork"
+        io.puts Clarity::CLI::ForkCmd.help rescue io.puts Root.help
+      when "chat"
+        io.puts Clarity::CLI::ChatCmd.help rescue io.puts Root.help
+      else
+        io.puts Root.help
+      end
+    rescue ex : Clip::UnknownCommand
       io.puts Root.help
     rescue ex : Clip::Error
       io.puts "ERROR: #{ex.message}"
@@ -304,4 +325,9 @@ module Clarity
       io.puts "ERROR: invalid event log: #{ex.message}"
     end
   end
+end
+
+# Entry point when run as a binary (not when required as library)
+unless PROGRAM_NAME.includes?("crystal-run-spec")
+  Clarity::CLI.exec(ARGV, STDOUT)
 end
