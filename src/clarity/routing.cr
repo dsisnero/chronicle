@@ -24,6 +24,79 @@ module Clarity
       Deny
     end
 
+    # Model capabilities — what a model can do.
+    # Ported from smista_core::model::capabilities::ModelCapabilities.
+    struct ModelCapabilities
+      getter? streaming : Bool
+      getter? tools : Bool
+      getter? json_output : Bool
+      getter? system_prompt : Bool
+      getter? images : Bool
+      getter? reasoning : Bool
+      getter? memory : Bool
+
+      def initialize(
+        @streaming : Bool = false,
+        @tools : Bool = false,
+        @json_output : Bool = false,
+        @system_prompt : Bool = false,
+        @images : Bool = false,
+        @reasoning : Bool = false,
+        @memory : Bool = false,
+      )
+      end
+
+      def supports?(capability : String) : Bool
+        case capability
+        when "streaming"     then @streaming
+        when "tools"         then @tools
+        when "json_output"   then @json_output
+        when "system_prompt" then @system_prompt
+        when "images"        then @images
+        when "reasoning"     then @reasoning
+        when "memory"        then @memory
+        else                      false
+        end
+      end
+
+      # Returns true if this set of capabilities satisfies all requirements.
+      # ameba:disable Metrics/CyclomaticComplexity
+      def satisfies?(requirements : ModelCapabilities) : Bool
+        (streaming? || !requirements.streaming?) &&
+          (tools? || !requirements.tools?) &&
+          (json_output? || !requirements.json_output?) &&
+          (system_prompt? || !requirements.system_prompt?) &&
+          (images? || !requirements.images?) &&
+          (reasoning? || !requirements.reasoning?) &&
+          (memory? || !requirements.memory?)
+      end
+
+      def self.from_json(string_or_io : String | IO) : self
+        obj = JSON.parse(string_or_io).as_h
+        new(
+          streaming: obj.fetch("streaming", JSON::Any.new(false)).as_bool,
+          tools: obj.fetch("tools", JSON::Any.new(false)).as_bool,
+          json_output: obj.fetch("json_output", JSON::Any.new(false)).as_bool,
+          system_prompt: obj.fetch("system_prompt", JSON::Any.new(false)).as_bool,
+          images: obj.fetch("images", JSON::Any.new(false)).as_bool,
+          reasoning: obj.fetch("reasoning", JSON::Any.new(false)).as_bool,
+          memory: obj.fetch("memory", JSON::Any.new(false)).as_bool,
+        )
+      end
+
+      def supported : Array(String)
+        arr = [] of String
+        arr << "streaming" if streaming?
+        arr << "tools" if tools?
+        arr << "json_output" if json_output?
+        arr << "system_prompt" if system_prompt?
+        arr << "images" if images?
+        arr << "reasoning" if reasoning?
+        arr << "memory" if memory?
+        arr
+      end
+    end
+
     enum Effort
       Low
       Medium
@@ -39,13 +112,12 @@ module Clarity
     end
 
     struct Target
-      include JSON::Serializable
-
       getter provider : String
       getter model : String
       getter? remote : Bool
       getter input_token_cost : Float64
       getter output_token_cost : Float64
+      getter capabilities : ModelCapabilities
 
       def initialize(
         @provider : String,
@@ -53,7 +125,29 @@ module Clarity
         @remote : Bool = true,
         @input_token_cost : Float64 = 0.001,
         @output_token_cost : Float64 = 0.002,
+        @capabilities : ModelCapabilities = ModelCapabilities.new,
       )
+      end
+
+      def self.from_json(string_or_io : String | IO) : self
+        obj = JSON.parse(string_or_io).as_h
+        provider = obj["provider"].as_s
+        model = obj["model"].as_s
+        remote = obj.fetch("remote", JSON::Any.new(true)).as_bool
+        input_cost = obj.fetch("input_token_cost", JSON::Any.new(0.001)).as_f
+        output_cost = obj.fetch("output_token_cost", JSON::Any.new(0.002)).as_f
+        caps = obj["capabilities"]?.try { |cap_node| ModelCapabilities.from_json(cap_node.to_json) } || ModelCapabilities.new
+        new(provider, model, remote, input_cost, output_cost, caps)
+      end
+
+      def to_json(json : JSON::Builder) : Nil
+        json.object do
+          json.field "provider", @provider
+          json.field "model", @model
+          json.field "remote", @remote
+          json.field "input_token_cost", @input_token_cost
+          json.field "output_token_cost", @output_token_cost
+        end
       end
     end
 
@@ -160,6 +254,7 @@ module Clarity
       getter? local_only : Bool
       getter cost_limit : Float64?
       getter effort : Effort
+      getter requires_capabilities : ModelCapabilities?
 
       def initialize(
         @name : String,
@@ -172,6 +267,7 @@ module Clarity
         @local_only : Bool = false,
         @cost_limit : Float64? = nil,
         @effort : Effort = Effort::Medium,
+        @requires_capabilities : ModelCapabilities? = nil,
       )
       end
 
@@ -195,6 +291,18 @@ module Clarity
         @local_only = obj.fetch("local_only", JSON::Any.new(false)).as_bool
         @cost_limit = obj["cost_limit"]?.try(&.as_f)
         @effort = obj.fetch("effort", JSON::Any.new("Medium")).as_s.try { |value| Effort.parse(value) } || Effort::Medium
+        @requires_capabilities = obj["requires_capabilities"]?.try do |caps_node|
+          h = caps_node.as_h
+          ModelCapabilities.new(
+            streaming: h.fetch("streaming", JSON::Any.new(false)).as_bool,
+            tools: h.fetch("tools", JSON::Any.new(false)).as_bool,
+            json_output: h.fetch("json_output", JSON::Any.new(false)).as_bool,
+            system_prompt: h.fetch("system_prompt", JSON::Any.new(false)).as_bool,
+            images: h.fetch("images", JSON::Any.new(false)).as_bool,
+            reasoning: h.fetch("reasoning", JSON::Any.new(false)).as_bool,
+            memory: h.fetch("memory", JSON::Any.new(false)).as_bool,
+          )
+        end
       end
 
       def to_json(json : JSON::Builder) : Nil
@@ -225,7 +333,12 @@ module Clarity
         path_matches = @paths.empty? || @paths.any? do |glob|
           candidate_paths.any? { |cand_path| File.match?(glob, cand_path) }
         end
-        intent_matches && path_matches
+        caps_match = if req = @requires_capabilities
+                       @target.capabilities.satisfies?(req)
+                     else
+                       true
+                     end
+        intent_matches && path_matches && caps_match
       end
 
       def specificity : Int32

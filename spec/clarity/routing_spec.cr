@@ -403,6 +403,68 @@ describe Clarity::Routing::Router do
     policy.default_target.provider.should eq("local")
   end
 
+  describe "ModelCapabilities" do
+    it "defaults to no capabilities" do
+      caps = Clarity::Routing::ModelCapabilities.new
+      caps.supports?("tools").should be_false
+    end
+
+    it "reports supported capability" do
+      caps = Clarity::Routing::ModelCapabilities.new(tools: true)
+      caps.supports?("tools").should be_true
+      caps.supports?("reasoning").should be_false
+    end
+
+    it "lists supported capabilities in declaration order" do
+      caps = Clarity::Routing::ModelCapabilities.new(streaming: true, tools: true, reasoning: true)
+      caps.supported.should eq(["streaming", "tools", "reasoning"])
+    end
+
+    it "excludes route when target lacks required capabilities" do
+      rule = Clarity::Routing::RouteRule.new(
+        "needs tools",
+        RoutingSpecHelper.target("local", "m", false),
+        priority: 10,
+        intent: RoutingIntent::Edit,
+        requires_capabilities: Clarity::Routing::ModelCapabilities.new(tools: true, reasoning: true),
+      )
+      policy = RoutingSpecHelper.policy(
+        routing_rules: [rule],
+        default_target: RoutingSpecHelper.target("openai", "fallback"),
+      )
+
+      # Target has no capabilities → rule doesn't match → falls to default
+      decision = Clarity::Routing::Router.new.preview(
+        RoutingSpecHelper.request("edit", explicit_intent: RoutingIntent::Edit),
+        policy,
+        [rule.target, policy.default_target],
+      )
+      decision.matched_rule.should eq("default")
+    end
+
+    it "matches rule when target satisfies required capabilities" do
+      caps_target = Clarity::Routing::Target.new(
+        "local", "capable-model", false,
+        capabilities: Clarity::Routing::ModelCapabilities.new(tools: true),
+      )
+      rule = Clarity::Routing::RouteRule.new(
+        "capable rule",
+        caps_target,
+        priority: 10,
+        intent: RoutingIntent::Edit,
+        requires_capabilities: Clarity::Routing::ModelCapabilities.new(tools: true),
+      )
+      policy = RoutingSpecHelper.policy(routing_rules: [rule])
+
+      decision = Clarity::Routing::Router.new.preview(
+        RoutingSpecHelper.request("edit", explicit_intent: RoutingIntent::Edit),
+        policy,
+        [caps_target],
+      )
+      decision.matched_rule.should eq("capable rule")
+    end
+  end
+
   it "loads a Policy from a YAML file" do
     path = "/tmp/_clarity_routing_test.yml"
     File.write(path, <<-YAML)
