@@ -1,6 +1,6 @@
 require "../spec_helper"
 
-def with_temp_log(content : String)
+def with_temp_log(content : String, &)
   path = "/tmp/_clarity_cli_test.log"
   File.write(path, content)
   yield path

@@ -8,10 +8,11 @@ module Clarity
       include Clip::Mapper
 
       Clip.add_commands({
-        "route"  => Route,
-        "diff"   => DiffCmd,
-        "log"    => Log,
-        "replay" => ReplayCmd,
+        "route"   => Route,
+        "diff"    => DiffCmd,
+        "log"     => Log,
+        "replay"  => ReplayCmd,
+        "session" => Session,
       })
     end
 
@@ -50,6 +51,20 @@ module Clarity
 
       @[Clip::Option("-f", "--file")]
       getter file : String
+    end
+
+    @[Clip::Doc("Session management")]
+    abstract struct Session < Root
+      include Clip::Mapper
+
+      Clip.add_commands({
+        "list" => SessionList,
+      })
+    end
+
+    @[Clip::Doc("List saved sessions")]
+    struct SessionList < Session
+      include Clip::Mapper
     end
 
     @[Clip::Doc("Replay an event log and show results")]
@@ -91,6 +106,8 @@ module Clarity
         execute_log_inspect(cmd, io)
       when ReplayCmd
         execute_replay(cmd, io)
+      when SessionList
+        execute_session_list(cmd, io)
       else
         io.puts Root.help
       end
@@ -139,6 +156,17 @@ module Clarity
       rescue ex : InvalidRoutingPolicyError
         io.puts "ERROR: #{ex.message}"
       end
+    end
+
+    private def self.execute_session_list(cmd : SessionList, io : IO) : Nil
+      store = SessionStore.new(SessionStore.default_dir)
+      sessions = store.list
+      if sessions.empty?
+        io.puts "No saved sessions in #{SessionStore.default_dir}"
+        return
+      end
+      io.puts "Sessions in #{SessionStore.default_dir}:"
+      sessions.each { |session_path| io.puts "  #{session_path}" }
     end
 
     private def self.execute_log_inspect(cmd : LogInspect, io : IO) : Nil
