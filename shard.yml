@@ -23,5 +23,8 @@ dependencies:
     github: dsisnero/similar.cr
   bubbles:
     github: dsisnero/bubbles
+  bubbletea:
+    github: dsisnero/bubbletea.cr
+    version: 2.0.8
 
 license: MIT

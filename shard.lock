@@ -18,7 +18,7 @@ shards:
 
   bubbletea:
     git: https://github.com/dsisnero/bubbletea.cr.git
-    version: 2.0.6
+    version: 2.0.8
 
   cancel_reader:
     git: https://github.com/dsisnero/cancel_reader.git
@@ -183,4 +183,3 @@ shards:
   uniwidth:
     git: https://github.com/naqvis/uni_char_width.git
     version: 0.1.3
-
