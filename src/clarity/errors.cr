@@ -21,6 +21,14 @@ module Clarity
   class NoRouteError < DomainError
   end
 
+  class ProviderNotAvailableError < DomainError
+  end
+
+  # A platform-edge provider failure that may safely advance a pre-recorded
+  # fallback list. Configuration, policy, and capability errors are not this.
+  class RetryableProviderError < DomainError
+  end
+
   class OverrideNotAllowedError < DomainError
   end
 

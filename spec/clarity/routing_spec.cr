@@ -220,6 +220,7 @@ describe Clarity::Routing::Router do
 
     decision.target.should eq(fallback)
     decision.fallback_used?.should be_true
+    decision.eligible_targets.should eq([fallback])
   end
 
   it "forces required restricted context onto an available local fallback" do

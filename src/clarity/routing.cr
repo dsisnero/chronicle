@@ -449,6 +449,7 @@ module Clarity
       getter intent : Intent
       getter classification : Classification
       getter target : Target
+      getter eligible_targets : Array(Target)
       getter matched_rule : String
       getter routing_reason : String
       getter? override_used : Bool
@@ -462,6 +463,7 @@ module Clarity
         @intent : Intent,
         @classification : Classification,
         @target : Target,
+        @eligible_targets : Array(Target),
         @matched_rule : String,
         @routing_reason : String,
         @override_used : Bool,
@@ -485,7 +487,8 @@ module Clarity
         target, override_used = selected_target(request, policy, rule)
         fallbacks = override_used ? ([] of Target) : (rule.try(&.fallbacks) || policy.default_fallbacks)
         requires_local = request.context.any? { |candidate| candidate.required? && candidate.restricted_for_remote? }
-        selected_target, fallback_used = available_target(target, fallbacks, available_targets, requires_local)
+        eligible_targets = eligible_targets(target, fallbacks, available_targets, requires_local)
+        selected_target, fallback_used = available_target(eligible_targets, target, requires_local)
         permissions = effective_permissions(policy.default_permissions, rule)
         included, excluded = select_context(request, policy.token_budget, selected_target)
         cost = estimate_cost(included, request.estimated_completion_tokens, selected_target)
@@ -494,6 +497,7 @@ module Clarity
           classification.intent,
           classification,
           selected_target,
+          eligible_targets,
           rule.try(&.name) || "default",
           routing_reason(rule, override_used),
           override_used,
@@ -556,19 +560,19 @@ module Clarity
         end
       end
 
-      private def available_target(
+      private def eligible_targets(
         target : Target,
         fallbacks : Array(Target),
         available_targets : Array(Target),
         requires_local : Bool,
-      ) : {Target, Bool}
-        candidates = [target] + fallbacks
-        candidates.each_with_index do |candidate, index|
-          if available_targets.includes?(candidate) && (!requires_local || !candidate.remote?)
-            return {candidate, index > 0}
-          end
+      ) : Array(Target)
+        ([target] + fallbacks).select do |candidate|
+          available_targets.includes?(candidate) && (!requires_local || !candidate.remote?)
         end
+      end
 
+      private def available_target(candidates : Array(Target), primary : Target, requires_local : Bool) : {Target, Bool}
+        return {candidates.first, candidates.first != primary} unless candidates.empty?
         raise NoLocalTargetError.new("no eligible local target") if requires_local
         raise NoRouteError.new("no eligible target")
       end
