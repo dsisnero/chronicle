@@ -41,6 +41,27 @@ describe Clarity::TUI::Program do
     model.messages.last.content.should eq("Hello back")
   end
 
+  it "rebuilds visible chat history from persisted chat.message events" do
+    events = [
+      Clarity::Event.new(
+        schema_version: 1_u16, sequence: 1_u64, id: "chat_1",
+        type: "chat.message", actor: "user", caused_by: nil,
+        timestamp: Time.utc, payload: %({"role":"user","content":"Hello"}),
+      ),
+      Clarity::Event.new(
+        schema_version: 1_u16, sequence: 2_u64, id: "chat_2",
+        type: "chat.message", actor: "agent", caused_by: "chat_1",
+        timestamp: Time.utc, payload: %({"role":"assistant","content":"Hi there"}),
+      ),
+    ]
+
+    model = Clarity::TUI::Program.from_events(events)
+
+    model.messages.map(&.role).should eq(["user", "assistant"])
+    model.render.should contain(">>> Hello")
+    model.render.should contain("Hi there")
+  end
+
   it "handles approval prompt with y/n keys" do
     model = Clarity::TUI::Program.new
     model = model.handle_key('R').handle_enter

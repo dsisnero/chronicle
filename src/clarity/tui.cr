@@ -19,6 +19,23 @@ module Clarity
       end
     end
 
+    # Projects durable chat turns into the presentation model. The event log is
+    # authoritative; this is only a current, renderable view of it.
+    module Transcript
+      def self.project(events : Enumerable(Event)) : Array(Message)
+        events.each_with_object([] of Message) do |event, messages|
+          next unless event.type == "chat.message"
+
+          payload = JSON.parse(event.payload).as_h
+          role = payload["role"]?.try(&.as_s?)
+          content = payload["content"]?.try(&.as_s?)
+          next unless role && content
+
+          messages << Message.new(role, content)
+        end
+      end
+    end
+
     struct PendingApproval
       getter tool_name : String
       getter args : String
@@ -133,8 +150,8 @@ module Clarity
 
       @core : Model
 
-      def initialize
-        @core = Model.new
+      def initialize(messages : Array(Message) = [] of Message)
+        @core = Model.new(messages: messages)
         @state = @core.state
         @messages = @core.messages
         @pending_approval = @core.pending_approval
@@ -144,6 +161,10 @@ module Clarity
         @input.width = 72
         @input.virtual_cursor = false
         @input.focus
+      end
+
+      def self.from_events(events : Enumerable(Event)) : Program
+        new(Transcript.project(events))
       end
 
       def input_buffer : String
@@ -275,9 +296,12 @@ module Clarity
     # Generic Bubble Tea model with a Runtime for actual agent execution.
     class BubbleTeaModel(M) < StandaloneBubbleTeaModel
       getter runtime : Runtime(M)
+      @command_sequence : UInt64
 
       def initialize(@runtime : Runtime(M))
         super()
+        @program = Program.from_events(@runtime.store.iter_events)
+        @command_sequence = @runtime.store.iter_events.count { |event| event.type == "command.accepted" && event.actor == "channel.tui" }.to_u64
       end
 
       def update(msg : Tea::Msg) : Tuple(Tea::Model, Tea::Cmd?)
@@ -289,9 +313,16 @@ module Clarity
           if msg.code == Tea::KeyEnter
             text = @program.input.value
             @program = @program.handle_enter
+            command = Channel::SendMessage.new(
+              command_id: next_command_id,
+              run_id: @runtime.run_id,
+              content: text,
+              channel: "tui",
+            )
             cmd = -> : Tea::Msg? {
               begin
-                RuntimeResponseMsg.new(@runtime.run(text))
+                @runtime.handle(command)
+                RuntimeResponseMsg.new(@runtime.response)
               rescue ex
                 RuntimeResponseMsg.new("Error: #{ex.message}")
               end
@@ -304,6 +335,11 @@ module Clarity
           end
         end
         {self, cmd}
+      end
+
+      private def next_command_id : String
+        @command_sequence += 1_u64
+        "tui_#{@command_sequence}"
       end
     end
 

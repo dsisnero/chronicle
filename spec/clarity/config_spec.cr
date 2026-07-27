@@ -19,6 +19,49 @@ describe Clarity::Config do
 
     config = Clarity::Config.from_yaml(yaml)
     config.providers["deepseek"].api_key.should eq("sk-test")
+    config.providers["deepseek"].type.should eq("deepseek")
+  end
+
+  it "keeps a named provider instance separate from its provider kind" do
+    config = Clarity::Config.from_yaml(<<-YAML)
+    providers:
+      "openai-compat:local-vllm":
+        type: openai_compatible
+        base_url: http://127.0.0.1:8000/v1
+        local: true
+      anthropic:
+        type: anthropic
+        api_key_env: CLARITY_TEST_ANTHROPIC_KEY
+    YAML
+
+    local = config.providers["openai-compat:local-vllm"]
+    local.type.should eq("openai_compatible")
+    local.local?.should be_true
+    local.base_url.should eq("http://127.0.0.1:8000/v1")
+
+    cloud = config.providers["anthropic"]
+    cloud.type.should eq("anthropic")
+    cloud.api_key_env.should eq("CLARITY_TEST_ANTHROPIC_KEY")
+  end
+
+  it "resolves a configured credential at the platform edge but permits local keyless providers" do
+    old_val = ENV["CLARITY_TEST_PROVIDER_KEY"]?
+    ENV["CLARITY_TEST_PROVIDER_KEY"] = "test-key"
+
+    config = Clarity::Config.from_yaml(<<-YAML)
+    providers:
+      ollama:
+        type: ollama
+        local: true
+      openai:
+        type: openai
+        api_key_env: CLARITY_TEST_PROVIDER_KEY
+    YAML
+
+    config.providers["ollama"].credential_available?.should be_true
+    config.providers["openai"].resolved_api_key.should eq("test-key")
+
+    ENV["CLARITY_TEST_PROVIDER_KEY"] = old_val
   end
 
   it "loads from a YAML file" do

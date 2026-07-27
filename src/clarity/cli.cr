@@ -228,6 +228,13 @@ module Clarity
 
     private def self.execute_chat(cmd : ChatCmd, io : IO) : Nil
       config = Config.load
+      policy = config.routing_config.try { |path| Routing::Config.from_file(path) }
+
+      if policy
+        execute_routed_chat(config, policy, io)
+        return
+      end
+
       api_key = config.providers.fetch("deepseek", ProviderConfig.new).api_key
 
       unless api_key
@@ -237,10 +244,8 @@ module Clarity
         return
       end
 
-      store = SQLiteEventStore.new(
-        File.join(config.data_dir, "chat.db"),
-        "chat_#{Time.utc.to_unix}",
-      )
+      run_id = "chat_#{Time.utc.to_unix}"
+      store = SQLiteEventStore.new(File.join(config.data_dir, "chat.db"), run_id)
 
       begin
         client = Crig::Providers::DeepSeek::Client.new(api_key)
@@ -251,12 +256,10 @@ module Clarity
         )
         log_agent = LogAgent(Crig::Providers::DeepSeek::CompletionModel).new(agent, store: store)
 
-        policy = config.routing_config.try { |path| Routing::Config.from_file(path) }
-
         runtime = Runtime(Crig::Providers::DeepSeek::CompletionModel).new(
           store: store,
           log_agent: log_agent,
-          policy: policy,
+          run_id: run_id,
         )
 
         io.puts "Starting chat session..."
@@ -267,6 +270,38 @@ module Clarity
           io.puts "CAUSE: #{cause.message}"
         end
       end
+    end
+
+    private def self.execute_routed_chat(config : Config, policy : Routing::Policy, io : IO) : Nil
+      catalog = ProviderCatalog.new(config)
+      available_targets = catalog.available_targets(policy)
+      if available_targets.empty?
+        io.puts "ERROR: no configured provider is eligible for the routing policy."
+        return
+      end
+
+      run_id = "chat_#{Time.utc.to_unix}"
+      store = SQLiteEventStore.new(File.join(config.data_dir, "chat.db"), run_id)
+      registry = ProviderRegistry.from_config(config, available_targets, ProviderFactories.defaults)
+      agent = Crig::Agent(RoutedExecutionModel).new(
+        model: RoutedExecutionModel.new,
+        preamble: "You are a helpful assistant.",
+      )
+      log_agent = LogAgent(RoutedExecutionModel).new(agent, store: store)
+      runtime = Runtime(RoutedExecutionModel).new(
+        store: store,
+        log_agent: log_agent,
+        policy: policy,
+        available_targets: available_targets,
+        run_id: run_id,
+        model_executor: registry,
+      )
+
+      io.puts "Starting chat session..."
+      TUI.run_with(runtime)
+    rescue ex : Exception
+      io.puts "ERROR: #{ex.message}"
+      io.puts "CAUSE: #{ex.cause.try(&.message)}" if ex.cause
     end
 
     # Execute a chat with a pre-built Runtime (for testing).

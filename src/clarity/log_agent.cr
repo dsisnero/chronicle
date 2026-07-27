@@ -1,6 +1,25 @@
 require "crig"
 
 module Clarity
+  # LogAgent needs a CompletionModel only to construct Crig's durable run
+  # state. Live execution is delegated to ModelExecutor after routing, so this
+  # model is a guard against accidental direct execution.
+  class RoutedExecutionModel
+    include Crig::Completion::CompletionModel
+
+    def completion(request : Crig::Completion::Request::CompletionRequest)
+      raise ProviderNotAvailableError.new("routed execution must use a registered provider executor")
+    end
+
+    def stream(request : Crig::Completion::Request::CompletionRequest)
+      raise ProviderNotAvailableError.new("routed execution must use a registered provider executor")
+    end
+
+    def completion_request(prompt : Crig::Completion::Message | String) : Crig::Completion::Request::CompletionRequestBuilder
+      Crig::Completion::Request::CompletionRequestBuilder.new(prompt)
+    end
+  end
+
   class LogAgent(M)
     getter agent : Crig::Agent(M)
     getter store : EventStore?

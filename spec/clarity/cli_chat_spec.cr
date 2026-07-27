@@ -47,6 +47,7 @@ describe "CLI chat" do
     store.count.should be >= 1
     events = store.iter_events
     events.any? { |e| e.type == "goal.created" }.should be_true
+    events.any? { |e| e.type == "command.accepted" && e.actor == "channel.tui" }.should be_true
   end
 
   it "displays agent response after submitting prompt" do
@@ -66,5 +67,10 @@ describe "CLI chat" do
     view = tui.view
     view.content.should contain(">>> Hi")
     view.content.should contain("Mock response")
+
+    restored_tui = Clarity::TUI::BubbleTeaModel.new(runtime: runtime)
+    restored_view = restored_tui.view
+    restored_view.content.should contain(">>> Hi")
+    restored_view.content.should contain("Mock response")
   end
 end

@@ -2,18 +2,48 @@ require "yaml"
 
 module Clarity
   struct ProviderConfig
+    # The adapter family (for example `ollama` or `openai_compatible`). This
+    # is deliberately independent of the providers hash key, which is the
+    # stable named provider instance used by routes.
+    getter type : String
     getter api_key : String?
+    getter api_key_env : String?
     getter base_url : String?
+    getter? local : Bool
     getter? disabled : Bool
 
-    def initialize(@api_key : String? = nil, @base_url : String? = nil, @disabled : Bool = false)
+    def initialize(
+      @type : String = "unknown",
+      @api_key : String? = nil,
+      @api_key_env : String? = nil,
+      @base_url : String? = nil,
+      @local : Bool = false,
+      @disabled : Bool = false,
+    )
+    end
+
+    # Credential resolution is an edge concern. The core receives only the
+    # resulting availability snapshot, never this value or its source.
+    def resolved_api_key : String?
+      @api_key || @api_key_env.try { |name| ENV[name]? }
+    end
+
+    def credential_available? : Bool
+      @local || !resolved_api_key.nil?
+    end
+
+    def with_type(type : String) : self
+      self.class.new(type, @api_key, @api_key_env, @base_url, @local, @disabled)
     end
 
     def self.from_json(string_or_io : String | IO) : self
       obj = JSON.parse(string_or_io).as_h
       new(
+        type: obj.fetch("type", JSON::Any.new("unknown")).as_s,
         api_key: obj["api_key"]?.try(&.as_s),
+        api_key_env: obj["api_key_env"]?.try(&.as_s),
         base_url: obj["base_url"]?.try(&.as_s),
+        local: obj.fetch("local", JSON::Any.new(false)).as_bool,
         disabled: obj.fetch("disabled", JSON::Any.new(false)).as_bool,
       )
     end
@@ -58,10 +88,17 @@ module Clarity
 
       {"deepseek" => "DEEPSEEK", "openai" => "OPENAI", "anthropic" => "ANTHROPIC"}.each do |key, env_name|
         # Check namespaced (CLARITY_*) first, then bare env var
-        ev = ENV["#{env_name}_API_KEY"]? || ENV["CLARITY_#{env_name}_API_KEY"]?
+        ev = ENV["CLARITY_#{env_name}_API_KEY"]? || ENV["#{env_name}_API_KEY"]?
         if ev && !ev.empty?
           existing = provs.fetch(key, ProviderConfig.new)
-          provs[key] = ProviderConfig.new(api_key: ev, base_url: existing.base_url, disabled: existing.disabled?)
+          provs[key] = ProviderConfig.new(
+            type: existing.type,
+            api_key: ev,
+            api_key_env: existing.api_key_env,
+            base_url: existing.base_url,
+            local: existing.local?,
+            disabled: existing.disabled?,
+          )
         end
       end
 
@@ -100,7 +137,8 @@ module Clarity
           # nil/empty providers
         else
           provs.as_h.each do |key, val|
-            providers[key] = ProviderConfig.from_json(val.to_json)
+            provider = ProviderConfig.from_json(val.to_json)
+            providers[key] = provider.type == "unknown" ? provider.with_type(infer_provider_type(key)) : provider
           end
         end
       end
@@ -109,6 +147,11 @@ module Clarity
 
     private def self.from_yaml_string(yaml : String) : self
       from_json(YAML.parse(yaml).to_json)
+    end
+
+    private def self.infer_provider_type(instance_id : String) : String
+      return "openai_compatible" if instance_id.starts_with?("openai-compat:")
+      instance_id
     end
   end
 end
