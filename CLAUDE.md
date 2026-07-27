@@ -49,6 +49,29 @@ configuration documentation. Record the adopted precedence, tie-break, privacy,
 or fallback rule in `plans/implementation.md` and cover it with a deterministic
 test; DeepWiki is guidance, not the source of truth.
 
+### Combined Router and Log Principle
+
+Clarity combines two designs:
+
+- **Smista:** the router, not a channel client, owns deterministic
+  classification, policy enforcement, provider/model selection, and ordered
+  fallback selection.
+- **ActiveGraph:** the append-only event log is authoritative; every material
+  decision and outcome is causally linked, replayable history.
+
+Therefore, TUI, CLI, HTTP, and other channels may submit commands and express
+bounded preferences, but they must not choose providers, apply fallbacks, or
+reimplement routing. The runtime records a `routing.decided` receipt before
+each model request and records request, response, fallback, privacy/permission,
+approval, cancellation, and non-fatal failure outcomes as durable events linked
+through `caused_by`. Provider credentials and raw client identifiers never
+enter the event log. A provider registry/executor consumes the recorded target;
+it must never silently substitute a model.
+
+Before changing this boundary, update `plans/channel_protocol.md`, preserve the
+documented routing precedence and safety narrowing rules, and add red-green
+tests for the route receipt, causal chain, and fallback behavior.
+
 ## Sans-IO HTTP/1 Guidance
 
 Before changing HTTP/1 framing or connection-state semantics, consult
