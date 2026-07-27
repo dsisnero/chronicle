@@ -62,3 +62,32 @@ describe Clarity::EffectArtifactStore do
     store.results.size.should eq(0) # no results recorded yet
   end
 end
+
+describe Clarity::ModelEffectRequest do
+  it "uses a durable request event and exact route target as its edge contract" do
+    target = Clarity::Routing::Target.new("ollama", "qwen2.5-coder", false)
+    effect = Clarity::EffectRequest.new("req_001", Clarity::EffectKind::Model, %({"prompt":"hello"}))
+
+    request = Clarity::ModelEffectRequest.new("llm_requested_7", effect, target)
+
+    request.request_event_id.should eq("llm_requested_7")
+    request.request_hash.should eq(effect.content_hash)
+    request.target.should eq(target)
+  end
+end
+
+describe Clarity::ModelEffectResult do
+  it "normalizes the edge response without retaining a provider SDK object" do
+    result = Clarity::ModelEffectResult.new(
+      "llm_requested_7", "ollama", "qwen2.5-coder", "Hello", 12, 4, "message-1",
+    )
+
+    result.request_event_id.should eq("llm_requested_7")
+    result.provider.should eq("ollama")
+    result.model.should eq("qwen2.5-coder")
+    result.content.should eq("Hello")
+    result.input_tokens.should eq(12)
+    result.output_tokens.should eq(4)
+    result.choice.first.text.not_nil!.text.should eq("Hello")
+  end
+end

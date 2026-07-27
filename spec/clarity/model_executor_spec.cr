@@ -153,3 +153,23 @@ describe Clarity::ProviderRegistry do
     registry.registered?(target).should be_true
   end
 end
+
+describe Clarity::ModelEffectWorker do
+  it "executes a typed effect invocation and returns a normalized edge result" do
+    model = FixedExecutorSpecModel.new
+    target = Clarity::Routing::Target.new("ollama", "qwen2.5-coder", false)
+    effect = Clarity::EffectRequest.new("effect-1", Clarity::EffectKind::Model, %({"prompt":"hello"}))
+    request = Clarity::ModelEffectRequest.new("llm_requested_1", effect, target)
+    invocation = Clarity::ModelEffectInvocation.new(request, model.completion_request("hello").build)
+    worker = Clarity::ModelEffectWorker.new(
+      Clarity::ProviderRegistry.new.register(target, Clarity::FixedModelExecutor(FixedExecutorSpecModel).new(model)),
+    )
+
+    result = worker.execute(invocation)
+
+    result.request_event_id.should eq("llm_requested_1")
+    result.provider.should eq("ollama")
+    result.model.should eq("qwen2.5-coder")
+    result.content.should eq("Executor response")
+  end
+end

@@ -25,6 +25,37 @@ module Clarity
     ) : Crig::Completion::CompletionResponse(String)
   end
 
+  # Ephemeral platform-edge input: the durable request contract plus the Crig
+  # request assembled from the recorded turn. It is never persisted.
+  struct ModelEffectInvocation
+    getter effect : ModelEffectRequest
+    getter request : Crig::Completion::Request::CompletionRequest
+
+    def initialize(@effect : ModelEffectRequest, @request : Crig::Completion::Request::CompletionRequest)
+    end
+  end
+
+  # Owns live provider invocation at the platform edge and returns only a
+  # normalized result to the runtime.
+  class ModelEffectWorker
+    def initialize(@executor : ModelExecutor)
+    end
+
+    def execute(invocation : ModelEffectInvocation) : ModelEffectResult
+      response = @executor.completion(invocation.effect.target, invocation.request)
+      ModelEffectResult.new(
+        invocation.effect.request_event_id,
+        invocation.effect.target.provider,
+        invocation.effect.target.model,
+        response.choice.first.text.try(&.text) || "",
+        response.usage.input_tokens.to_i32,
+        response.usage.output_tokens.to_i32,
+        response.message_id || "",
+        response.choice,
+      )
+    end
+  end
+
   # Adapts one configured provider model to the platform-edge executor
   # contract. ProviderRegistry determines whether this model is eligible for a
   # particular route target before it is invoked.
