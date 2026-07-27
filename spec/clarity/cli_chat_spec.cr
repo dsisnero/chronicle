@@ -4,7 +4,13 @@ class MockModel
   include Crig::Completion::CompletionModel
 
   def completion(request : Crig::Completion::Request::CompletionRequest)
-    raise "not implemented in test"
+    Crig::Completion::CompletionResponse(String).new(
+      Crig::OneOrMany(Crig::Completion::AssistantContent).one(
+        Crig::Completion::AssistantContent.text("Mock response")
+      ),
+      Crig::Completion::Usage.new,
+      "raw",
+    )
   end
 
   def stream(request : Crig::Completion::Request::CompletionRequest)
@@ -34,7 +40,8 @@ describe "CLI chat" do
 
     # Simulate typing a message
     tui.update(Tea::Key.new(text: "Hello"))
-    tui.update(Tea::Key.new(code: Tea::KeyEnter))
+    _model, command = tui.update(Tea::Key.new(code: Tea::KeyEnter))
+    tui.update(command.not_nil!.call.not_nil!)
 
     # Should have recorded events
     store.count.should be >= 1
@@ -53,7 +60,8 @@ describe "CLI chat" do
     tui.init
 
     tui.update(Tea::Key.new(text: "Hi"))
-    tui.update(Tea::Key.new(code: Tea::KeyEnter))
+    _model, command = tui.update(Tea::Key.new(code: Tea::KeyEnter))
+    tui.update(command.not_nil!.call.not_nil!)
 
     view = tui.view
     view.content.should contain(">>> Hi")

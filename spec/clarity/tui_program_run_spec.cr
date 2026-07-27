@@ -16,6 +16,7 @@ describe Clarity::TUI::StandaloneBubbleTeaModel do
     key = Tea::Key.new(text: "H")
     model.update(key)
     model.program.input_buffer.should eq("H")
+    Ansi.strip(model.view.content).should contain("> H")
   end
 
   it "update handles backspace key" do
@@ -43,5 +44,31 @@ describe Clarity::TUI::StandaloneBubbleTeaModel do
     view = model.view
     view.should be_a(Tea::View)
     view.content.should contain("Clarity Agent")
+  end
+
+  it "uses Bubbles' text input for terminal editing" do
+    model = Clarity::TUI::StandaloneBubbleTeaModel.new
+
+    model.input.should be_a(Bubbles::TextInput::Model)
+  end
+
+  it "returns itself and a command from update" do
+    model = Clarity::TUI::StandaloneBubbleTeaModel.new
+
+    updated, command = model.update(Tea::ModeReportMsg.new(2026, 2))
+
+    updated.should be(model)
+    command.should be_nil
+  end
+
+  it "quits and restores the terminal on Ctrl-C" do
+    model = Clarity::TUI::StandaloneBubbleTeaModel.new
+
+    updated, command = model.update(Tea::Key.new(code: 'c'.ord, mod: Ultraviolet::ModCtrl))
+
+    updated.should be(model)
+    model.program.state.should eq(Clarity::TUI::State::Done)
+    command.should_not be_nil
+    command.not_nil!.call.should be_a(Tea::QuitMsg)
   end
 end

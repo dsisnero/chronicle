@@ -1,4 +1,5 @@
 require "bubbletea"
+require "bubbles"
 
 module Clarity
   # Terminal UI for the Clarity agent harness.
@@ -23,6 +24,15 @@ module Clarity
       getter args : String
 
       def initialize(@tool_name : String, @args : String)
+      end
+    end
+
+    struct RuntimeResponseMsg
+      include Tea::Msg
+
+      getter content : String
+
+      def initialize(@content : String)
       end
     end
 
@@ -106,6 +116,9 @@ module Clarity
         if @state.input?
           lines << ""
           lines << "> "
+        elsif @state.processing?
+          lines << ""
+          lines << "  Thinking…"
         end
         lines.join("\n")
       end
@@ -116,7 +129,7 @@ module Clarity
       getter state : State
       getter messages : Array(Message)
       getter pending_approval : PendingApproval?
-      getter input_buffer : String
+      getter input : Bubbles::TextInput::Model
 
       @core : Model
 
@@ -125,7 +138,16 @@ module Clarity
         @state = @core.state
         @messages = @core.messages
         @pending_approval = @core.pending_approval
-        @input_buffer = ""
+        @input = Bubbles::TextInput::Model.new
+        @input.prompt = "> "
+        @input.placeholder = "Ask Clarity…"
+        @input.width = 72
+        @input.virtual_cursor = false
+        @input.focus
+      end
+
+      def input_buffer : String
+        @input.value
       end
 
       def handle_key(char : Char) : Program
@@ -139,23 +161,28 @@ module Clarity
           sync
           return self
         end
-        @input_buffer += char.to_s
+        @input.value = @input.value + char
         self
       end
 
       def handle_backspace : Program
         return self if @state.done?
-        @input_buffer = @input_buffer.rchop
+        @input.value = @input.value.rchop
         self
       end
 
       def handle_enter : Program
         return self if @state.done?
-        text = @input_buffer
-        @input_buffer = ""
+        text = @input.value
+        @input.reset
         @core = @core.handle_input(text)
         sync
         self
+      end
+
+      def update_input(msg : Tea::Msg) : Tea::Cmd?
+        @input, cmd = @input.update(msg)
+        cmd
       end
 
       def handle_response(text : String) : Program
@@ -177,8 +204,9 @@ module Clarity
 
       def render : String
         text = @core.render
-        if @state.input? && !@input_buffer.empty?
-          text += @input_buffer
+        if @state.input?
+          text = text[0...-2] if text.ends_with?("> ")
+          text += @input.view
         end
         text
       end
@@ -198,6 +226,10 @@ module Clarity
 
       getter program : Program
 
+      def input : Bubbles::TextInput::Model
+        @program.input
+      end
+
       def initialize
         @program = Program.new
       end
@@ -206,23 +238,30 @@ module Clarity
         nil
       end
 
-      def update(msg : Tea::Msg) : Nil
+      def update(msg : Tea::Msg) : Tuple(Tea::Model, Tea::Cmd?)
+        cmd = nil
         case msg
         when Tea::KeyPressMsg
           if msg.code == Tea::KeyEnter
             @program = @program.handle_enter
-          elsif msg.code == Tea::KeyBackspace
-            @program = @program.handle_backspace
-          elsif msg.code == 3 || msg.text == "\\x03"
+          elsif msg.keystroke == "ctrl+c" || msg.code == 3 || msg.text == "\u0003"
             @program = @program.handle_quit
-          elsif msg.printable?
-            msg.text.each_char { |char| @program = @program.handle_key(char) }
+            cmd = Tea.quit
+          else
+            cmd = @program.update_input(msg)
           end
         end
+        {self, cmd}
       end
 
       def view : Tea::View
-        Clarity::TUI.disabled_view(@program.render)
+        content = @program.render
+        view = Clarity::TUI.disabled_view(content)
+        if cursor = @program.input.cursor
+          cursor.y = content.count('\n')
+          view.cursor = cursor
+        end
+        view
       end
     end
 
@@ -241,57 +280,50 @@ module Clarity
         super()
       end
 
-      def update(msg : Tea::Msg) : Nil
+      def update(msg : Tea::Msg) : Tuple(Tea::Model, Tea::Cmd?)
+        cmd = nil
         case msg
+        when RuntimeResponseMsg
+          @program = @program.handle_response(msg.content)
         when Tea::KeyPressMsg
           if msg.code == Tea::KeyEnter
-            text = @program.input_buffer
+            text = @program.input.value
             @program = @program.handle_enter
-            response = @runtime.run(text)
-            @program = @program.handle_response(response)
-          elsif msg.code == Tea::KeyBackspace
-            @program = @program.handle_backspace
-          elsif msg.code == 3 || msg.text == "\\x03"
+            cmd = -> : Tea::Msg? {
+              begin
+                RuntimeResponseMsg.new(@runtime.run(text))
+              rescue ex
+                RuntimeResponseMsg.new("Error: #{ex.message}")
+              end
+            }
+          elsif msg.keystroke == "ctrl+c" || msg.code == 3 || msg.text == "\u0003"
             @program = @program.handle_quit
-          elsif msg.printable?
-            msg.text.each_char { |char| @program = @program.handle_key(char) }
+            cmd = Tea.quit
+          else
+            cmd = @program.update_input(msg)
           end
         end
+        {self, cmd}
       end
     end
 
     # Run the TUI interactively without a Runtime.
     def self.run
-      chat_loop(nil)
+      model = StandaloneBubbleTeaModel.new
+      run_program(model)
     end
 
     # Run the TUI with a Runtime for agent execution.
     def self.run_with(runtime : Runtime(M)) forall M
-      chat_loop(runtime)
+      model = BubbleTeaModel(M).new(runtime)
+      run_program(model)
     end
 
-    # Terminal chat loop — reads input, sends to Runtime, displays response.
-    private def self.chat_loop(runtime : Runtime(M)?) forall M
-      puts "Clarity Agent — type /quit to exit"
-      loop do
-        print "> "
-        input = gets
-        break unless input
-        text = input.strip
-        break if text == "/quit"
-        puts ">>> #{text}"
-
-        if rt = runtime
-          begin
-            response = rt.run(text)
-            puts response
-          rescue ex
-            puts "Error: #{ex.message}"
-          end
-        else
-          puts "(no runtime — set DEEPSEEK_API_KEY and restart)"
-        end
-      end
+    private def self.run_program(model : Tea::Model)
+      program = Tea::Program.new(model)
+      _model, error = program.run
+      raise error if error
+      nil
     end
   end
 end
