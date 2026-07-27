@@ -55,6 +55,12 @@ private class PrimaryFailsThenSucceedsExecutor < Clarity::ModelExecutor
   end
 end
 
+private class SensitiveFailureExecutor < Clarity::ModelExecutor
+  def completion(target : Clarity::Routing::Target?, request : Crig::Completion::Request::CompletionRequest) : Crig::Completion::CompletionResponse(String)
+    raise Clarity::RetryableProviderError.new("upstream rejected Authorization: Bearer secret-token")
+  end
+end
+
 describe Clarity::Runtime do
   it "runs a prompt and records goal.created + effect events" do
     store = Clarity::MemoryEventStore.new
@@ -158,7 +164,7 @@ describe Clarity::Runtime do
     agent = Crig::Agent(MockModel).new(model: model)
     log_agent = Clarity::LogAgent(MockModel).new(agent, store: store)
     runtime = Clarity::Runtime(MockModel).new(
-      store: store, log_agent: log_agent, policy: policy, model_executor: registry,
+      store: store, log_agent: log_agent, policy: policy, model_effect_worker: Clarity::ModelEffectWorker.new(registry),
     )
 
     runtime.run("Use the selected target")
@@ -175,6 +181,24 @@ describe Clarity::Runtime do
     events.index!(request_event).should be < events.index!(response_event)
   end
 
+  it "resumes routed execution from the platform-edge worker without direct model completion" do
+    store = Clarity::MemoryEventStore.new
+    target = T.new("deepseek", "deepseek-v4-flash")
+    policy = Clarity::Routing::Policy.new(default_target: target, default_fallbacks: [] of T)
+    edge_model = MockModel.new
+    guard_agent = Crig::Agent(Clarity::RoutedExecutionModel).new(model: Clarity::RoutedExecutionModel.new)
+    log_agent = Clarity::LogAgent(Clarity::RoutedExecutionModel).new(guard_agent, store: store)
+    registry = Clarity::ProviderRegistry.new.register(
+      target, Clarity::FixedModelExecutor(MockModel).new(edge_model),
+    )
+    runtime = Clarity::Runtime(Clarity::RoutedExecutionModel).new(
+      store: store, log_agent: log_agent, policy: policy,
+      model_effect_worker: Clarity::ModelEffectWorker.new(registry),
+    )
+
+    runtime.run("Use the edge worker").should eq("Mock response")
+  end
+
   it "rejects a routed target that has no registered executor" do
     store = Clarity::MemoryEventStore.new
     target = T.new("deepseek", "deepseek-v4-flash")
@@ -183,7 +207,7 @@ describe Clarity::Runtime do
     agent = Crig::Agent(MockModel).new(model: model)
     log_agent = Clarity::LogAgent(MockModel).new(agent, store: store)
     runtime = Clarity::Runtime(MockModel).new(
-      store: store, log_agent: log_agent, policy: policy, model_executor: Clarity::ProviderRegistry.new,
+      store: store, log_agent: log_agent, policy: policy, model_effect_worker: Clarity::ModelEffectWorker.new(Clarity::ProviderRegistry.new),
     )
 
     expect_raises(Clarity::ProviderNotAvailableError, "no executor registered for deepseek/deepseek-v4-flash") do
@@ -194,6 +218,7 @@ describe Clarity::Runtime do
     request_event = store.iter_events.find! { |event| event.type == "llm.requested" }
     failed_event = store.iter_events.find! { |event| event.type == "llm.failed" }
     failed_event.caused_by.should eq(request_event.id)
+    JSON.parse(failed_event.payload).as_h["reason"].as_s.should eq("provider unavailable")
   end
 
   it "marks a retryable provider failure in the durable receipt" do
@@ -204,7 +229,7 @@ describe Clarity::Runtime do
     agent = Crig::Agent(MockModel).new(model: model)
     log_agent = Clarity::LogAgent(MockModel).new(agent, store: store)
     registry = Clarity::ProviderRegistry.new.register(target, RetryableFailureExecutor.new)
-    runtime = Clarity::Runtime(MockModel).new(store: store, log_agent: log_agent, policy: policy, model_executor: registry)
+    runtime = Clarity::Runtime(MockModel).new(store: store, log_agent: log_agent, policy: policy, model_effect_worker: Clarity::ModelEffectWorker.new(registry))
 
     expect_raises(Clarity::RetryableProviderError) { runtime.run("Retry this") }
 
@@ -226,7 +251,7 @@ describe Clarity::Runtime do
     registry = Clarity::ProviderRegistry.new.register(primary, executor).register(fallback, executor)
     runtime = Clarity::Runtime(MockModel).new(
       store: store, log_agent: log_agent, policy: policy,
-      available_targets: [primary, fallback], model_executor: registry,
+      available_targets: [primary, fallback], model_effect_worker: Clarity::ModelEffectWorker.new(registry),
     )
 
     runtime.run("Retry via fallback").should eq("Mock response")
@@ -245,6 +270,7 @@ describe Clarity::Runtime do
     response_payload = JSON.parse(response.payload).as_h
     response_payload["provider"].as_s.should eq("ollama")
     response_payload["model"].as_s.should eq("qwen2.5-coder")
+    response_payload["content"].as_s.should eq("Mock response")
   end
 
   it "does not fallback after a non-retryable missing executor failure" do
@@ -259,13 +285,33 @@ describe Clarity::Runtime do
     registry = Clarity::ProviderRegistry.new.register(fallback, fallback_executor)
     runtime = Clarity::Runtime(MockModel).new(
       store: store, log_agent: log_agent, policy: policy,
-      available_targets: [primary, fallback], model_executor: registry,
+      available_targets: [primary, fallback], model_effect_worker: Clarity::ModelEffectWorker.new(registry),
     )
 
     expect_raises(Clarity::ProviderNotAvailableError) { runtime.run("Do not retry configuration errors") }
 
     store.iter_events.any? { |event| event.type == "routing.fallback_selected" }.should be_false
     fallback_executor.targets.should be_empty
+  end
+
+  it "redacts provider exception text from the durable failure receipt" do
+    store = Clarity::MemoryEventStore.new
+    target = T.new("deepseek", "deepseek-v4-flash")
+    policy = Clarity::Routing::Policy.new(default_target: target, default_fallbacks: [] of T)
+    model = MockModel.new
+    agent = Crig::Agent(MockModel).new(model: model)
+    log_agent = Clarity::LogAgent(MockModel).new(agent, store: store)
+    registry = Clarity::ProviderRegistry.new.register(target, SensitiveFailureExecutor.new)
+    runtime = Clarity::Runtime(MockModel).new(
+      store: store, log_agent: log_agent, policy: policy,
+      model_effect_worker: Clarity::ModelEffectWorker.new(registry),
+    )
+
+    expect_raises(Clarity::RetryableProviderError) { runtime.run("Do not log secrets") }
+
+    failed = store.iter_events.find! { |event| event.type == "llm.failed" }
+    failed.payload.should_not contain("secret-token")
+    JSON.parse(failed.payload).as_h["reason"].as_s.should eq("provider execution failed")
   end
 
   it "loads from store and resumes" do

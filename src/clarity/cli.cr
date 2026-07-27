@@ -294,7 +294,7 @@ module Clarity
         policy: policy,
         available_targets: available_targets,
         run_id: run_id,
-        model_executor: registry,
+        model_effect_worker: ModelEffectWorker.new(registry),
       )
 
       io.puts "Starting chat session..."

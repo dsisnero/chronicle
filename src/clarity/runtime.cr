@@ -24,7 +24,7 @@ module Clarity
       @budget : Budget = Budget.new,
       @available_targets : Array(Routing::Target) = [] of Routing::Target,
       @run_id : String = "default",
-      @model_executor : ModelExecutor? = nil,
+      @model_effect_worker : ModelEffectWorker? = nil,
     )
     end
 
@@ -284,14 +284,16 @@ module Clarity
       request : Crig::Completion::Request::CompletionRequest,
     )
       loop do
-        target = current_execution_target
+        target = current_execution_target || Routing::Target.new("legacy", "default", false)
         request_event = record_llm_requested(effect, target)
         begin
-          response = if executor = @model_executor
-                       executor.completion(target, request)
-                     else
-                       @log_agent.agent.model.completion(request)
-                     end
+          result = edge_worker.execute(ModelEffectInvocation.new(ModelEffectRequest.new(request_event.id, effect, target), request))
+          response = Crig::Completion::CompletionResponse(String).new(
+            result.choice,
+            Crig::Completion::Usage.new(input_tokens: result.input_tokens, output_tokens: result.output_tokens),
+            "",
+            result.message_id,
+          )
           record_llm_responded(request_event, target, response)
           return response
         rescue ex : Exception
@@ -310,6 +312,13 @@ module Clarity
 
     private def current_execution_target : Routing::Target?
       @execution_targets[@execution_target_index]? || @decision.try(&.target)
+    end
+
+    private def edge_worker : ModelEffectWorker
+      if worker = @model_effect_worker
+        return worker
+      end
+      ModelEffectWorker.new(FixedModelExecutor(M).new(@log_agent.agent.model))
     end
 
     private def select_next_fallback(caused_by : Event) : Bool
@@ -393,6 +402,7 @@ module Clarity
             json.field "message_id", response.message_id
             json.field "provider", target.try(&.provider)
             json.field "model", target.try(&.model)
+            json.field "content", response.choice.first.text.try(&.text)
           end
         end,
       )
@@ -416,7 +426,7 @@ module Clarity
         payload: JSON.build do |json|
           json.object do
             json.field "error_class", error.class.to_s
-            json.field "message", error.message.to_s
+            json.field "reason", safe_provider_failure_reason(error)
             json.field "retryable", error.is_a?(RetryableProviderError)
             json.field "provider", target.try(&.provider)
             json.field "model", target.try(&.model)
@@ -425,6 +435,11 @@ module Clarity
       )
       @store.append(event)
       event
+    end
+
+    private def safe_provider_failure_reason(error : Exception) : String
+      return "provider unavailable" if error.is_a?(ProviderNotAvailableError)
+      "provider execution failed"
     end
 
     private def drive_tools(step : Crig::AgentRunStep) : Nil
