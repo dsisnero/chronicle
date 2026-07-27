@@ -251,15 +251,21 @@ module Clarity
         )
         log_agent = LogAgent(Crig::Providers::DeepSeek::CompletionModel).new(agent, store: store)
 
+        policy = config.routing_config.try { |path| Routing::Config.from_file(path) }
+
         runtime = Runtime(Crig::Providers::DeepSeek::CompletionModel).new(
           store: store,
           log_agent: log_agent,
+          policy: policy,
         )
 
         io.puts "Starting chat session..."
         TUI.run_with(runtime)
       rescue ex : Exception
         io.puts "ERROR: #{ex.message}"
+        if cause = ex.cause
+          io.puts "CAUSE: #{cause.message}"
+        end
       end
     end
 

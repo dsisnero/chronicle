@@ -120,13 +120,16 @@ module Clarity
       return unless effect
       return if budget_exhausted?
 
-      choice = Crig::OneOrMany(Crig::Completion::AssistantContent).one(
-        Crig::Completion::AssistantContent.text("Mock response")
-      )
+      prompt = step.prompt
+      history = step.history
+      raise "model step is missing its prompt or history" unless prompt && history
+
+      request = @log_agent.agent.completion(prompt, history).build
+      response = @log_agent.agent.model.completion(request)
       turn = Crig::ModelTurn.new(
         message_id: "msg_#{next_seq}",
-        choice: choice,
-        usage: Crig::Completion::Usage.new(input_tokens: 10, output_tokens: 5),
+        choice: response.choice,
+        usage: response.usage,
         allowed_tools: [] of String,
       )
       @log_agent.model_response(turn, result_hash: effect.content_hash)
