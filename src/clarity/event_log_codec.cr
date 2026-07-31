@@ -19,15 +19,8 @@ module Clarity
       getter actor : String
       getter caused_by : String?
       getter timestamp : String
-      @[JSON::Field(converter: RawJSONString)]
+      @[JSON::Field(converter: Clarity::RawJSON)]
       getter payload : String
-    end
-
-    # Consumes an embedded JSON value and returns it as its raw compact bytes.
-    module RawJSONString
-      def self.from_json(pull : JSON::PullParser) : String
-        JSON::Any.new(pull).to_json
-      end
     end
 
     def encode(log : EventLog) : String

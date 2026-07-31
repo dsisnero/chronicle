@@ -8,186 +8,243 @@ described in [The Log is the Agent](https://arxiv.org/html/2605.21997v1).
 ## Source of Truth
 
 - **Upstream**: https://github.com/yoheinakajima/activegraph (Python)
+- **Pinned revision**: `8aedb1866cf5dce056af97529152ffd6f468a1ed`
+  (checkout at `vendor/activegraph/`)
 - **Design reference**: arXiv paper 2605.21997v1
 - **DeepWiki**: https://deepwiki.com/yoheinakajima/activegraph
 
-Before implementing any core logic change, consult activegraph's DeepWiki
-for context on the relevant data structures and design decisions. Validate
-DeepWiki guidance against the pinned upstream source. Record any divergence
-from activegraph's design in this document.
+Before implementing any core logic change, consult activegraph's DeepWiki for
+context, then validate against the pinned source. DeepWiki is guidance, not the
+source of truth (its GraphStore description is stale). Record any divergence
+from activegraph's design in the Intentional Divergence section.
 
-## Primitives and Status
+## Status Legend
 
-### Done (Clarity has a working equivalent)
+- `[x]` done (specs green)
+- `[ ]` pending work
+- `[-]` intentionally deferred / out of scope
 
-| Primitive | Clarity | Notes |
-|-----------|---------|-------|
-| Event | `Clarity::Event` | schema_version, sequence, id, type, actor, caused_by, timestamp, payload |
-| EventLog | `Clarity::EventLog` | Append-only, enforces sequence/causality invariants |
-| Graph (projection) | `Clarity::GraphProjection` | Objects + relations folded from events |
-| Object | `Clarity::GraphObject` | id, type, data |
-| Relation | `Clarity::GraphRelation` | id, type, from_id, to_id |
-| Diff | `Clarity::GraphDiff` | Added/removed objects and relations |
-| Event persistence | `Clarity::EventLogCodec` | Newline-delimited JSON with format header |
-| Replay | `Clarity::ReplayEngine` | Strict and permissive modes |
-| Behavior runner | `Clarity::BehaviorRunner` | Event subscription, priority ordering, fan-out limits |
-| Effect artifacts | `Clarity::EffectArtifactStore` | Content-addressed by SHA-256 payload hash |
-| Fork | `EventLog#fork_at` | Copies event prefix up to sequence point |
-| Session store | `Clarity::SessionStore` | Persist/load event logs to `~/.clarity/sessions/` |
-| Trace export | `Clarity::Telemetry` | Structured tracing spans via `tracing.cr` |
-| Cypher parser | `Clarity.parse` → `Clarity::Pattern` | Recursive-descent parser for the locked v0.7 subset; refused features raise `UnsupportedPatternError` |
-| Cypher matcher | `Clarity::PatternMatcher` | `matches(event, graph) → Array(Match)`; WHERE eval, NOT EXISTS, var consistency |
-| Chain matching | `Clarity::GraphProjection#match_chain` | DFS structural walk ported from `InMemoryGraphStore.match_chain` |
-| IDs | `Clarity::IDGen` | Global monotonic object counter (`task#1`, `task#2`, `claim#3`) + `evt_`/`rel_`/`patch_`/`frame_` + `run`/ULID + `reseed_from_events` |
-| GraphStore backend | `Clarity::GraphStore` + `Clarity::InMemoryGraphStore` | Abstract put/get/remove/all × objects/relations/patches, query hooks, lifecycle; projection writes through it in place |
-| Store conformance | `spec/clarity/graph_store_conformance.cr` | Reusable backend contract suite ported from `GraphStoreConformance` |
-| Graph query API | `GraphProjection#objects/query/relations/get_relations/objects_in_types/has_object_of_type/neighborhood` | Ported from `Graph` read surface + `evaluate_where` predicate |
+## Parity tooling
+
+The [cross-language-crystal-parity] skill is grammar-driven: any language with
+an available tree-sitter grammar (bundled `chiasmus-discover`, `CHIASMUS_GRAMMAR_DIR`,
+or repo-local `./grammars`) works without editing the skill. Generated manifests
+live in `plans/inventory/python_*_parity.tsv`; the curated ledger is
+`plans/inventory/python_port_inventory.tsv`.
+
+```bash
+SKILL=/Users/dominic/.agents/skills/cross-language-crystal-parity
+"${SKILL}/scripts/ensure_parity_plan.sh" . vendor/activegraph/activegraph python auto 0
+"${SKILL}/scripts/check_port_inventory.sh" . plans/inventory/python_port_inventory.tsv vendor/activegraph/activegraph python
+"${SKILL}/scripts/check_source_parity.sh" . plans/inventory/python_source_parity.tsv vendor/activegraph/activegraph python
+"${SKILL}/scripts/check_test_parity.sh" . plans/inventory/python_test_parity.tsv vendor/activegraph/activegraph python
+```
+
+Current state: `check_source_parity` (1210 symbols) and `check_test_parity`
+(42 tests) pass. `check_port_inventory` lists ~1170 untracked symbols — the
+ledger is curated, so expand it per phase below. `plan_with_chiasmus.sh` and
+`check_completion_gate.sh` need `chiasmus-plan`/`chiasmus-complete`, which are
+not released yet — treat their absence as a tooling gap, not a porting signal.
+
+[cross-language-crystal-parity]: /Users/dominic/.agents/skills/cross-language-crystal-parity/SKILL.md
+
+---
+
+## Phase 0 — Foundations (done)
+
+The event-sourcing core, graph projection, graph-store seam, and Cypher
+pattern layer are ported and green.
+
+- [x] Event envelope — `Clarity::Event` (schema_version, sequence, id, type,
+      actor, caused_by, timestamp, canonical_json) — `spec/clarity/event_spec.cr`
+- [x] Append-only log — `Clarity::EventLog` (append, fork_at, events) —
+      `spec/clarity/event_log_spec.cr`
+- [x] Log codec — `Clarity::EventLogCodec` (JSON::Serializable decode, byte-stable)
+      — `spec/clarity/event_log_spec.cr`
+- [x] EventStore interface + backends — `Clarity::EventStore`, `MemoryEventStore`,
+      `SQLiteEventStore` (append/iter_events/get_event/count/truncate_after/close)
+      — `spec/clarity/event_store_spec.cr`, `sqlite_event_store_spec.cr`
+- [x] Replay — `Clarity::ReplayEngine` (strict/permissive) — `spec/clarity/replay_spec.cr`
+- [x] Projection — `Clarity::GraphProjection` (apply, diff) — `spec/clarity/graph_projection_spec.cr`
+- [x] Graph query API — `objects(type:, where:)`, `query`, `relations`,
+      `get_relations`, `objects_in_types`, `has_object_of_type`, `neighborhood`
+      — `spec/clarity/graph_query_spec.cr`
+- [x] Entities — `GraphObject` (id, type, JSON-string data, version, provenance),
+      `GraphRelation`, `Provenance` — `spec/clarity/graph_projection_spec.cr`
+- [x] Patches — `Patch`/`PatchState` + `propose_patch`/`apply_patch`/`reject_patch`/
+      `patch_object`; `patch.*` events folded by `apply` — `spec/clarity/patch_spec.cr`
+- [x] Views — `Clarity::View`/`ViewSpec` + `GraphProjection#build_view` — `spec/clarity/view_spec.cr`
+- [x] GraphStore backend — `Clarity::GraphStore` (abstract put/get/remove/all ×
+      objects/relations/patches, query hooks, lifecycle) + `InMemoryGraphStore` —
+      `spec/clarity/graph_store_spec.cr`
+- [x] Store conformance — reusable `spec/clarity/graph_store_conformance.cr` mixin —
+      `spec/clarity/graph_store_spec.cr`
+- [x] Chain matching — `Clarity::ChainMatch` + `GraphStore#match_chain`
+      (homomorphic DFS walk) — `spec/clarity/graph_store_conformance.cr`
+- [x] IDs — `Clarity::IDGen` (global object counter `task#1, task#2, claim#3`,
+      `evt_`/`rel_`/`patch_`/`frame_`, `run`/ULID, `reseed_from_events`) — `spec/clarity/ids_spec.cr`
+- [x] Clock — `Clarity::Clock` + `WallClock`/`FrozenClock`/`TickingClock` — `spec/clarity/clock_spec.cr`
+- [x] Cypher subset — `Clarity.parse`/`Pattern`/`PatternMatcher`/
+      `UnsupportedPatternError` — `spec/clarity/patterns_parser_spec.cr`, `patterns_matcher_spec.cr`
+- [x] JSON comparison — `Clarity::JsonCompare` (numeric-aware equality, ordered
+      comparisons, `in?`, data parsing) — shared by matcher + where predicate
+- [x] Frame value type — `Clarity::Frame` + `FrameStack` — `spec/clarity/frame_spec.cr`
+- [x] Behaviors — `Clarity::BehaviorRunner` (subscription, priority, fan-out) — `spec/clarity/behavior_runner_spec.cr`
+- [x] Session store, telemetry, effect artifacts, tool cache/permissions, approval,
+      content hashing — `spec/clarity/*_spec.cr`
+
+## Phase 1 — Graph write/emit surface (top structural drift)
+
+The single largest drift finding: `activegraph.core.graph.Graph` maps to
+`Clarity::GraphProjection`, but the Crystal side has only the read surface.
+Upstream `Graph` is the write facade that owns the log + projection + store and
+emits events; Clarity currently builds projections by folding events manually.
+From `plans/generated/parity/python/parity.tsv`:
+
+- [x] `add_object(type, data, actor:)` — builds `object.created` event, stamps
+      provenance, emits — `core/graph.py:add_object`
+- [x] `add_relation(source, target, type, data, actor:)` — `core/graph.py:add_relation`
+- [x] `remove_object` / `remove_relation` (relation cascade on object removal) —
+      `core/graph.py:remove_object`
+- [x] `emit(event)` mutator + `events` accessor + `attach_store` (durability sink)
+      — `core/graph.py:emit`, `attach_store`
+- [x] Listener API — `add_listener`/`remove_listener` (runtime hooks) — `core/graph.py`
+- [-] Sinks — `add_sink`/`remove_sink`/`flush_sinks`/`sink_statuses` (bounded
+      outbound observers) — `core/graph.py`, `sinks/*` — deferred to Phase 6
+- [x] `replay_event`/`replayed_ids` (silent replay reconstruction) — `core/graph.py`
+      (replay path exists via `ReplayEngine`; `replayed_ids` tracking is N/A)
+- [x] JSON serialization on `GraphObject`/`GraphRelation` via `JSON::Serializable`
+      (data blob uses shared `Clarity::RawJSON` converter) — `core/graph.py`
+- [x] Provenance stamping invariant: behaviors may not inject `provenance` via
+      data (raise `Clarity::ReservedFieldError`) — `core/graph.py`
+
+## Phase 2 — Persistence backends
+
+- [x] `Clarity::EventStore` interface + `MemoryEventStore` + `SQLiteEventStore`
+      (append/iter_events/get_event/count/truncate_after/close)
+- [ ] EventStore conformance suite (mirror `store/conformance.py`) and run it
+      against Memory + SQLite backends
+- [ ] Postgres event store — `store/postgres.py`
+- [ ] Retention policy (compaction/truncation) — `store/retention.py`
+- [ ] Store URL resolution — `store/url.py`
+- [ ] `EventLog` gains `count`/`get_event`/`iter_events` conveniences if needed
+
+## Phase 3 — Runtime execution surface
+
+`activegraph.runtime.runtime.Runtime` maps to `Clarity::LogAgent`; the drift
+list shows the Crystal side is missing most of the run loop and effect emission.
+From `parity.tsv` (`missing_contains` on Runtime):
+
+- [ ] Run loop — `run_goal` / `run_until` / `run_quantum` / `run_until_idle` —
+      `runtime/runtime.py`
+- [ ] Invocation — `invoke` / `invoke_llm` / `invoke_tool` / `invoke_relation` /
+      `invoke_llm_body` + structured `emit_*` events (`emit_llm_event`,
+      `emit_pattern_matched`, `emit_tool_event`, `emit_behavior_failed`, ...) —
+      `runtime/runtime.py`
+- [ ] Behavior context — `get_behavior` / `get_tool`, `ctx.matches`, view
+      injection (`view_builder.py`)
+- [ ] Packs — `load_pack` / `loaded_packs` / `pack_settings_for_behavior` /
+      `disable_pack` — `runtime/runtime.py`, `packs/*`
+- [ ] Promote — `promote` / `rebuild_shorts` — `runtime/promote.py`
+- [ ] Fork at runtime — `fork` / `save_state` — `runtime/runtime.py`
+- [ ] Budget & scheduling — `budget_remaining`/`start_budget`, `schedule`,
+      `fire_due_delayed`, `loop` — `runtime/budget.py`, `runtime/scheduler.py`, `runtime/queue.py`
+- [ ] Authority — `authority_ceiling`/`set_authority_ceiling`/
+      `evaluate_capability_authority` — `runtime/authority.py`
+- [ ] Approvals — `pending_approvals`/`approve`/`add_pending_approval` — `runtime/runtime.py`
+- [ ] Dev override — `dev_override`/`dev_overrides`/`validate_dev_override` — `runtime/dev_override.py`
+- [ ] Registry — behavior registration + `ensure_registry` — `runtime/registry.py`
+- [ ] Trace/status output — `print_graph` / `print_trace` / `export_trace` / `status` —
+      `trace/*`, `observability/status.py`
+- [ ] Run metadata — `run_id` on the runtime, live `_live.py` wiring
+
+## Phase 4 — LLM layer + replay cache
+
+- [x] Content-addressed store — `Clarity::EffectArtifactStore`/`LLMCache` base
+      — `spec/clarity/effect_artifact_spec.cr`, `llm_cache_spec.cr`
+- [ ] Wire the LLM cache into replay/fork: populate from recorded
+      `llm.responded` events, serve on matching request hashes, raise
+      `ReplayDivergenceError` on strict mismatch — `llm/cache.py`
+- [ ] Provider adapters — `Clarity::ModelExecutor` exists; add Anthropic/OpenAI/
+      native structured output parity — `llm/anthropic.py`, `llm/openai.py`, `llm/native.py`
+- [ ] Wire protocol — request/response types, canonical serialization,
+      `prompt_hash` — `llm/wire.py`, `llm/types.py`, `llm/prompt.py`, `llm/parsing.py`
+- [ ] Embedding — `llm/embedding.py`, `llm/embedding_cache.py`
+
+## Phase 5 — Tools
+
+- [ ] Tool base + decorators — `tools/base.py`, `tools/decorators.py`
+- [ ] `web_fetch` (hardened) — `tools/web_fetch.py`
+- [ ] `graph_query` tool — `tools/graph_query.py`
+- [ ] Tool context + cache + recorded replay — `tools/context.py`, `tools/cache.py`, `tools/recorded.py`
+- [ ] Wire tools through `LogAgent` invocation + `emit_tool_event`
+
+## Phase 6 — Sinks + observability
+
+- [ ] Sink base + dispatch (bounded FIFO, overflow policy) — `sinks/base.py`, `sinks/dispatch.py`
+- [ ] JSONL sink + testing sink + sink conformance — `sinks/jsonl.py`, `sinks/testing.py`, `sinks/conformance.py`
+- [ ] Observability — metrics, status, logging, prometheus, otel migration —
+      `observability/*`
+- [ ] Surface sink status in `Clarity::Telemetry` and the run loop
+
+## Phase 7 — Packs + policy
+
+- [ ] Pack loader/manifest/scaffold — `packs/loader.py`, `packs/manifest.py`, `packs/scaffold.py`
+- [ ] Diligence pack (object types, settings, tools, behaviors) — `packs/diligence/*`
+- [ ] Policy module — `policy.py`
+- [ ] Registration validation + reserved fields — `runtime/registration_errors.py`, `runtime/config_errors.py`
+
+## Phase 8 — Frames wiring
+
+- [x] `Clarity::Frame` value + `FrameStack` — `spec/clarity/frame_spec.cr`
+- [ ] `frame_id : String?` on `Clarity::Event` envelope
+- [ ] Runtime `push_frame`/`pop_frame` lifecycle — `frame.py`
+- [ ] Group events by `frame_id` in log inspect + trace export
+
+## Phase 9 — Sandbox + CLI + trace printer
+
+- [ ] Sandbox executor/conformance (`_child`, `executor`, `conformance`) — `sandbox/*`
+- [ ] CLI quickstart/renderers — `cli/quickstart.py`, `cli/renderers.py`
+- [ ] Trace printer/causal rendering — `trace/printer.py`, `trace/causal.py`
+
+## Phase 10 — External GraphStore backends (stretch)
+
+- [ ] SQLite-backed `GraphStore` (query-hook pushdown) — the conformance suite is
+      ready; any backend passing it is interchangeable
+- [ ] Postgres / FalkorDB GraphStore pushdown — `store/postgres.py`, `store/falkordb.py`
+- [ ] `graph_store=` injection seam (analogous to upstream constructor param)
+
+---
 
 ## Intentional Divergence
 
 - **Ordered comparisons on incomparable types:** matching activegraph, ordered
-  comparisons (`<`, `>`, `<=`, `>=`) raise on mixed/incomparable non-nil values
-  instead of returning a match/no-match. Clarity raises `Clarity::PatternTypeError`
-  (analogous to Python's `TypeError`; the message mirrors Python's
-  `'<' not supported between instances of 'X' and 'Y'`). Nil operands still
-  evaluate to no-match, exactly as Python's `a is not None and b is not None`
-  guard. One residual divergence: Python compares arrays lexicographically,
-  while Clarity raises `PatternTypeError` for array operands. Equality ops
-  (`=`, `==`, `!=`, `<>`) use numeric-aware comparison (`3 == 3.0` is true),
-  matching Python.
-- **`objects(where:)` ordered ops guard both operands.** Upstream's where
-  predicate guards only `a` (`a is not None and a > b`), so `5 > NULL` raises;
-  Clarity returns no-match for any nil operand, consistent with the pattern
-  matcher.
+  comparisons (`<`, `>`, `<=`, `>=`) raise on mixed/incomparable non-nil values.
+  Clarity raises `Clarity::PatternTypeError` (analogous to Python's `TypeError`).
+  Nil operands still evaluate to no-match. Residual: Python compares arrays
+  lexicographically; Clarity raises for array operands. Equality ops use
+  numeric-aware comparison (`3 == 3.0` is true).
+- **`objects(where:)` ordered ops guard both operands.** Upstream guards only
+  `a` (`a is not None and a > b`); Clarity returns no-match for any nil operand,
+  consistent with the pattern matcher.
 - **JSON storage shape:** upstream `Object.data` is a Python dict; Clarity stores
-  it as a canonical JSON `String`. `resolve_path` and node property equality parse
-  that string, so WHERE semantics are identical.
+  it as a canonical JSON `String`. WHERE/path semantics are identical.
 - **Time/randomness allowed in the core.** Only routing must be deterministic.
-  `IDGen#run`/ULID uses the wall clock + `Random::Secure` in `src/`; the core
-  I/O-safety gate forbids only direct I/O, environment access, and process
-  capabilities (Sans-IO).
-
-### Missing — High Priority
-
-#### 1. Deterministic Clock
-
-ActiveGraph injects a deterministic `Clock` into behaviors. During replay
-the clock is "frozen" — it returns timestamps from the replayed event log
-instead of wall-clock time. Behaviors call `ctx.clock.now()` instead of
-`datetime.now()` (Python) or `Time.now` (Crystal).
-
-**What needs to happen:**
-- Define `Clarity::Clock` abstract class with `now : Time` method
-- Implement `ReplayClock` seeded from event timestamps during replay
-- Implement `WallClock` for live execution
-- Add `clock` to `BehaviorRegistration` context or make it injectable
-- Verify replay determinism: same log → same `clock.now()` sequence
-
-**DeepWiki consultation:** Before designing the clock interface, consult
-activegraph's `activegraph/core/clock.py` and the `CONTRACT.md` section
-on determinism.
-
-#### 2. LLM Replay Cache
-
-ActiveGraph's LLM cache avoids redundant API calls during fork and replay.
-It stores LLM responses keyed by `sha256(canonical_json(model, system,
-messages, params))`. During a fork, the cache is pre-populated from the
-parent run's `llm.responded` events; matching request hashes serve the
-cached response without calling the API.
-
-**What needs to happen:**
-- Define `Clarity::LLMCache` keyed by content hash (already partially
-  covered by `EffectArtifactStore`)
-- Populate cache from `EffectRequest`/`EffectResult` pairs during session
-  load or fork
-- In `ReplayEngine.replay()`, serve results from cache when request hash
-  matches a recorded response
-- Raise `ReplayDivergenceError` when strict replay encounters a hash
-  mismatch (already supported)
-- Add `replay_llm_cache: true` flag to `Runtime.load()` equivalent
-
-**DeepWiki consultation:** Before implementing cache key structure,
-consult activegraph's approach to canonical LLM request serialization
-and the `prompt_hash` field on `llm.requested` events.
-
-#### 3. Patches (Optimistic Concurrency)
-
-ActiveGraph uses a `Patch` lifecycle (`proposed → applied | rejected`)
-with `expected_version` to prevent two behaviors from silently
-overwriting each other's mutations.
-
-**What needs to happen:**
-- Add `Patch` struct with fields: id, object_id, expected_version, data,
-  status (proposed/applied/rejected), rejection_reason
-- Add `PatchState` enum: Proposed, Applied, Rejected
-- Add `version : Int64` to `GraphObject`, incremented on each applied
-  patch
-- Add event types: `patch.proposed`, `patch.applied`, `patch.rejected`
-- Implement `GraphProjection#propose_patch`, `#apply_patch`, `#reject_patch`
-- Version check on apply: reject if `current_version != expected_version`
-- Enforce one-shot lifecycle: proposed → applied or rejected, no cycling
-- Add behavior context method for safe object mutation via patches
-
-**DeepWiki consultation:** Before designing the patch lifecycle, consult
-activegraph's `activegraph/core/patch.py`, `activegraph/core/graph.py`
-(`propose_patch`, `apply_patch`, `reject_patch`), and the `CONTRACT.md`
-section on optimistic concurrency.
-
-### Missing — Medium Priority
-
-#### 4. Views (Scoped Graph Subsets)
-
-ActiveGraph views provide scoped read-only projections for behaviors.
-A behavior declares what it needs (`around`, `depth`, `include_types`,
-`recent_events`), and the runtime constructs the view before invocation.
-
-**What needs to happen:**
-- Define `View` struct with configurable scope (path, depth, types, event
-  window)
-- Implement view construction from `GraphProjection` filtering by scope
-- Wire view injection into behavior execution context
-- Add decorator or metadata for behaviors to declare their view
-
-**DeepWiki consultation:** Before designing the view system, consult
-activegraph's `activegraph/core/view.py` and the view-related sections
-of `CONTRACT.md`.
-
-#### 5. Frames (Event Grouping)
-
-ActiveGraph frames group related events within a run. The `frame_id`
-field on events enables the runtime to track causality and manage
-bounded sub-contexts. Frames differ from forks: frames are parallel
-sub-contexts within one event log; forks are independent branch copies.
-
-**What needs to happen:**
-- Add `frame_id : String` field to `Event`
-- Define `Frame` struct with id, goal, constraints, budget, behaviors
-- Add `Runtime#push_frame` / `Runtime#pop_frame` for frame lifecycle
-- Group events by `frame_id` in log inspection and trace export
-
-**DeepWiki consultation:** Before implementing frames, consult
-activegraph's frame lifecycle in `activegraph/runtime/runtime.py` and
-the `CONTRACT.md` section on frame boundaries.
-
-## Delivery Order
-
-1. **Clock** — foundation for replay determinism
-2. **LLM Replay Cache** — avoids redundant API calls, makes fork cheap
-3. **Patches** — prevents data races, enables safe concurrent behaviors
-4. **Views** — efficient scoped reads for behaviors
-5. **Frames** — bounded sub-contexts within a run
-
-Each item should be developed with red-green TDD. Before writing code for
-any item, consult activegraph's DeepWiki for the relevant module, then
-validate against the pinned source. Record any intentional divergence
-from activegraph's design in this document with rationale.
+  `IDGen#run`/ULID uses wall clock + `Random::Secure`; the core I/O-safety gate
+  forbids only direct I/O, environment access, and process capabilities (Sans-IO).
+- **Projection writes through its GraphStore in place**, mirroring upstream
+  `Graph._state` mutation; replay builds a fresh projection.
 
 ## Acceptance Gates
 
-- Same event log → same `clock.now()` sequence during replay
-- LLM cache serves recorded responses for matching content hashes
-- Cache miss during strict replay raises `ReplayDivergenceError`
-- `patch.proposed` with `expected_version` rejects on version mismatch
-- Patch one-shot invariant: proposed → applied/rejected, no cycling
-- View returns only objects/relations matching its declared scope
-- `frame_id` is preserved on events and visible in log inspect
+- [ ] Same event log → same projection and routing decisions on replay
+- [ ] Any GraphStore backend passes the full `GraphStoreConformance` suite
+- [ ] `GraphProjection` write/emit surface matches upstream `Graph`
+      (add/remove/attach_store/listeners/sinks)
+- [ ] `LogAgent` run loop (`run_goal`/`invoke_*`) emits causally-linked
+      `llm.*`/`pattern.*`/`tool.*` events with provenance
+- [ ] LLM cache serves recorded responses on matching hashes during replay/fork;
+      strict mismatch raises `ReplayDivergenceError`
+- [ ] `frame_id` preserved on events and visible in log inspect
+- [ ] `check_source_parity.sh` and `check_test_parity.sh` pass; `check_port_inventory.sh`
+      reports no untracked symbols once the ledger is expanded

@@ -17,8 +17,13 @@ module Clarity
   # Provenance metadata on every object, relation, and patch.
   # Written by the runtime, never by behaviors.
   struct Provenance
+    include JSON::Serializable
+
+    @[JSON::Field(emit_null: true)]
     getter created_by : String
+    @[JSON::Field(emit_null: true)]
     getter caused_by_event : String?
+    @[JSON::Field(emit_null: true)]
     getter frame_id : String?
 
     def initialize(
@@ -55,8 +60,11 @@ module Clarity
   end
 
   struct GraphObject
+    include JSON::Serializable
+
     getter id : String
     getter type : String
+    @[JSON::Field(converter: Clarity::RawJSON)]
     getter data : String
     getter version : Int64
     getter provenance : Provenance
@@ -72,6 +80,8 @@ module Clarity
   end
 
   struct GraphRelation
+    include JSON::Serializable
+
     getter id : String
     getter type : String
     getter from_id : String
@@ -131,14 +141,24 @@ module Clarity
       "not in" => ->(a : JSON::Any, b : JSON::Any) { !JsonCompare.in?(a, b) },
     } of String => Proc(JSON::Any, JSON::Any, Bool)
 
+    RESERVED_DATA_FIELDS = %w(provenance)
+
     @store : GraphStore
     @patch_ids_by_target : Hash(String, Array(String))
     @applied_events : Array(Event)
+    @ids : IDGen
+    @clock : Clock
+    @event_store : EventStore?
+    @listeners : Array(Proc(Event, Nil))
 
     def initialize(
       @store : GraphStore = InMemoryGraphStore.new,
       @patch_ids_by_target = {} of String => Array(String),
       @applied_events = [] of Event,
+      @ids : IDGen = IDGen.new,
+      @clock : Clock = WallClock.new,
+      @event_store : EventStore? = nil,
+      @listeners : Array(Proc(Event, Nil)) = [] of Proc(Event, Nil),
     )
     end
 
@@ -244,14 +264,7 @@ module Clarity
 
       case event.type
       when "object.created", "object.patched"
-        id = payload["id"].as_s
-        object_type = payload["type"]?.try(&.as_s) || @store.get_object(id).try(&.type)
-        data = payload["data"].to_json
-        version = payload["version"]?.try(&.as_i.to_i64) || @store.get_object(id).try(&.version) || 1_i64
-        unless object_type
-          raise GraphProjectionError.new("object type must be present")
-        end
-        @store.put_object(GraphObject.new(id, object_type, data, version, provenance))
+        project_object!(payload, provenance)
       when "relation.created"
         id = payload["id"].as_s
         @store.put_relation(GraphRelation.new(
@@ -259,6 +272,10 @@ module Clarity
           payload["from_id"].as_s, payload["to_id"].as_s,
           provenance,
         ))
+      when "object.removed"
+        remove_object_from_state!(payload["id"].as_s)
+      when "relation.removed"
+        @store.remove_relation(payload["id"].as_s)
       when "patch.proposed"
         patch_data = payload["patch"].as_h
         patch = parse_patch(patch_data, PatchState::Proposed)
@@ -282,6 +299,73 @@ module Clarity
       self
     rescue KeyError | JSON::ParseException
       raise GraphProjectionError.new("invalid graph event payload")
+    end
+
+    # Append, project, persist, then notify listeners. The only live mutator.
+    def emit(event : Event) : Event
+      apply(event)
+      @event_store.try(&.append(event))
+      @listeners.each(&.call(event))
+      event
+    end
+
+    def events : Array(Event)
+      @applied_events
+    end
+
+    def attach_store(event_store : EventStore) : self
+      @event_store = event_store
+      self
+    end
+
+    def add_listener(listener : Proc(Event, Nil)) : Nil
+      @listeners << listener
+    end
+
+    def remove_listener(listener : Proc(Event, Nil)) : Bool
+      before = @listeners.size
+      @listeners.delete(listener)
+      @listeners.size != before
+    end
+
+    # Builds an object.created event and emits it. Returns the projected object.
+    def add_object(
+      type : String,
+      data : String,
+      *,
+      actor : String = "system",
+      caused_by : String? = nil,
+    ) : GraphObject
+      reject_reserved_fields!(data)
+      object_id = @ids.object(type)
+      emit(build_event("object.created", object_created_payload(object_id, type, data), actor, caused_by))
+      get_object(object_id) || raise GraphProjectionError.new("object #{object_id} was not projected")
+    end
+
+    # Builds a relation.created event and emits it. Returns the projected relation.
+    def add_relation(
+      source : String,
+      target : String,
+      type : String,
+      data : String = "{}",
+      *,
+      actor : String = "system",
+      caused_by : String? = nil,
+    ) : GraphRelation
+      reject_reserved_fields!(data)
+      relation_id = @ids.relation
+      emit(build_event("relation.created", relation_created_payload(relation_id, type, source, target, data), actor, caused_by))
+      get_relation(relation_id) || raise GraphProjectionError.new("relation #{relation_id} was not projected")
+    end
+
+    def remove_object(object_id : String, *, actor : String = "system", caused_by : String? = nil) : Nil
+      return if get_object(object_id).nil?
+      emit(build_event("object.removed", id_payload(object_id), actor, caused_by))
+    end
+
+    def remove_relation(relation_id : String, *, actor : String = "system", caused_by : String? = nil) : Nil
+      return if get_relation(relation_id).nil?
+      emit(build_event("relation.removed", id_payload(relation_id), actor, caused_by))
     end
 
     # Auto-apply shortcut: build patch, version-check, emit applied/rejected in one step.
@@ -424,6 +508,90 @@ module Clarity
         other.all_patches.map(&.id).reject { |id| !@store.get_patch(id).nil? }.sort!,
         @store.all_patches.map(&.id).reject { |id| !other.get_patch(id).nil? }.sort!,
       )
+    end
+
+    private def build_event(
+      type : String,
+      payload : String,
+      actor : String,
+      caused_by : String?,
+    ) : Event
+      Event.new(
+        schema_version: 1_u16,
+        sequence: next_sequence,
+        id: @ids.event,
+        type: type,
+        actor: actor,
+        caused_by: caused_by,
+        timestamp: @clock.now,
+        payload: payload,
+      )
+    end
+
+    private def next_sequence : UInt64
+      (@applied_events.size + 1).to_u64
+    end
+
+    private def object_created_payload(id : String, type : String, data : String) : String
+      JSON.build do |json|
+        json.object do
+          json.field "id", id
+          json.field "type", type
+          json.field "data" do
+            json.raw(data)
+          end
+          json.field "version", 1
+        end
+      end
+    end
+
+    private def relation_created_payload(
+      id : String,
+      type : String,
+      source : String,
+      target : String,
+      data : String,
+    ) : String
+      JSON.build do |json|
+        json.object do
+          json.field "id", id
+          json.field "type", type
+          json.field "from_id", source
+          json.field "to_id", target
+          json.field "data" do
+            json.raw(data)
+          end
+        end
+      end
+    end
+
+    private def id_payload(id : String) : String
+      JSON.build { |json| json.object { json.field "id", id } }
+    end
+
+    private def project_object!(payload : Hash(String, JSON::Any), provenance : Provenance) : Nil
+      id = payload["id"].as_s
+      object_type = payload["type"]?.try(&.as_s) || @store.get_object(id).try(&.type)
+      data = payload["data"].to_json
+      version = payload["version"]?.try(&.as_i.to_i64) || @store.get_object(id).try(&.version) || 1_i64
+      raise GraphProjectionError.new("object type must be present") if object_type.nil?
+      @store.put_object(GraphObject.new(id, object_type, data, version, provenance))
+    end
+
+    private def remove_object_from_state!(object_id : String) : Nil
+      @store.remove_object(object_id)
+      seen = Set(String).new
+      (@store.find_relations(source: object_id) + @store.find_relations(target: object_id)).each do |relation|
+        @store.remove_relation(relation.id) if seen.add?(relation.id)
+      end
+    end
+
+    private def reject_reserved_fields!(data : String) : Nil
+      JsonCompare.object_data_hash(data).each_key do |key|
+        if RESERVED_DATA_FIELDS.includes?(key)
+          raise ReservedFieldError.new("field '#{key}' is reserved and may not be set via data")
+        end
+      end
     end
 
     private def where_on_object(where : Hash(String, JSON::Any), obj : GraphObject) : Bool

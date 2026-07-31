@@ -41,6 +41,11 @@ module Clarity
   class GraphProjectionError < DomainError
   end
 
+  # A behavior tried to inject a reserved field (e.g. provenance) through
+  # object/relation data. Ported from activegraph's ReservedFieldError.
+  class ReservedFieldError < DomainError
+  end
+
   class ReplayDivergenceError < DomainError
   end
 
