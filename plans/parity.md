@@ -35,6 +35,25 @@ from activegraph's design in this document.
 | Fork | `EventLog#fork_at` | Copies event prefix up to sequence point |
 | Session store | `Clarity::SessionStore` | Persist/load event logs to `~/.clarity/sessions/` |
 | Trace export | `Clarity::Telemetry` | Structured tracing spans via `tracing.cr` |
+| Cypher parser | `Clarity.parse` → `Clarity::Pattern` | Recursive-descent parser for the locked v0.7 subset; refused features raise `UnsupportedPatternError` |
+| Cypher matcher | `Clarity::PatternMatcher` | `matches(event, graph) → Array(Match)`; WHERE eval, NOT EXISTS, var consistency |
+| Chain matching | `Clarity::GraphProjection#match_chain` | DFS structural walk ported from `InMemoryGraphStore.match_chain` |
+
+## Intentional Divergence
+
+- **Ordered comparisons on incomparable types:** matching activegraph, ordered
+  comparisons (`<`, `>`, `<=`, `>=`) raise on mixed/incomparable non-nil values
+  instead of returning a match/no-match. Clarity raises `Clarity::PatternTypeError`
+  (analogous to Python's `TypeError`; the message mirrors Python's
+  `'<' not supported between instances of 'X' and 'Y'`). Nil operands still
+  evaluate to no-match, exactly as Python's `a is not None and b is not None`
+  guard. One residual divergence: Python compares arrays lexicographically,
+  while Clarity raises `PatternTypeError` for array operands. Equality ops
+  (`=`, `==`, `!=`, `<>`) use numeric-aware comparison (`3 == 3.0` is true),
+  matching Python.
+- **JSON storage shape:** upstream `Object.data` is a Python dict; Clarity stores
+  it as a canonical JSON `String`. `resolve_path` and node property equality parse
+  that string, so WHERE semantics are identical.
 
 ### Missing — High Priority
 

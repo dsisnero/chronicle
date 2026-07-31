@@ -20,3 +20,8 @@ activegraph.runtime.behavior_graph	Clarity::BehaviorRunner	ported	spec/clarity/b
 activegraph.store.base.EventStore	Clarity::EventLog	ported	spec/clarity/event_log_spec.cr	Append-only event storage
 activegraph.store.serde	Clarity::EventLogCodec	ported	spec/clarity/event_log_codec_spec.cr	JSON serialization/deserialization
 activegraph.runtime.replay	Clarity::ReplayEngine	ported	spec/clarity/replay_spec.cr	Strict/permissive replay modes
+activegraph.runtime.patterns.parse	Clarity.parse	ported	spec/clarity/patterns_parser_spec.cr	Cypher-subset entry point (rev 8aedb1866cf5dce056af97529152ffd6f468a1ed)
+activegraph.runtime.patterns.Pattern / _Parser	Clarity::Pattern / PatternParser	ported	spec/clarity/patterns_parser_spec.cr	Recursive-descent parser for the locked v0.7 subset; refused keywords raise UnsupportedPatternError
+activegraph.runtime.patterns.PatternMatcher	Clarity::PatternMatcher	ported	spec/clarity/patterns_matcher_spec.cr	Matches (event, graph) → Match list; node prop equality, var consistency, WHERE eval
+activegraph.runtime.patterns.UnsupportedPatternError	Clarity::UnsupportedPatternError	ported	spec/clarity/patterns_parser_spec.cr	refused_feature / syntax_error factories; < PatternError < DomainError
+activegraph.core.graph_store.GraphStore.match_chain	Clarity::GraphProjection#match_chain	ported	spec/clarity/patterns_matcher_spec.cr	DFS structural chain walk; node {prop:value} + WHERE layered by matcher

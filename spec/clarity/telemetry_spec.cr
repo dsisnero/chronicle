@@ -13,6 +13,7 @@ private def sample_decision
     I::Chat,
     classification,
     T.new("deepseek", "deepseek-v4-flash"),
+    [] of Clarity::Routing::Target,
     "chat rule",
     "priority=10, specificity=1",
     false,

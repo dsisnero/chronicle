@@ -348,6 +348,22 @@ module Clarity
       self.class.new(@objects.dup, @relations.dup, patches, @patch_ids_by_target.dup)
     end
 
+    # Enumerate every structural match of a linear node→rel→node chain.
+    # Ported from activegraph GraphStore.match_chain (InMemoryGraphStore default).
+    # node_types is one entry per node position (nil = any type); rels is one
+    # (rel_type, direction) per hop, where direction is "right" or "left".
+    # Only structural filters apply here; node {prop: value} equality and WHERE
+    # are layered on by the PatternMatcher. A single object or relation may fill
+    # more than one position.
+    def match_chain(node_types : Array(String?), rels : Array({String, String})) : Array(ChainMatch)
+      return [] of ChainMatch if node_types.empty?
+      results = [] of ChainMatch
+      find_objects_for_chain(node_types[0]).each do |seed|
+        extend_chain_match(node_types, rels, [seed], [] of GraphRelation, results)
+      end
+      results
+    end
+
     def diff(other : GraphProjection) : GraphDiff
       GraphDiff.new(
         other.objects.keys.reject { |id| @objects.has_key?(id) }.sort!,
@@ -388,6 +404,58 @@ module Clarity
       end
     rescue JSON::ParseException
       nil
+    end
+
+    private def find_objects_for_chain(type : String?) : Array(GraphObject)
+      if type.nil?
+        @objects.values
+      else
+        @objects.values.select { |obj| obj.type == type }
+      end
+    end
+
+    private def find_relations_for_chain(
+      source : String? = nil,
+      target : String? = nil,
+      type : String? = nil,
+    ) : Array(GraphRelation)
+      @relations.values.select do |relation|
+        (source.nil? || relation.from_id == source) &&
+          (target.nil? || relation.to_id == target) &&
+          (type.nil? || relation.type == type)
+      end
+    end
+
+    private def extend_chain_match(
+      node_types : Array(String?),
+      rels : Array({String, String}),
+      objs : Array(GraphObject),
+      rel_chain : Array(GraphRelation),
+      results : Array(ChainMatch),
+    )
+      i = objs.size - 1
+      if i == rels.size
+        results << ChainMatch.new(objects: objs.dup, relations: rel_chain.dup)
+        return
+      end
+      rel_type, direction = rels[i]
+      next_type = node_types[i + 1]
+      src = objs.last
+      if direction == "right"
+        find_relations_for_chain(source: src.id, type: rel_type).each do |relation|
+          neighbor = get_object(relation.to_id)
+          next if neighbor.nil?
+          next if !next_type.nil? && neighbor.type != next_type
+          extend_chain_match(node_types, rels, objs + [neighbor], rel_chain + [relation], results)
+        end
+      else
+        find_relations_for_chain(target: src.id, type: rel_type).each do |relation|
+          neighbor = get_object(relation.from_id)
+          next if neighbor.nil?
+          next if !next_type.nil? && neighbor.type != next_type
+          extend_chain_match(node_types, rels, objs + [neighbor], rel_chain + [relation], results)
+        end
+      end
     end
 
     private def parse_patch(data : Hash(String, JSON::Any), status : PatchState) : Patch
