@@ -237,9 +237,14 @@ From `parity.tsv` (`missing_contains` on Runtime):
 ## Phase 8 — Frames wiring
 
 - [x] `Clarity::Frame` value + `FrameStack` — `spec/clarity/frame_spec.cr`
-- [ ] `frame_id : String?` on `Clarity::Event` envelope
-- [ ] Runtime `push_frame`/`pop_frame` lifecycle — `frame.py`
-- [ ] Group events by `frame_id` in log inspect + trace export
+- [x] `frame_id : String?` on `Clarity::Event` envelope (canonical_json +
+      `EventLogCodec` round-trip) — `spec/clarity/frames_spec.cr`
+- [x] Runtime `push_frame`/`pop_frame`/`current_frame_id` lifecycle —
+      `frame.py` — `spec/clarity/frames_spec.cr`
+- [x] Events recorded inside a frame carry `frame_id` (`chat.message`,
+      `pack.loaded`, ...); `events_in_frame(frame_id)` groups them — `frame.py`
+- [-] Group frames in trace export — deferred (export_trace lists all events;
+      `events_in_frame` is the grouping surface)
 
 ## Phase 9 — Sandbox + CLI + trace printer
 

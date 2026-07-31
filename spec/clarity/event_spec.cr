@@ -36,7 +36,7 @@ describe Clarity::Event do
     )
 
     event.canonical_json.should eq(
-      %({"schema_version":1,"sequence":42,"id":"evt_000042","type":"goal.created","actor":"user","caused_by":"evt_000041","timestamp":"2026-07-24T12:00:00Z","payload":{"goal":"ship deterministic routing"}})
+      %({"schema_version":1,"sequence":42,"id":"evt_000042","type":"goal.created","actor":"user","caused_by":"evt_000041","frame_id":null,"timestamp":"2026-07-24T12:00:00Z","payload":{"goal":"ship deterministic routing"}})
     )
   end
 

@@ -9,6 +9,7 @@ module Clarity
     getter type : String
     getter actor : String
     getter caused_by : String?
+    getter frame_id : String?
     getter timestamp : Time
     getter payload : String
 
@@ -19,8 +20,9 @@ module Clarity
       @type : String,
       @actor : String,
       @caused_by : String?,
-      @timestamp : Time,
       @payload : String,
+      @frame_id : String? = nil,
+      @timestamp : Time = Time.utc,
     )
       begin
         JSON.parse(@payload)
@@ -40,6 +42,7 @@ module Clarity
           json.field "type", type
           json.field "actor", actor
           json.field "caused_by", caused_by
+          json.field "frame_id", frame_id
           json.field "timestamp", timestamp.to_rfc3339
           json.field "payload" do
             json.raw(payload)

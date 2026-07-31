@@ -11,6 +11,7 @@ module Clarity
     @approvals : ApprovalAdapter = ApprovalAdapter.new
     @authority_ceiling : String? = nil
     @loaded_packs : Array(Pack) = [] of Pack
+    @frame_stack : FrameStack = FrameStack.new
 
     # Action-class authority scale, lowest to highest.
     AUTHORITY_RANKS = {"read" => 0, "write" => 1, "admin" => 2, "root" => 3}
@@ -134,6 +135,23 @@ module Clarity
 
     def tool_requires_approval?(tool_name : String) : Bool
       pack_policies.any?(&.requires_approval.includes?(tool_name))
+    end
+
+    def current_frame_id : String?
+      @frame_stack.current.try(&.id)
+    end
+
+    def push_frame(frame : Frame) : self
+      @frame_stack.push(frame)
+      self
+    end
+
+    def pop_frame : Frame
+      @frame_stack.pop
+    end
+
+    def events_in_frame(frame_id : String) : Array(Event)
+      @store.iter_events.select { |event| event.frame_id == frame_id }
     end
 
     def add_pending_approval(request : ApprovalRequest) : Nil
@@ -386,6 +404,7 @@ module Clarity
         type: "chat.message",
         actor: role == "user" ? "user" : "agent",
         caused_by: caused_by,
+        frame_id: current_frame_id,
         timestamp: Time.utc,
         payload: JSON.build do |json|
           json.object do
@@ -679,6 +698,7 @@ module Clarity
         schema_version: 1_u16, sequence: next_seq,
         id: "#{type.gsub(".", "_")}_#{next_seq}",
         type: type, actor: "runtime", caused_by: nil,
+        frame_id: current_frame_id,
         timestamp: Time.utc, payload: payload,
       )
       @store.append(event)

@@ -18,6 +18,7 @@ module Clarity
       getter type : String
       getter actor : String
       getter caused_by : String?
+      getter frame_id : String?
       getter timestamp : String
       @[JSON::Field(converter: Clarity::RawJSON)]
       getter payload : String
@@ -63,6 +64,7 @@ module Clarity
         type: record.type,
         actor: record.actor,
         caused_by: record.caused_by,
+        frame_id: record.frame_id,
         timestamp: Time::Format::RFC_3339.parse(record.timestamp),
         payload: record.payload,
       )
