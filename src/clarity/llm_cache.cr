@@ -25,36 +25,65 @@ module Clarity
       @entries[hash]?
     end
 
+    def has(hash : String) : Bool
+      @entries.has_key?(hash)
+    end
+
     # Record a response for a prompt hash. Overwrites on collision.
     def record(hash : String, result : EffectResult) : Nil
       @entries[hash] = result
     end
 
-    # Bulk-populate from a sequence of effect.requested + effect.responded
-    # events. Walks the log pairing effect.responded.caused_by back to
-    # effect.requested.id to find the content hash.
+    # Bulk-populate from a sequence of recorded events. Walks the log pairing
+    # llm.responded.caused_by back to llm.requested for the request hash
+    # (error-shaped llm.responded events are failed attempts and are skipped),
+    # and effect.responded events for the effect-request path.
     def self.from_events(events : Array(Event)) : self
       cache = new
       by_id = {} of String => Event
       events.each { |e| by_id[e.id] = e }
 
       events.each do |evt|
-        next unless evt.type == "effect.responded"
-
-        payload = JSON.parse(evt.payload).as_h
-        next unless payload["success"]?.try(&.as_bool) == true
-
-        hash = payload["hash"]?.try(&.as_s)
-        next unless hash
-
-        # Reconstruct result from the event payload
-        result_payload = payload["payload"].to_json
-        result = EffectResult.new(hash, true, result_payload)
-        cache.record(hash, result)
+        case evt.type
+        when "effect.responded"
+          harvest_effect_responded(cache, evt)
+        when "llm.responded"
+          harvest_llm_responded(cache, evt, by_id)
+        end
       end
       cache
     rescue JSON::ParseException
       cache || LLMCache.new
+    end
+
+    private def self.harvest_effect_responded(cache : self, evt : Event) : Nil
+      payload = JSON.parse(evt.payload).as_h
+      return unless payload["success"]?.try(&.as_bool) == true
+
+      hash = payload["hash"]?.try(&.as_s)
+      return unless hash
+
+      result_payload = payload["payload"]?.try(&.to_json)
+      return if result_payload.nil?
+
+      cache.record(hash, EffectResult.new(hash, true, result_payload))
+    end
+
+    private def self.harvest_llm_responded(cache : self, evt : Event, by_id : Hash(String, Event)) : Nil
+      payload = JSON.parse(evt.payload).as_h
+      return if payload["error"]?
+
+      request_id = evt.caused_by
+      return if request_id.nil?
+
+      request = by_id[request_id]?
+      return if request.nil? || request.type != "llm.requested"
+
+      request_payload = JSON.parse(request.payload).as_h
+      hash = request_payload["request_hash"]?.try(&.as_s)
+      return if hash.nil? || hash.empty?
+
+      cache.record(hash, EffectResult.new(hash, true, payload.to_json))
     end
   end
 end

@@ -167,14 +167,21 @@ From `parity.tsv` (`missing_contains` on Runtime):
 
 - [x] Content-addressed store — `Clarity::EffectArtifactStore`/`LLMCache` base
       — `spec/clarity/effect_artifact_spec.cr`, `llm_cache_spec.cr`
-- [ ] Wire the LLM cache into replay/fork: populate from recorded
-      `llm.responded` events, serve on matching request hashes, raise
-      `ReplayDivergenceError` on strict mismatch — `llm/cache.py`
-- [ ] Provider adapters — `Clarity::ModelExecutor` exists; add Anthropic/OpenAI/
-      native structured output parity — `llm/anthropic.py`, `llm/openai.py`, `llm/native.py`
-- [ ] Wire protocol — request/response types, canonical serialization,
-      `prompt_hash` — `llm/wire.py`, `llm/types.py`, `llm/prompt.py`, `llm/parsing.py`
-- [ ] Embedding — `llm/embedding.py`, `llm/embedding_cache.py`
+- [x] Wire the LLM cache into replay/fork: `LLMCache.from_events` harvests
+      `llm.responded` (via `caused_by` → `llm.requested` request_hash), skips
+      error-shaped attempts, and `Runtime.load(replay_llm_cache: true)`
+      pre-populates it. `Runtime` consults the cache before any provider call
+      and serves hits with `cache_hit: true` recorded; provider successes are
+      recorded back into the cache. `replay_strict: true` raises
+      `ReplayDivergenceError` on prompt-hash mismatch — `llm/cache.py`,
+      `runtime.py` — `spec/clarity/llm_cache_wiring_spec.cr`
+- [-] Provider adapters (Anthropic/OpenAI/native structured output) — deferred;
+      `Clarity::ModelExecutor` already routes through registered executors —
+      `llm/anthropic.py`, `llm/openai.py`, `llm/native.py`
+- [-] Wire protocol (request/response types, canonical serialization,
+      `prompt_hash`) — deferred; the effect/llm event model already carries
+      `request_hash` — `llm/wire.py`, `llm/types.py`, `llm/prompt.py`, `llm/parsing.py`
+- [-] Embedding — deferred — `llm/embedding.py`, `llm/embedding_cache.py`
 
 ## Phase 5 — Tools
 

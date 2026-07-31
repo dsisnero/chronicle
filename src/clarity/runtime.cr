@@ -25,6 +25,8 @@ module Clarity
       @available_targets : Array(Routing::Target) = [] of Routing::Target,
       @run_id : String = "default",
       @model_effect_worker : ModelEffectWorker? = nil,
+      @llm_cache : LLMCache? = nil,
+      @strict_expected_hashes : Array(String)? = nil,
     )
     end
 
@@ -108,8 +110,19 @@ module Clarity
       log_agent : LogAgent(M),
       policy : Routing::Policy? = nil,
       budget : Budget = Budget.new,
+      replay_llm_cache : Bool = false,
+      replay_strict : Bool = false,
     ) : self
-      new(store: store, log_agent: log_agent, policy: policy, budget: budget)
+      cache = replay_llm_cache ? LLMCache.from_events(store.iter_events) : nil
+      strict_hashes = if replay_strict
+                        store.iter_events.select { |e| e.type == "llm.requested" }.map do |e|
+                          JSON.parse(e.payload).as_h["request_hash"]?.try(&.as_s) || ""
+                        end
+                      end
+      new(
+        store: store, log_agent: log_agent, policy: policy, budget: budget,
+        llm_cache: cache, strict_expected_hashes: strict_hashes,
+      )
     end
 
     def decision : Routing::RouteDecision?
@@ -285,7 +298,18 @@ module Clarity
     )
       loop do
         target = current_execution_target || Routing::Target.new("legacy", "default", false)
-        request_event = record_llm_requested(effect, target)
+        cached = @llm_cache.try(&.get(effect.content_hash))
+        if hashes = @strict_expected_hashes
+          assert_prompt_hash!(hashes, effect.content_hash)
+        end
+        request_event = record_llm_requested(effect, target, cache_hit: !cached.nil?)
+
+        if cached_result = cached
+          response = completion_response_from_cache(cached_result)
+          record_llm_responded(request_event, target, response)
+          return response
+        end
+
         begin
           result = edge_worker.execute(ModelEffectInvocation.new(ModelEffectRequest.new(request_event.id, effect, target), request))
           response = Crig::Completion::CompletionResponse(String).new(
@@ -295,6 +319,7 @@ module Clarity
             result.message_id,
           )
           record_llm_responded(request_event, target, response)
+          @llm_cache.try(&.record(effect.content_hash, EffectResult.new(effect.content_hash, true, response_cache_payload(response))))
           return response
         rescue ex : Exception
           failed_event = record_llm_failed(request_event, target, ex)
@@ -306,6 +331,42 @@ module Clarity
             end
           end
           raise ex
+        end
+      end
+    end
+
+    private def assert_prompt_hash!(expected_hashes : Array(String), actual : String) : Nil
+      expected = expected_hashes.shift? || ""
+      if expected != actual
+        raise ReplayDivergenceError.new(
+          "replay diverged on prompt hash: expected prompt_hash=#{expected}, got prompt_hash=#{actual}"
+        )
+      end
+    end
+
+    private def completion_response_from_cache(result : EffectResult) : Crig::Completion::CompletionResponse(String)
+      payload = JSON.parse(result.payload).as_h
+      content = payload["content"]?.try(&.as_s) || ""
+      input = payload["input_tokens"]?.try(&.as_i) || 0
+      output = payload["output_tokens"]?.try(&.as_i) || 0
+      choice = Crig::OneOrMany(Crig::Completion::AssistantContent).one(
+        Crig::Completion::AssistantContent.text(content)
+      )
+      Crig::Completion::CompletionResponse(String).new(
+        choice,
+        Crig::Completion::Usage.new(input_tokens: input, output_tokens: output),
+        "",
+        payload["message_id"]?.try(&.as_s) || "cached",
+      )
+    end
+
+    private def response_cache_payload(response) : String
+      JSON.build do |json|
+        json.object do
+          json.field "content", response.choice.first.text.try(&.text)
+          json.field "input_tokens", response.usage.input_tokens
+          json.field "output_tokens", response.usage.output_tokens
+          json.field "message_id", response.message_id
         end
       end
     end
@@ -361,7 +422,11 @@ module Clarity
       event
     end
 
-    private def record_llm_requested(effect : EffectRequest, target : Routing::Target?) : Event
+    private def record_llm_requested(
+      effect : EffectRequest,
+      target : Routing::Target?,
+      cache_hit : Bool = false,
+    ) : Event
       event = Event.new(
         schema_version: 1_u16,
         sequence: next_seq,
@@ -375,6 +440,7 @@ module Clarity
             json.field "request_hash", effect.content_hash
             json.field "provider", target.try(&.provider)
             json.field "model", target.try(&.model)
+            json.field "cache_hit", cache_hit
           end
         end,
       )
