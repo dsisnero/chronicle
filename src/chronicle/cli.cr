@@ -421,8 +421,3 @@ module Chronicle
     end
   end
 end
-
-# Entry point when run as a binary (not when required as library)
-unless PROGRAM_NAME.includes?("crystal-run-spec")
-  Chronicle::CLI.exec(ARGV, STDOUT)
-end

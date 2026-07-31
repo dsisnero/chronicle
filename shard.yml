@@ -8,7 +8,7 @@ targets:
   chronicle:
     main: src/chronicle.cr
   chronicle-cli:
-    main: src/chronicle/cli.cr
+    main: src/chronicle/cli_main.cr
 
 crystal: '>= 1.21.0'
 
