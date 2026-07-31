@@ -8,6 +8,28 @@ module Clarity
     FORMAT         = "clarity.event-log"
     FORMAT_VERSION = 1
 
+    # Typed decode view of the immutable event envelope.
+    struct EventRecord
+      include JSON::Serializable
+
+      getter schema_version : UInt16
+      getter sequence : UInt64
+      getter id : String
+      getter type : String
+      getter actor : String
+      getter caused_by : String?
+      getter timestamp : String
+      @[JSON::Field(converter: RawJSONString)]
+      getter payload : String
+    end
+
+    # Consumes an embedded JSON value and returns it as its raw compact bytes.
+    module RawJSONString
+      def self.from_json(pull : JSON::PullParser) : String
+        JSON::Any.new(pull).to_json
+      end
+    end
+
     def encode(log : EventLog) : String
       lines = [header]
       log.events.each { |event| lines << event.canonical_json }
@@ -40,23 +62,19 @@ module Clarity
     end
 
     private def decode_event(line : String) : Event
-      value = JSON.parse(line).as_h
+      record = EventRecord.from_json(line)
       Event.new(
-        schema_version: value["schema_version"].as_i.to_u16,
-        sequence: value["sequence"].as_i.to_u64,
-        id: value["id"].as_s,
-        type: value["type"].as_s,
-        actor: value["actor"].as_s,
-        caused_by: nullable_string(value["caused_by"]),
-        timestamp: Time::Format::RFC_3339.parse(value["timestamp"].as_s),
-        payload: value["payload"].to_json
+        schema_version: record.schema_version,
+        sequence: record.sequence,
+        id: record.id,
+        type: record.type,
+        actor: record.actor,
+        caused_by: record.caused_by,
+        timestamp: Time::Format::RFC_3339.parse(record.timestamp),
+        payload: record.payload,
       )
     rescue JSON::ParseException | KeyError | TypeCastError | ArgumentError | OverflowError
       raise InvalidLogEncodingError.new("invalid event record")
-    end
-
-    private def nullable_string(value : JSON::Any) : String?
-      value.raw.nil? ? nil : value.as_s
     end
   end
 end
