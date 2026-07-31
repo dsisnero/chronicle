@@ -92,7 +92,7 @@ describe Clarity::LogAgent do
       model: MockModel.new,
       preamble: "You are helpful.",
     )
-    log_agent = Clarity::LogAgent(MockModel).new(crig_agent)
+    log_agent = Clarity::LogAgent(MockModel).new(crig_agent, max_turns: 2)
     log_agent.start(Crig::Completion::Message.user("Research and report"))
 
     # Step 1: CallModel

@@ -46,7 +46,7 @@ shards:
 
   crig:
     git: https://github.com/dsisnero/crig.git
-    version: 0.39.0
+    version: 0.39.1
 
   crig-postgres:
     git: https://github.com/dsisnero/crig-postgres.git
@@ -183,3 +183,4 @@ shards:
   uniwidth:
     git: https://github.com/naqvis/uni_char_width.git
     version: 0.1.3
+

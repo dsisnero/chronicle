@@ -287,7 +287,7 @@ module Clarity
       history = step.history
       raise "model step is missing its prompt or history" unless prompt && history
 
-      request = @log_agent.agent.completion(prompt, history).build
+      request = @log_agent.agent.build_completion_request(prompt, history).build
       response = execute_model_request(effect, request)
       turn = Crig::ModelTurn.new(
         message_id: "msg_#{next_seq}",

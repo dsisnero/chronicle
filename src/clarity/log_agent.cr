@@ -29,7 +29,8 @@ module Clarity
     def initialize(
       @agent : Crig::Agent(M),
       store : EventStore? = nil,
-      @max_turns : Int32 = 0,
+      @max_turns : Int32 = 1,
+      @tool_cache : ToolCache? = nil,
     )
       @store = store
     end
@@ -40,6 +41,12 @@ module Clarity
       @run = run
       record_event("goal.created", %({"goal":"#{prompt.rag_text || ""}"}))
       self
+    end
+
+    # A recording hook bound to this agent's store, for use with an
+    # `AgentRunner` (crig's supported extension surface).
+    def make_hook : AgentHook
+      AgentHook.new(@store, @tool_cache)
     end
 
     def next_step : Crig::AgentRunStep
