@@ -118,6 +118,17 @@ module Clarity
 
   # Pure graph state reconstructed from typed object and relation events.
   class GraphProjection
+    WHERE_OPS = {
+      ">"      => ->(a : JSON::Any, b : JSON::Any) { JsonCompare.ordered?(">", a, b) { |sign| sign > 0 } },
+      "<"      => ->(a : JSON::Any, b : JSON::Any) { JsonCompare.ordered?("<", a, b) { |sign| sign < 0 } },
+      ">="     => ->(a : JSON::Any, b : JSON::Any) { JsonCompare.ordered?(">=", a, b) { |sign| sign >= 0 } },
+      "<="     => ->(a : JSON::Any, b : JSON::Any) { JsonCompare.ordered?("<=", a, b) { |sign| sign <= 0 } },
+      "=="     => ->(a : JSON::Any, b : JSON::Any) { JsonCompare.json_equal?(a, b) },
+      "!="     => ->(a : JSON::Any, b : JSON::Any) { !JsonCompare.json_equal?(a, b) },
+      "in"     => ->(a : JSON::Any, b : JSON::Any) { JsonCompare.in?(a, b) },
+      "not in" => ->(a : JSON::Any, b : JSON::Any) { !JsonCompare.in?(a, b) },
+    } of String => Proc(JSON::Any, JSON::Any, Bool)
+
     @objects : Hash(String, GraphObject)
     @relations : Hash(String, GraphRelation)
     @patches : Hash(String, Patch)
@@ -141,24 +152,129 @@ module Clarity
       events.reduce(empty) { |projection, event| projection.apply(event) }
     end
 
-    def objects : Hash(String, GraphObject)
-      @objects.dup
+    def all_objects : Array(GraphObject)
+      @objects.values
     end
 
-    def relations : Hash(String, GraphRelation)
-      @relations.dup
+    def all_relations : Array(GraphRelation)
+      @relations.values
     end
 
-    def patches : Hash(String, Patch)
-      @patches.dup
+    def all_patches : Array(Patch)
+      @patches.values
     end
 
     def get_object(id : String) : GraphObject?
       @objects[id]?
     end
 
+    def get_relation(id : String) : GraphRelation?
+      @relations[id]?
+    end
+
     def get_patch(id : String) : Patch?
       @patches[id]?
+    end
+
+    # Canonical query API: objects filtered by `type` and/or a `where`
+    # predicate. Ported from activegraph Graph.objects.
+    def objects(
+      type : String? = nil,
+      where : Hash(String, JSON::Any)? = nil,
+    ) : Array(GraphObject)
+      @objects.values.select do |obj|
+        type_ok = type.nil? || obj.type == type
+        where_ok = if where_filter = where
+                     where_on_object(where_filter, obj)
+                   else
+                     true
+                   end
+        type_ok && where_ok
+      end
+    end
+
+    # Backward-compatible alias for #objects.
+    def query(
+      object_type : String? = nil,
+      where : Hash(String, JSON::Any)? = nil,
+    ) : Array(GraphObject)
+      objects(type: object_type, where: where)
+    end
+
+    # Canonical relation filter API: source/target/type compose by AND.
+    def relations(
+      source : String? = nil,
+      target : String? = nil,
+      type : String? = nil,
+    ) : Array(GraphRelation)
+      @relations.values.select do |relation|
+        (source.nil? || relation.from_id == source) &&
+          (target.nil? || relation.to_id == target) &&
+          (type.nil? || relation.type == type)
+      end
+    end
+
+    # Legacy (object_id, direction) alias for #relations. Unrecognized
+    # directions keep the v0 quirk of ignoring object_id.
+    def get_relations(
+      object_id : String? = nil,
+      type : String? = nil,
+      direction : String = "both",
+    ) : Array(GraphRelation)
+      if object_id.nil?
+        relations(type: type)
+      elsif direction == "outgoing"
+        relations(source: object_id, type: type)
+      elsif direction == "incoming"
+        relations(target: object_id, type: type)
+      elsif direction == "both"
+        relations(type: type).select { |relation| object_id.in?({relation.from_id, relation.to_id}) }
+      else
+        relations(type: type)
+      end
+    end
+
+    # OR-of-types single-pass scan, used by the view builder.
+    def objects_in_types(types : Array(String)) : Array(GraphObject)
+      return [] of GraphObject if types.empty?
+      type_set = types.to_set
+      @objects.values.select { |obj| type_set.includes?(obj.type) }
+    end
+
+    def has_object_of_type(type : String) : Bool
+      @objects.values.any? { |obj| obj.type == type }
+    end
+
+    # Undirected breadth-first walk from object_id out to `depth` edges.
+    def neighborhood(object_id : String, depth : Int32 = 1) : {Array(GraphObject), Array(GraphRelation)}
+      return {[] of GraphObject, [] of GraphRelation} if get_object(object_id).nil?
+      seen_objects = Set(String).new
+      seen_objects << object_id
+      frontier = Set(String).new
+      frontier << object_id
+      seen_relations = Set(String).new
+      depth.times do
+        next_frontier = Set(String).new
+        @relations.values.each do |relation|
+          if frontier.includes?(relation.from_id) || frontier.includes?(relation.to_id)
+            seen_relations << relation.id
+            next_frontier << relation.from_id unless seen_objects.includes?(relation.from_id)
+            next_frontier << relation.to_id unless seen_objects.includes?(relation.to_id)
+          end
+        end
+        seen_objects.concat(next_frontier)
+        frontier = next_frontier
+        break if frontier.empty?
+      end
+      objects = [] of GraphObject
+      seen_objects.each { |id| if obj = get_object(id)
+        objects << obj
+      end }
+      relations = [] of GraphRelation
+      seen_relations.each { |id| if rel = get_relation(id)
+        relations << rel
+      end }
+      {objects, relations}
     end
 
     def apply(event : Event) : self
@@ -366,13 +482,52 @@ module Clarity
 
     def diff(other : GraphProjection) : GraphDiff
       GraphDiff.new(
-        other.objects.keys.reject { |id| @objects.has_key?(id) }.sort!,
-        @objects.keys.reject { |id| other.objects.has_key?(id) }.sort!,
-        other.relations.keys.reject { |id| @relations.has_key?(id) }.sort!,
-        @relations.keys.reject { |id| other.relations.has_key?(id) }.sort!,
-        other.patches.keys.reject { |id| @patches.has_key?(id) }.sort!,
-        @patches.keys.reject { |id| other.patches.has_key?(id) }.sort!,
+        other.all_objects.map(&.id).reject { |id| @objects.has_key?(id) }.sort!,
+        @objects.keys.reject { |id| other.get_object(id).nil? }.sort!,
+        other.all_relations.map(&.id).reject { |id| @relations.has_key?(id) }.sort!,
+        @relations.keys.reject { |id| other.get_relation(id).nil? }.sort!,
+        other.all_patches.map(&.id).reject { |id| @patches.has_key?(id) }.sort!,
+        @patches.keys.reject { |id| other.get_patch(id).nil? }.sort!,
       )
+    end
+
+    private def where_on_object(where : Hash(String, JSON::Any), obj : GraphObject) : Bool
+      data = JsonCompare.object_data_hash(obj.data)
+      root = JSON::Any.new(
+        {
+          "id"      => JSON::Any.new(obj.id),
+          "type"    => JSON::Any.new(obj.type),
+          "data"    => JSON::Any.new(data),
+          "version" => JSON::Any.new(obj.version),
+        }.merge(data)
+      )
+      where.each do |key, expected|
+        actual = resolve_where_path(root, key.split('.'))
+        if expected.raw.is_a?(Hash(String, JSON::Any))
+          expected.raw.as(Hash(String, JSON::Any)).each do |op, value|
+            fn = WHERE_OPS[op]?
+            if fn.nil?
+              raise GraphProjectionError.new("unknown where operator: #{op}")
+            end
+            return false unless fn.call(actual, value)
+          end
+        else
+          return false unless JsonCompare.json_equal?(actual, expected)
+        end
+      end
+      true
+    end
+
+    private def resolve_where_path(root : JSON::Any, path : Array(String)) : JSON::Any
+      cur = root
+      path.each do |segment|
+        if cur.raw.is_a?(Hash(String, JSON::Any))
+          cur = cur[segment]? || JSON::Any.new(nil)
+        else
+          return JSON::Any.new(nil)
+        end
+      end
+      cur
     end
 
     private def compute_diff(old_data : String, new_value : String) : String?

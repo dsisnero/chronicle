@@ -35,9 +35,9 @@ describe Clarity::GraphProjection do
 
     projection = Clarity::GraphProjection.replay([object, relation])
 
-    projection.objects["goal-1"].type.should eq("goal")
-    projection.objects["goal-1"].data.should eq(%({"text":"ship replay"}))
-    projection.relations["rel-1"].from_id.should eq("goal-1")
+    projection.get_object("goal-1").not_nil!.type.should eq("goal")
+    projection.get_object("goal-1").not_nil!.data.should eq(%({"text":"ship replay"}))
+    projection.get_relation("rel-1").not_nil!.from_id.should eq("goal-1")
   end
 
   it "reports structural changes between projections" do

@@ -363,8 +363,8 @@ module Clarity
       result = ReplayEngine.new.replay(events, ReplayMode::Permissive)
       io.puts "Replay complete"
       io.puts "  Events:      #{log_events.events.size}"
-      io.puts "  Objects:     #{result.projection.objects.size}"
-      io.puts "  Relations:   #{result.projection.relations.size}"
+      io.puts "  Objects:     #{result.projection.all_objects.size}"
+      io.puts "  Relations:   #{result.projection.all_relations.size}"
       io.puts "  Effects:     #{result.effects.size}"
     rescue ex : File::NotFoundError
       io.puts "ERROR: file not found: #{cmd.file}"

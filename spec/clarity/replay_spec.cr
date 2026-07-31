@@ -88,6 +88,6 @@ describe Clarity::ReplayEngine do
 
     result = Clarity::ReplayEngine.new.replay([event], Clarity::ReplayMode::Strict, [event])
 
-    result.projection.objects.should be_empty
+    result.projection.all_objects.should be_empty
   end
 end

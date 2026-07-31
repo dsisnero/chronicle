@@ -810,11 +810,11 @@ module Clarity
     private def node_matches(obj : GraphObject, node_pat : NodePat) : Bool
       return false if !node_pat.type.nil? && obj.type != node_pat.type
       return true if node_pat.properties.empty?
-      data = object_data_hash(obj.data)
+      data = JsonCompare.object_data_hash(obj.data)
       node_pat.properties.each do |k, v|
         val = data[k]?
         return false if val.nil?
-        return false unless json_equal?(val, v)
+        return false unless JsonCompare.json_equal?(val, v)
       end
       true
     end
@@ -872,20 +872,15 @@ module Clarity
 
     private def ops : Hash(String, Proc(JSON::Any, JSON::Any, Bool))
       {
-        "="  => ->(a : JSON::Any, b : JSON::Any) { json_equal?(a, b) },
-        "==" => ->(a : JSON::Any, b : JSON::Any) { json_equal?(a, b) },
-        "!=" => ->(a : JSON::Any, b : JSON::Any) { !json_equal?(a, b) },
-        "<>" => ->(a : JSON::Any, b : JSON::Any) { !json_equal?(a, b) },
-        ">"  => ->(a : JSON::Any, b : JSON::Any) { ordered?(">", a, b) { |sign| sign > 0 } },
-        "<"  => ->(a : JSON::Any, b : JSON::Any) { ordered?("<", a, b) { |sign| sign < 0 } },
-        ">=" => ->(a : JSON::Any, b : JSON::Any) { ordered?(">=", a, b) { |sign| sign >= 0 } },
-        "<=" => ->(a : JSON::Any, b : JSON::Any) { ordered?("<=", a, b) { |sign| sign <= 0 } },
+        "="  => ->(a : JSON::Any, b : JSON::Any) { JsonCompare.json_equal?(a, b) },
+        "==" => ->(a : JSON::Any, b : JSON::Any) { JsonCompare.json_equal?(a, b) },
+        "!=" => ->(a : JSON::Any, b : JSON::Any) { !JsonCompare.json_equal?(a, b) },
+        "<>" => ->(a : JSON::Any, b : JSON::Any) { !JsonCompare.json_equal?(a, b) },
+        ">"  => ->(a : JSON::Any, b : JSON::Any) { JsonCompare.ordered?(">", a, b) { |sign| sign > 0 } },
+        "<"  => ->(a : JSON::Any, b : JSON::Any) { JsonCompare.ordered?("<", a, b) { |sign| sign < 0 } },
+        ">=" => ->(a : JSON::Any, b : JSON::Any) { JsonCompare.ordered?(">=", a, b) { |sign| sign >= 0 } },
+        "<=" => ->(a : JSON::Any, b : JSON::Any) { JsonCompare.ordered?("<=", a, b) { |sign| sign <= 0 } },
       } of String => Proc(JSON::Any, JSON::Any, Bool)
-    end
-
-    private def ordered?(op : String, a : JSON::Any, b : JSON::Any, & : Int32 -> Bool) : Bool
-      cmp = compare_json(op, a, b)
-      cmp.nil? ? false : yield cmp
     end
 
     private def resolve_path(
@@ -910,7 +905,7 @@ module Clarity
     end
 
     private def path_head(obj : GraphObject, rest : Array(String)) : {JSON::Any, Array(String)}
-      data = JSON::Any.new(object_data_hash(obj.data))
+      data = JSON::Any.new(JsonCompare.object_data_hash(obj.data))
       case rest[0]
       when "id"      then {JSON::Any.new(obj.id), rest[1..]}
       when "type"    then {JSON::Any.new(obj.type), rest[1..]}
@@ -918,52 +913,6 @@ module Clarity
       when "data"    then {data, rest[1..]}
       else                {data, rest}
       end
-    end
-
-    private def json_equal?(a : JSON::Any, b : JSON::Any) : Bool
-      ra = a.raw
-      rb = b.raw
-      if ra.is_a?(Int64) && rb.is_a?(Int64)
-        ra == rb
-      elsif ra.is_a?(Float64) && rb.is_a?(Float64)
-        ra == rb
-      elsif ra.is_a?(Int64) && rb.is_a?(Float64)
-        ra.to_f64 == rb
-      elsif ra.is_a?(Float64) && rb.is_a?(Int64)
-        ra == rb.to_f64
-      else
-        ra == rb
-      end
-    end
-
-    private def compare_json(op : String, a : JSON::Any, b : JSON::Any) : Int32?
-      return nil if a.raw.nil? || b.raw.nil?
-      case {a.raw, b.raw}
-      when {Int64, Int64}
-        a.raw.as(Int64) <=> b.raw.as(Int64)
-      when {Float64, Float64}
-        a.raw.as(Float64) <=> b.raw.as(Float64)
-      when {Int64, Float64}
-        a.raw.as(Int64).to_f64 <=> b.raw.as(Float64)
-      when {Float64, Int64}
-        a.raw.as(Float64) <=> b.raw.as(Int64).to_f64
-      when {String, String}
-        a.raw.as(String) <=> b.raw.as(String)
-      when {Bool, Bool}
-        (a.raw.as(Bool) ? 1 : 0) <=> (b.raw.as(Bool) ? 1 : 0)
-      else
-        raise PatternTypeError.new(
-          "'#{op}' not supported between instances of " \
-          "'#{a.raw.class}' and '#{b.raw.class}'"
-        )
-      end
-    end
-
-    private def object_data_hash(data : String) : Hash(String, JSON::Any)
-      h = JSON.parse(data).as_h?
-      h || {} of String => JSON::Any
-    rescue JSON::ParseException
-      {} of String => JSON::Any
     end
   end
 end
