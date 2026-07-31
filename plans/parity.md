@@ -260,10 +260,14 @@ From `parity.tsv` (`missing_contains` on Runtime):
 
 ## Phase 10 — External GraphStore backends (stretch)
 
-- [ ] SQLite-backed `GraphStore` (query-hook pushdown) — the conformance suite is
-      ready; any backend passing it is interchangeable
-- [ ] Postgres / FalkorDB GraphStore pushdown — `store/postgres.py`, `store/falkordb.py`
-- [ ] `graph_store=` injection seam (analogous to upstream constructor param)
+- [x] SQLite-backed `GraphStore` — `Clarity::SQLiteGraphStore` stores entities as
+      JSON::Serializable rows and passes the full conformance suite —
+      `spec/clarity/graph_store_sqlite_spec.cr`
+- [x] `graph_store=` injection seam — `GraphProjection.new(store:)` already
+      accepts any `GraphStore` (Phase 5)
+- [-] Postgres / FalkorDB GraphStore pushdown — deferred — `store/postgres.py`,
+      `store/falkordb.py` (any backend passing the conformance suite is
+      interchangeable)
 
 ---
 

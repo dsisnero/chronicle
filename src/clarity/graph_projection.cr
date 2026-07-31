@@ -35,6 +35,8 @@ module Clarity
   end
 
   struct Patch
+    include JSON::Serializable
+
     getter id : String
     getter target : String
     getter op : PatchOp
