@@ -25,18 +25,13 @@ module Clarity
     getter store : EventStore?
 
     @run : Crig::AgentRun?
-    @sequence : UInt64
-    @goals_created : Int32
 
     def initialize(@agent : Crig::Agent(M), store : EventStore? = nil)
       @store = store
-      @sequence = 0_u64
-      @goals_created = 0
     end
 
     def start(prompt : Crig::Completion::Message) : self
       @run = Crig::AgentRun.new(prompt)
-      @goals_created += 1
       record_event("goal.created", %({"goal":"#{prompt.rag_text || ""}"}))
       self
     end
@@ -123,11 +118,11 @@ module Clarity
     private def record_event(type : String, payload : String) : Nil
       return unless s = @store
 
-      @sequence += 1
+      sequence = (s.count + 1).to_u64
       event = Event.new(
         schema_version: 1_u16,
-        sequence: @sequence,
-        id: "#{type.gsub(".", "_")}_#{@sequence}",
+        sequence: sequence,
+        id: "#{type.gsub(".", "_")}_#{sequence}",
         type: type,
         actor: "agent",
         caused_by: nil,

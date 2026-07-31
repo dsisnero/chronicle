@@ -24,9 +24,14 @@ module Clarity
     def append(event : Event) : Nil
       payload_json = event.payload
       @db.exec(
-        "INSERT OR IGNORE INTO events (id, type, actor, payload, caused_by, timestamp, run_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO events (id, type, actor, payload, caused_by, timestamp, run_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
         event.id, event.type, event.actor, payload_json, event.caused_by, event.timestamp.to_rfc3339, @run_id,
       )
+    rescue error : SQLite3::Exception
+      if error.message.try(&.includes?("UNIQUE constraint failed"))
+        raise DuplicateEventError.new("duplicate event id: #{event.id}")
+      end
+      raise error
     end
 
     def iter_events(after : String? = nil, before : String? = nil) : Array(Event)

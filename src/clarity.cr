@@ -37,6 +37,7 @@ require "./clarity/runtime"
 require "./clarity/view"
 require "./clarity/frame"
 require "./clarity/sqlite_event_store"
+require "./clarity/store_url"
 require "./clarity/cli"
 
 # Log-primary primitives for deterministic agent execution.

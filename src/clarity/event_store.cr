@@ -30,6 +30,9 @@ module Clarity
     end
 
     def append(event : Event) : Nil
+      if @by_id.has_key?(event.id)
+        raise DuplicateEventError.new("duplicate event id: #{event.id}")
+      end
       @events << event
       @by_id[event.id] = event
     end

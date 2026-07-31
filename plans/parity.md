@@ -121,12 +121,17 @@ From `plans/generated/parity/python/parity.tsv`:
 ## Phase 2 — Persistence backends
 
 - [x] `Clarity::EventStore` interface + `MemoryEventStore` + `SQLiteEventStore`
-      (append/iter_events/get_event/count/truncate_after/close)
-- [ ] EventStore conformance suite (mirror `store/conformance.py`) and run it
-      against Memory + SQLite backends
-- [ ] Postgres event store — `store/postgres.py`
-- [ ] Retention policy (compaction/truncation) — `store/retention.py`
-- [ ] Store URL resolution — `store/url.py`
+      (append/iter_events/get_event/count/truncate_after/close); appends reject
+      duplicate ids with `DuplicateEventError`
+- [x] EventStore conformance suite (mirror `store/conformance.py`) run against
+      Memory + SQLite backends — `spec/clarity/event_store_conformance.cr`
+- [x] Store URL parsing — `Clarity.parse_store_url`/`StoreURL`/`InvalidStoreURL`
+      (sqlite:///, sqlite:////, postgres://, postgresql://) — `spec/clarity/store_url_spec.cr`
+- [-] Postgres event store — deferred (needs `pg` shard + live server; the
+      `EventStore` protocol is the path for adding it)
+- [-] Retention/compaction (`store/retention.py`) — deferred: offline snapshot +
+      archive-tier compaction depends on a snapshot sidecar and `causal_chain`,
+      both not yet ported
 - [ ] `EventLog` gains `count`/`get_event`/`iter_events` conveniences if needed
 
 ## Phase 3 — Runtime execution surface
