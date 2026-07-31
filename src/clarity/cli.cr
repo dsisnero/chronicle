@@ -20,6 +20,7 @@ module Clarity
         "diff"    => DiffCmd,
         "log"     => Log,
         "replay"  => ReplayCmd,
+        "trace"   => TraceCmd,
         "session" => Session,
         "fork"    => ForkCmd,
         "chat"    => ChatCmd,
@@ -104,6 +105,22 @@ module Clarity
       getter file : String
     end
 
+    @[Clip::Doc("Render a causal chain from an object back to its goal.\n" \
+                "Walks caused_by links from the object's creation event up to\n" \
+                "the goal that started the run.\n" \
+                "\n" \
+                "Example:\n" \
+                "  clarity-cli trace --file run.db --object claim#1")]
+    struct TraceCmd < Root
+      include Clip::Mapper
+
+      @[Clip::Option("-f", "--file")]
+      getter file : String
+
+      @[Clip::Option("-o", "--object")]
+      getter object : String
+    end
+
     @[Clip::Doc("Preview a routing decision — no API call, no cost.\n" \
                 "Shows which intent was classified, which rule matched, and which\n" \
                 "model would be selected based on the routing policy.\n" \
@@ -144,6 +161,8 @@ module Clarity
         execute_log_inspect(cmd, io)
       when ReplayCmd
         execute_replay(cmd, io)
+      when TraceCmd
+        execute_trace(cmd, io)
       when SessionList
         execute_session_list(cmd, io)
       when ForkCmd
@@ -166,6 +185,8 @@ module Clarity
         io.puts Clarity::CLI::DiffCmd.help rescue io.puts Root.help
       when "replay"
         io.puts Clarity::CLI::ReplayCmd.help rescue io.puts Root.help
+      when "trace"
+        io.puts Clarity::CLI::TraceCmd.help rescue io.puts Root.help
       when "fork"
         io.puts Clarity::CLI::ForkCmd.help rescue io.puts Root.help
       when "chat"
@@ -336,6 +357,16 @@ module Clarity
       end
       io.puts "Sessions in #{SessionStore.default_dir}:"
       sessions.each { |session_path| io.puts "  #{session_path}" }
+    end
+
+    private def self.execute_trace(cmd : TraceCmd, io : IO) : Nil
+      log = EventLogCodec.decode(File.read(cmd.file))
+      graph = GraphProjection.replay(log.events)
+      io.puts Trace.causal_chain(log.events, graph, cmd.object)
+    rescue ex : File::NotFoundError
+      io.puts "ERROR: file not found: #{cmd.file}"
+    rescue ex : Clarity::InvalidLogEncodingError
+      io.puts "ERROR: invalid event log: #{ex.message}"
     end
 
     private def self.execute_log_inspect(cmd : LogInspect, io : IO) : Nil

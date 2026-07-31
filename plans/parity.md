@@ -248,9 +248,15 @@ From `parity.tsv` (`missing_contains` on Runtime):
 
 ## Phase 9 — Sandbox + CLI + trace printer
 
-- [ ] Sandbox executor/conformance (`_child`, `executor`, `conformance`) — `sandbox/*`
-- [ ] CLI quickstart/renderers — `cli/quickstart.py`, `cli/renderers.py`
-- [ ] Trace printer/causal rendering — `trace/printer.py`, `trace/causal.py`
+- [x] Trace causal chain — `Clarity::Trace.causal_chain(events, graph, object_id)`
+      walks `caused_by` back to the goal with cycle detection — `trace/causal.py`
+      — `spec/clarity/trace_spec.cr`
+- [x] CLI trace command — `clarity-cli trace --file <log> --object <id>` renders
+      the causal chain from a recorded log — `trace/printer.py` —
+      `spec/clarity/cli_spec.cr`
+- [-] Sandbox executor/conformance (`_child`, `executor`, `conformance`) —
+      deferred — `sandbox/*`
+- [-] CLI quickstart/renderers — deferred — `cli/quickstart.py`, `cli/renderers.py`
 
 ## Phase 10 — External GraphStore backends (stretch)
 

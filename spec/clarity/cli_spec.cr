@@ -37,6 +37,19 @@ describe Clarity::CLI do
     end
   end
 
+  it "renders a causal chain from a log file" do
+    header = %({"format":"clarity.event-log","version":1})
+    goal = %({"schema_version":1,"sequence":1,"id":"goal_1","type":"goal.created","actor":"user","caused_by":null,"frame_id":null,"timestamp":"2026-07-24T12:00:00Z","payload":{"goal":"ship"}})
+    obj = %({"schema_version":1,"sequence":2,"id":"evt_2","type":"object.created","actor":"test","caused_by":"goal_1","frame_id":null,"timestamp":"2026-07-24T12:00:00Z","payload":{"id":"doc#1","type":"doc","data":{}}})
+    log_content = "#{header}\n#{goal}\n#{obj}\n"
+
+    with_temp_log(log_content) do |path|
+      output = Clarity::CLI.run(["trace", "--file", path, "--object", "doc#1"])
+      output.should contain("doc#1 (doc)")
+      output.should contain("goal_1")
+    end
+  end
+
   it "replays a log file and shows replay results" do
     header = %({"format":"clarity.event-log","version":1})
     event = %({"schema_version":1,"sequence":1,"id":"evt_000001","type":"goal.created","actor":"user","caused_by":null,"timestamp":"2026-07-24T12:00:00Z","payload":{"goal":"test"}})
