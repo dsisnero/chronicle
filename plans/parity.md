@@ -202,11 +202,19 @@ From `parity.tsv` (`missing_contains` on Runtime):
 
 ## Phase 6 — Sinks + observability
 
-- [ ] Sink base + dispatch (bounded FIFO, overflow policy) — `sinks/base.py`, `sinks/dispatch.py`
-- [ ] JSONL sink + testing sink + sink conformance — `sinks/jsonl.py`, `sinks/testing.py`, `sinks/conformance.py`
-- [ ] Observability — metrics, status, logging, prometheus, otel migration —
-      `observability/*`
-- [ ] Surface sink status in `Clarity::Telemetry` and the run loop
+- [x] Sink base + bounded FIFO + overflow policy — `Clarity::Sink`, `SinkHandle`,
+      `OverflowPolicy` (drop_newest/drop_oldest/fail_sink), `SinkState`,
+      `DeliveryContext`, `SinkStatus` — `sinks/base.py` — `spec/clarity/sinks_spec.cr`
+- [x] Graph sink surface (completes Phase 1) — `GraphProjection#add_sink`/
+      `remove_sink`/`flush_sinks`/`sink_statuses`; `emit` offers to sinks before
+      listeners — `sinks/dispatch.py`
+- [x] Testing sink + JSONL sink — `Clarity::TestingSink`, `Clarity::JSONLSink` —
+      `sinks/testing.py`, `sinks/jsonl.py` — `spec/clarity/sinks_spec.cr`
+- [x] Sink conformance cases (order, unicode round-trip, bounded overflow,
+      status, remove) — `spec/clarity/sinks_spec.cr`
+- [-] Observability dashboards (metrics, status, logging, prometheus, otel) —
+      deferred — `observability/*`
+- [-] Sink conformance as a reusable mixin — deferred (covered inline in sinks_spec)
 
 ## Phase 7 — Packs + policy
 

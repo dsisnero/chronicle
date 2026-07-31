@@ -150,6 +150,7 @@ module Clarity
     @clock : Clock
     @event_store : EventStore?
     @listeners : Array(Proc(Event, Nil))
+    @sinks : Hash(String, SinkHandle)
 
     def initialize(
       @store : GraphStore = InMemoryGraphStore.new,
@@ -160,6 +161,7 @@ module Clarity
       @event_store : EventStore? = nil,
       @listeners : Array(Proc(Event, Nil)) = [] of Proc(Event, Nil),
     )
+      @sinks = {} of String => SinkHandle
     end
 
     def self.empty : self
@@ -305,8 +307,38 @@ module Clarity
     def emit(event : Event) : Event
       apply(event)
       @event_store.try(&.append(event))
+      @sinks.each_value(&.offer(event))
       @listeners.each(&.call(event))
       event
+    end
+
+    def add_sink(
+      sink : Sink,
+      name : String? = nil,
+      queue_capacity : Int32 = 1024,
+      overflow_policy : OverflowPolicy = OverflowPolicy::DropNewest,
+    ) : String
+      sink_name = name || sink.class.to_s.split("::").last
+      @sinks[sink_name] = SinkHandle.new(
+        sink, sink_name, "default",
+        queue_capacity: queue_capacity, overflow_policy: overflow_policy,
+      )
+      sink.open
+      sink_name
+    end
+
+    def remove_sink(name : String) : Nil
+      if handle = @sinks.delete(name)
+        handle.close
+      end
+    end
+
+    def flush_sinks : Nil
+      @sinks.each_value(&.flush)
+    end
+
+    def sink_statuses : Hash(String, SinkStatus)
+      @sinks.to_h { |name, handle| {name, handle.status} }
     end
 
     def events : Array(Event)
