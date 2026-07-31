@@ -185,11 +185,20 @@ From `parity.tsv` (`missing_contains` on Runtime):
 
 ## Phase 5 — Tools
 
-- [ ] Tool base + decorators — `tools/base.py`, `tools/decorators.py`
-- [ ] `web_fetch` (hardened) — `tools/web_fetch.py`
-- [ ] `graph_query` tool — `tools/graph_query.py`
-- [ ] Tool context + cache + recorded replay — `tools/context.py`, `tools/cache.py`, `tools/recorded.py`
-- [ ] Wire tools through `LogAgent` invocation + `emit_tool_event`
+- [x] Tool base + registry — `Clarity::Tool` (name, description, callable),
+      `Clarity::ToolRegistry` (@tool-style snapshot/clear) — `tools/base.py`,
+      `tools/decorators.py` — `spec/clarity/tools_spec.cr`
+- [x] `graph_query` tool — `Clarity.make_graph_query_tool(graph)` bound to a
+      `GraphProjection`, returns object refs with limit/truncated —
+      `tools/graph_query.py` — `spec/clarity/tools_spec.cr`
+- [x] Wire tools through the runtime — `Runtime` accepts `tools`; `drive_model`
+      passes tool names as `allowed_tools`; `drive_tools` invokes tools by name,
+      records `tool.requested`/`tool.responded`, and serves `ToolCache` hits;
+      `Runtime.load(replay_tool_cache: true)` pre-populates the cache —
+      `tools/cache.py` — `spec/clarity/tools_spec.cr`
+- [-] `web_fetch` tool — deferred (external HTTP at the platform edge) —
+      `tools/web_fetch.py`
+- [x] Tool result caching via the existing `Clarity::ToolCache` (recorded replay)
 
 ## Phase 6 — Sinks + observability
 

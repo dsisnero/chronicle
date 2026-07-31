@@ -26,12 +26,18 @@ module Clarity
 
     @run : Crig::AgentRun?
 
-    def initialize(@agent : Crig::Agent(M), store : EventStore? = nil)
+    def initialize(
+      @agent : Crig::Agent(M),
+      store : EventStore? = nil,
+      @max_turns : Int32 = 0,
+    )
       @store = store
     end
 
     def start(prompt : Crig::Completion::Message) : self
-      @run = Crig::AgentRun.new(prompt)
+      run = Crig::AgentRun.new(prompt)
+      run.max_turns = @max_turns
+      @run = run
       record_event("goal.created", %({"goal":"#{prompt.rag_text || ""}"}))
       self
     end

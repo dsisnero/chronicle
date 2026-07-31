@@ -27,6 +27,8 @@ module Clarity
       @model_effect_worker : ModelEffectWorker? = nil,
       @llm_cache : LLMCache? = nil,
       @strict_expected_hashes : Array(String)? = nil,
+      @tools : Array(Tool) = [] of Tool,
+      @tool_cache : ToolCache? = nil,
     )
     end
 
@@ -112,8 +114,11 @@ module Clarity
       budget : Budget = Budget.new,
       replay_llm_cache : Bool = false,
       replay_strict : Bool = false,
+      tools : Array(Tool) = [] of Tool,
+      replay_tool_cache : Bool = false,
     ) : self
       cache = replay_llm_cache ? LLMCache.from_events(store.iter_events) : nil
+      tool_cache = replay_tool_cache ? ToolCache.from_events(store.iter_events) : nil
       strict_hashes = if replay_strict
                         store.iter_events.select { |e| e.type == "llm.requested" }.map do |e|
                           JSON.parse(e.payload).as_h["request_hash"]?.try(&.as_s) || ""
@@ -122,6 +127,7 @@ module Clarity
       new(
         store: store, log_agent: log_agent, policy: policy, budget: budget,
         llm_cache: cache, strict_expected_hashes: strict_hashes,
+        tools: tools, tool_cache: tool_cache,
       )
     end
 
@@ -287,7 +293,7 @@ module Clarity
         message_id: "msg_#{next_seq}",
         choice: response.choice,
         usage: response.usage,
-        allowed_tools: [] of String,
+        allowed_tools: @tools.map(&.name),
       )
       @log_agent.model_response(turn, result_hash: effect.content_hash)
     end
@@ -509,16 +515,75 @@ module Clarity
     end
 
     private def drive_tools(step : Crig::AgentRunStep) : Nil
-      effects = @log_agent.record_tool_effects(step)
-      results = effects.map do |_effect|
+      calls = step.calls
+      return unless calls
+
+      results = calls.map do |call|
+        tc = call.tool_call
+        name = tc.function.name
+        args = tc.function.arguments.to_json
+        output = invoke_tool(name, args)
         Crig::Completion::UserContent.tool_result(
-          "tc_#{next_seq}",
+          tc.id,
           Crig::OneOrMany(Crig::Completion::ToolResultContent).one(
-            Crig::Completion::ToolResultContent.text("mock tool result")
+            Crig::Completion::ToolResultContent.text(output)
           )
         )
       end
       @log_agent.tool_results(results)
+    end
+
+    private def invoke_tool(name : String, args : String) : String
+      request_event = record_tool_requested(name, args)
+      if cached = @tool_cache.try(&.get(name, args))
+        record_tool_responded(request_event, name, args, cached)
+        return cached
+      end
+      tool = @tools.find { |registered| registered.name == name }
+      raise GraphProjectionError.new("unknown tool: #{name}") unless tool
+      output = tool.call(args)
+      record_tool_responded(request_event, name, args, output)
+      @tool_cache.try(&.record(name, args, output))
+      output
+    end
+
+    private def record_tool_requested(name : String, args : String) : Event
+      event = Event.new(
+        schema_version: 1_u16, sequence: next_seq,
+        id: "tool_requested_#{next_seq}", type: "tool.requested",
+        actor: "runtime", caused_by: nil, timestamp: Time.utc,
+        payload: JSON.build do |json|
+          json.object do
+            json.field "tool", name
+            json.field "args" do
+              json.raw(args)
+            end
+          end
+        end,
+      )
+      @store.append(event)
+      event
+    end
+
+    private def record_tool_responded(request_event : Event, name : String, args : String, output : String) : Event
+      event = Event.new(
+        schema_version: 1_u16, sequence: next_seq,
+        id: "tool_responded_#{next_seq}", type: "tool.responded",
+        actor: "tool", caused_by: request_event.id, timestamp: Time.utc,
+        payload: JSON.build do |json|
+          json.object do
+            json.field "tool", name
+            json.field "args" do
+              json.raw(args)
+            end
+            json.field "output" do
+              json.raw(output)
+            end
+          end
+        end,
+      )
+      @store.append(event)
+      event
     end
   end
 end
