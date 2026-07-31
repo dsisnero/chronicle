@@ -117,6 +117,8 @@ module Clarity
   end
 
   # Pure graph state reconstructed from typed object and relation events.
+  # State lives behind a GraphStore backend; the projection is copy-on-write,
+  # so apply/patch operations produce independent snapshots.
   class GraphProjection
     WHERE_OPS = {
       ">"      => ->(a : JSON::Any, b : JSON::Any) { JsonCompare.ordered?(">", a, b) { |sign| sign > 0 } },
@@ -129,16 +131,12 @@ module Clarity
       "not in" => ->(a : JSON::Any, b : JSON::Any) { !JsonCompare.in?(a, b) },
     } of String => Proc(JSON::Any, JSON::Any, Bool)
 
-    @objects : Hash(String, GraphObject)
-    @relations : Hash(String, GraphRelation)
-    @patches : Hash(String, Patch)
+    @store : GraphStore
     @patch_ids_by_target : Hash(String, Array(String))
     @applied_events : Array(Event)
 
     def initialize(
-      @objects = {} of String => GraphObject,
-      @relations = {} of String => GraphRelation,
-      @patches = {} of String => Patch,
+      @store : GraphStore = InMemoryGraphStore.new,
       @patch_ids_by_target = {} of String => Array(String),
       @applied_events = [] of Event,
     )
@@ -153,27 +151,27 @@ module Clarity
     end
 
     def all_objects : Array(GraphObject)
-      @objects.values
+      @store.all_objects
     end
 
     def all_relations : Array(GraphRelation)
-      @relations.values
+      @store.all_relations
     end
 
     def all_patches : Array(Patch)
-      @patches.values
+      @store.all_patches
     end
 
     def get_object(id : String) : GraphObject?
-      @objects[id]?
+      @store.get_object(id)
     end
 
     def get_relation(id : String) : GraphRelation?
-      @relations[id]?
+      @store.get_relation(id)
     end
 
     def get_patch(id : String) : Patch?
-      @patches[id]?
+      @store.get_patch(id)
     end
 
     # Canonical query API: objects filtered by `type` and/or a `where`
@@ -182,14 +180,9 @@ module Clarity
       type : String? = nil,
       where : Hash(String, JSON::Any)? = nil,
     ) : Array(GraphObject)
-      @objects.values.select do |obj|
-        type_ok = type.nil? || obj.type == type
-        where_ok = if where_filter = where
-                     where_on_object(where_filter, obj)
-                   else
-                     true
-                   end
-        type_ok && where_ok
+      @store.find_objects(type).select do |obj|
+        where_filter = where
+        where_filter.nil? || where_on_object(where_filter, obj)
       end
     end
 
@@ -207,11 +200,7 @@ module Clarity
       target : String? = nil,
       type : String? = nil,
     ) : Array(GraphRelation)
-      @relations.values.select do |relation|
-        (source.nil? || relation.from_id == source) &&
-          (target.nil? || relation.to_id == target) &&
-          (type.nil? || relation.type == type)
-      end
+      @store.find_relations(source: source, target: target, type: type)
     end
 
     # Legacy (object_id, direction) alias for #relations. Unrecognized
@@ -236,51 +225,20 @@ module Clarity
 
     # OR-of-types single-pass scan, used by the view builder.
     def objects_in_types(types : Array(String)) : Array(GraphObject)
-      return [] of GraphObject if types.empty?
-      type_set = types.to_set
-      @objects.values.select { |obj| type_set.includes?(obj.type) }
+      @store.find_objects_in_types(types)
     end
 
     def has_object_of_type(type : String) : Bool
-      @objects.values.any? { |obj| obj.type == type }
+      !@store.find_objects(type).empty?
     end
 
     # Undirected breadth-first walk from object_id out to `depth` edges.
     def neighborhood(object_id : String, depth : Int32 = 1) : {Array(GraphObject), Array(GraphRelation)}
-      return {[] of GraphObject, [] of GraphRelation} if get_object(object_id).nil?
-      seen_objects = Set(String).new
-      seen_objects << object_id
-      frontier = Set(String).new
-      frontier << object_id
-      seen_relations = Set(String).new
-      depth.times do
-        next_frontier = Set(String).new
-        @relations.values.each do |relation|
-          if frontier.includes?(relation.from_id) || frontier.includes?(relation.to_id)
-            seen_relations << relation.id
-            next_frontier << relation.from_id unless seen_objects.includes?(relation.from_id)
-            next_frontier << relation.to_id unless seen_objects.includes?(relation.to_id)
-          end
-        end
-        seen_objects.concat(next_frontier)
-        frontier = next_frontier
-        break if frontier.empty?
-      end
-      objects = [] of GraphObject
-      seen_objects.each { |id| if obj = get_object(id)
-        objects << obj
-      end }
-      relations = [] of GraphRelation
-      seen_relations.each { |id| if rel = get_relation(id)
-        relations << rel
-      end }
-      {objects, relations}
+      @store.neighborhood(object_id, depth)
     end
 
     def apply(event : Event) : self
-      objects = @objects.dup
-      relations = @relations.dup
-      patches = @patches.dup
+      store = @store.snapshot
       patch_ids_by_target = @patch_ids_by_target.dup
       applied_events = @applied_events.dup
       applied_events << event
@@ -290,41 +248,41 @@ module Clarity
       case event.type
       when "object.created", "object.patched"
         id = payload["id"].as_s
-        object_type = payload["type"]?.try(&.as_s) || objects[id]?.try(&.type)
+        object_type = payload["type"]?.try(&.as_s) || store.get_object(id).try(&.type)
         data = payload["data"].to_json
-        version = payload["version"]?.try(&.as_i.to_i64) || objects[id]?.try(&.version) || 1_i64
+        version = payload["version"]?.try(&.as_i.to_i64) || store.get_object(id).try(&.version) || 1_i64
         unless object_type
           raise GraphProjectionError.new("object type must be present")
         end
-        objects[id] = GraphObject.new(id, object_type, data, version, provenance)
+        store.put_object(GraphObject.new(id, object_type, data, version, provenance))
       when "relation.created"
         id = payload["id"].as_s
-        relations[id] = GraphRelation.new(
+        store.put_relation(GraphRelation.new(
           id, payload["type"].as_s,
           payload["from_id"].as_s, payload["to_id"].as_s,
           provenance,
-        )
+        ))
       when "patch.proposed"
         patch_data = payload["patch"].as_h
         patch = parse_patch(patch_data, PatchState::Proposed)
-        patches[patch.id] = patch
+        store.put_patch(patch)
         ids = patch_ids_by_target.fetch(patch.target, [] of String)
         patch_ids_by_target[patch.target] = ids + [patch.id]
       when "patch.applied"
         patch_data = payload["patch"].as_h
         target_id = payload["target"].as_s
         patch = parse_patch(patch_data, PatchState::Applied)
-        patches[patch.id] = patch
-        if obj = objects[target_id]?
-          objects[target_id] = GraphObject.new(obj.id, obj.type, patch.value, obj.version + 1, provenance)
+        store.put_patch(patch)
+        if obj = store.get_object(target_id)
+          store.put_object(GraphObject.new(obj.id, obj.type, patch.value, obj.version + 1, provenance))
         end
       when "patch.rejected"
         patch_data = payload["patch"].as_h
         patch = parse_patch(patch_data, PatchState::Rejected)
-        patches[patch.id] = patch
+        store.put_patch(patch)
       end
 
-      self.class.new(objects, relations, patches, patch_ids_by_target, applied_events)
+      self.class.new(store, patch_ids_by_target, applied_events)
     rescue KeyError | JSON::ParseException
       raise GraphProjectionError.new("invalid graph event payload")
     end
@@ -338,11 +296,11 @@ module Clarity
       actor : String = "system",
       patch_id : String? = nil,
     ) : PatchResult
-      obj = @objects[target]?
+      obj = @store.get_object(target)
       raise GraphProjectionError.new("unknown object: #{target}") unless obj
 
       ver = obj.version
-      id = patch_id || "patch_#{@patches.size + 1}"
+      id = patch_id || "patch_#{@store.all_patches.size + 1}"
       diff = compute_diff(obj.data, value)
 
       applied = Patch.new(
@@ -351,22 +309,21 @@ module Clarity
         proposed_by: actor, status: PatchState::Applied,
       )
 
-      objects = @objects.dup
-      patches = @patches.dup
-      applied_events = @applied_events.dup
-      patches[id] = applied
-      objects[target] = GraphObject.new(obj.id, obj.type, value, ver + 1)
-      ids = @patch_ids_by_target.fetch(target, [] of String)
+      store = @store.snapshot
       patch_ids_by_target = @patch_ids_by_target.dup
+      applied_events = @applied_events.dup
+      store.put_patch(applied)
+      store.put_object(GraphObject.new(obj.id, obj.type, value, ver + 1))
+      ids = patch_ids_by_target.fetch(target, [] of String)
       patch_ids_by_target[target] = ids + [id]
 
-      graph = self.class.new(objects, @relations.dup, patches, patch_ids_by_target, applied_events)
+      graph = self.class.new(store, patch_ids_by_target, applied_events)
       PatchResult.new(patch: applied, graph: graph, diff: diff)
     end
 
     def build_view(spec : ViewSpec = ViewSpec.new) : View
-      objs = @objects.values
-      rels = @relations.values
+      objs = @store.all_objects
+      rels = @store.all_relations
 
       if types = spec.include_types
         type_set = types.to_set
@@ -374,7 +331,7 @@ module Clarity
       end
 
       if around = spec.around
-        center = @objects[around]?
+        center = @store.get_object(around)
         objs = objs.select { |obj| obj.id == around } if center
       end
 
@@ -396,29 +353,29 @@ module Clarity
       expected_version : Int64? = nil,
       patch_id : String? = nil,
     ) : Patch
-      obj = @objects[target]?
+      obj = @store.get_object(target)
       ver = expected_version || obj.try(&.version) || 0_i64
       patch = Patch.new(
-        id: patch_id || "patch_#{@patches.size + 1}",
+        id: patch_id || "patch_#{@store.all_patches.size + 1}",
         target: target, op: PatchOp.parse(op),
         value: value, expected_version: ver,
         proposed_by: proposed_by, status: PatchState::Proposed,
       )
-      @patches[patch.id] = patch
+      @store.put_patch(patch)
       ids = @patch_ids_by_target.fetch(target, [] of String)
       @patch_ids_by_target[target] = ids + [patch.id]
       patch
     end
 
     def apply_patch(patch_id : String) : self
-      patch = @patches[patch_id]?
+      patch = @store.get_patch(patch_id)
       raise GraphProjectionError.new("unknown patch: #{patch_id}") unless patch
       raise GraphProjectionError.new("patch #{patch_id} already #{patch.status}") unless patch.status.proposed?
 
-      objects = @objects.dup
-      patches = @patches.dup
+      store = @store.snapshot
+      patch_ids_by_target = @patch_ids_by_target.dup
 
-      obj = objects[patch.target]?
+      obj = store.get_object(patch.target)
       current_version = obj.try(&.version) || 0_i64
 
       if current_version != patch.expected_version
@@ -429,8 +386,8 @@ module Clarity
           status: PatchState::Rejected,
           rejection_reason: "version mismatch: expected #{patch.expected_version}, got #{current_version}",
         )
-        patches[patch.id] = rejected
-        return self.class.new(objects, @relations.dup, patches, @patch_ids_by_target.dup)
+        store.put_patch(rejected)
+        return self.class.new(store, patch_ids_by_target)
       end
 
       applied = Patch.new(
@@ -438,21 +395,22 @@ module Clarity
         value: patch.value, expected_version: patch.expected_version,
         proposed_by: patch.proposed_by, status: PatchState::Applied,
       )
-      patches[patch.id] = applied
+      store.put_patch(applied)
 
       if obj
-        objects[patch.target] = GraphObject.new(obj.id, obj.type, patch.value, obj.version + 1)
+        store.put_object(GraphObject.new(obj.id, obj.type, patch.value, obj.version + 1))
       end
 
-      self.class.new(objects, @relations.dup, patches, @patch_ids_by_target.dup)
+      self.class.new(store, patch_ids_by_target)
     end
 
     def reject_patch(patch_id : String, reason : String) : self
-      patch = @patches[patch_id]?
+      patch = @store.get_patch(patch_id)
       raise GraphProjectionError.new("unknown patch: #{patch_id}") unless patch
       raise GraphProjectionError.new("patch #{patch_id} already #{patch.status}") unless patch.status.proposed?
 
-      patches = @patches.dup
+      store = @store.snapshot
+      patch_ids_by_target = @patch_ids_by_target.dup
       rejected = Patch.new(
         id: patch.id, target: patch.target, op: patch.op,
         value: patch.value, expected_version: patch.expected_version,
@@ -460,34 +418,23 @@ module Clarity
         status: PatchState::Rejected,
         rejection_reason: reason,
       )
-      patches[patch.id] = rejected
-      self.class.new(@objects.dup, @relations.dup, patches, @patch_ids_by_target.dup)
+      store.put_patch(rejected)
+      self.class.new(store, patch_ids_by_target)
     end
 
-    # Enumerate every structural match of a linear node→rel→node chain.
-    # Ported from activegraph GraphStore.match_chain (InMemoryGraphStore default).
-    # node_types is one entry per node position (nil = any type); rels is one
-    # (rel_type, direction) per hop, where direction is "right" or "left".
-    # Only structural filters apply here; node {prop: value} equality and WHERE
-    # are layered on by the PatternMatcher. A single object or relation may fill
-    # more than one position.
+    # Delegate the structural chain walk to the GraphStore backend.
     def match_chain(node_types : Array(String?), rels : Array({String, String})) : Array(ChainMatch)
-      return [] of ChainMatch if node_types.empty?
-      results = [] of ChainMatch
-      find_objects_for_chain(node_types[0]).each do |seed|
-        extend_chain_match(node_types, rels, [seed], [] of GraphRelation, results)
-      end
-      results
+      @store.match_chain(node_types, rels)
     end
 
     def diff(other : GraphProjection) : GraphDiff
       GraphDiff.new(
-        other.all_objects.map(&.id).reject { |id| @objects.has_key?(id) }.sort!,
-        @objects.keys.reject { |id| other.get_object(id).nil? }.sort!,
-        other.all_relations.map(&.id).reject { |id| @relations.has_key?(id) }.sort!,
-        @relations.keys.reject { |id| other.get_relation(id).nil? }.sort!,
-        other.all_patches.map(&.id).reject { |id| @patches.has_key?(id) }.sort!,
-        @patches.keys.reject { |id| other.get_patch(id).nil? }.sort!,
+        other.all_objects.map(&.id).reject { |id| !@store.get_object(id).nil? }.sort!,
+        @store.all_objects.map(&.id).reject { |id| !other.get_object(id).nil? }.sort!,
+        other.all_relations.map(&.id).reject { |id| !@store.get_relation(id).nil? }.sort!,
+        @store.all_relations.map(&.id).reject { |id| !other.get_relation(id).nil? }.sort!,
+        other.all_patches.map(&.id).reject { |id| !@store.get_patch(id).nil? }.sort!,
+        @store.all_patches.map(&.id).reject { |id| !other.get_patch(id).nil? }.sort!,
       )
     end
 
@@ -559,58 +506,6 @@ module Clarity
       end
     rescue JSON::ParseException
       nil
-    end
-
-    private def find_objects_for_chain(type : String?) : Array(GraphObject)
-      if type.nil?
-        @objects.values
-      else
-        @objects.values.select { |obj| obj.type == type }
-      end
-    end
-
-    private def find_relations_for_chain(
-      source : String? = nil,
-      target : String? = nil,
-      type : String? = nil,
-    ) : Array(GraphRelation)
-      @relations.values.select do |relation|
-        (source.nil? || relation.from_id == source) &&
-          (target.nil? || relation.to_id == target) &&
-          (type.nil? || relation.type == type)
-      end
-    end
-
-    private def extend_chain_match(
-      node_types : Array(String?),
-      rels : Array({String, String}),
-      objs : Array(GraphObject),
-      rel_chain : Array(GraphRelation),
-      results : Array(ChainMatch),
-    )
-      i = objs.size - 1
-      if i == rels.size
-        results << ChainMatch.new(objects: objs.dup, relations: rel_chain.dup)
-        return
-      end
-      rel_type, direction = rels[i]
-      next_type = node_types[i + 1]
-      src = objs.last
-      if direction == "right"
-        find_relations_for_chain(source: src.id, type: rel_type).each do |relation|
-          neighbor = get_object(relation.to_id)
-          next if neighbor.nil?
-          next if !next_type.nil? && neighbor.type != next_type
-          extend_chain_match(node_types, rels, objs + [neighbor], rel_chain + [relation], results)
-        end
-      else
-        find_relations_for_chain(target: src.id, type: rel_type).each do |relation|
-          neighbor = get_object(relation.from_id)
-          next if neighbor.nil?
-          next if !next_type.nil? && neighbor.type != next_type
-          extend_chain_match(node_types, rels, objs + [neighbor], rel_chain + [relation], results)
-        end
-      end
     end
 
     private def parse_patch(data : Hash(String, JSON::Any), status : PatchState) : Patch
