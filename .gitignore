@@ -18,3 +18,4 @@ mise.toml
 # Lattice cache
 .lattice-cache/
 vendor/activegraph/
+chat.db

@@ -55,50 +55,50 @@ not released yet — treat their absence as a tooling gap, not a porting signal.
 The event-sourcing core, graph projection, graph-store seam, and Cypher
 pattern layer are ported and green.
 
-- [x] Event envelope — `Clarity::Event` (schema_version, sequence, id, type,
-      actor, caused_by, timestamp, canonical_json) — `spec/clarity/event_spec.cr`
-- [x] Append-only log — `Clarity::EventLog` (append, fork_at, events) —
-      `spec/clarity/event_log_spec.cr`
-- [x] Log codec — `Clarity::EventLogCodec` (JSON::Serializable decode, byte-stable)
-      — `spec/clarity/event_log_spec.cr`
-- [x] EventStore interface + backends — `Clarity::EventStore`, `MemoryEventStore`,
+- [x] Event envelope — `Chronicle::Event` (schema_version, sequence, id, type,
+      actor, caused_by, timestamp, canonical_json) — `spec/chronicle/event_spec.cr`
+- [x] Append-only log — `Chronicle::EventLog` (append, fork_at, events) —
+      `spec/chronicle/event_log_spec.cr`
+- [x] Log codec — `Chronicle::EventLogCodec` (JSON::Serializable decode, byte-stable)
+      — `spec/chronicle/event_log_spec.cr`
+- [x] EventStore interface + backends — `Chronicle::EventStore`, `MemoryEventStore`,
       `SQLiteEventStore` (append/iter_events/get_event/count/truncate_after/close)
-      — `spec/clarity/event_store_spec.cr`, `sqlite_event_store_spec.cr`
-- [x] Replay — `Clarity::ReplayEngine` (strict/permissive) — `spec/clarity/replay_spec.cr`
-- [x] Projection — `Clarity::GraphProjection` (apply, diff) — `spec/clarity/graph_projection_spec.cr`
+      — `spec/chronicle/event_store_spec.cr`, `sqlite_event_store_spec.cr`
+- [x] Replay — `Chronicle::ReplayEngine` (strict/permissive) — `spec/chronicle/replay_spec.cr`
+- [x] Projection — `Chronicle::GraphProjection` (apply, diff) — `spec/chronicle/graph_projection_spec.cr`
 - [x] Graph query API — `objects(type:, where:)`, `query`, `relations`,
       `get_relations`, `objects_in_types`, `has_object_of_type`, `neighborhood`
-      — `spec/clarity/graph_query_spec.cr`
+      — `spec/chronicle/graph_query_spec.cr`
 - [x] Entities — `GraphObject` (id, type, JSON-string data, version, provenance),
-      `GraphRelation`, `Provenance` — `spec/clarity/graph_projection_spec.cr`
+      `GraphRelation`, `Provenance` — `spec/chronicle/graph_projection_spec.cr`
 - [x] Patches — `Patch`/`PatchState` + `propose_patch`/`apply_patch`/`reject_patch`/
-      `patch_object`; `patch.*` events folded by `apply` — `spec/clarity/patch_spec.cr`
-- [x] Views — `Clarity::View`/`ViewSpec` + `GraphProjection#build_view` — `spec/clarity/view_spec.cr`
-- [x] GraphStore backend — `Clarity::GraphStore` (abstract put/get/remove/all ×
+      `patch_object`; `patch.*` events folded by `apply` — `spec/chronicle/patch_spec.cr`
+- [x] Views — `Chronicle::View`/`ViewSpec` + `GraphProjection#build_view` — `spec/chronicle/view_spec.cr`
+- [x] GraphStore backend — `Chronicle::GraphStore` (abstract put/get/remove/all ×
       objects/relations/patches, query hooks, lifecycle) + `InMemoryGraphStore` —
-      `spec/clarity/graph_store_spec.cr`
-- [x] Store conformance — reusable `spec/clarity/graph_store_conformance.cr` mixin —
-      `spec/clarity/graph_store_spec.cr`
-- [x] Chain matching — `Clarity::ChainMatch` + `GraphStore#match_chain`
-      (homomorphic DFS walk) — `spec/clarity/graph_store_conformance.cr`
-- [x] IDs — `Clarity::IDGen` (global object counter `task#1, task#2, claim#3`,
-      `evt_`/`rel_`/`patch_`/`frame_`, `run`/ULID, `reseed_from_events`) — `spec/clarity/ids_spec.cr`
-- [x] Clock — `Clarity::Clock` + `WallClock`/`FrozenClock`/`TickingClock` — `spec/clarity/clock_spec.cr`
-- [x] Cypher subset — `Clarity.parse`/`Pattern`/`PatternMatcher`/
-      `UnsupportedPatternError` — `spec/clarity/patterns_parser_spec.cr`, `patterns_matcher_spec.cr`
-- [x] JSON comparison — `Clarity::JsonCompare` (numeric-aware equality, ordered
+      `spec/chronicle/graph_store_spec.cr`
+- [x] Store conformance — reusable `spec/chronicle/graph_store_conformance.cr` mixin —
+      `spec/chronicle/graph_store_spec.cr`
+- [x] Chain matching — `Chronicle::ChainMatch` + `GraphStore#match_chain`
+      (homomorphic DFS walk) — `spec/chronicle/graph_store_conformance.cr`
+- [x] IDs — `Chronicle::IDGen` (global object counter `task#1, task#2, claim#3`,
+      `evt_`/`rel_`/`patch_`/`frame_`, `run`/ULID, `reseed_from_events`) — `spec/chronicle/ids_spec.cr`
+- [x] Clock — `Chronicle::Clock` + `WallClock`/`FrozenClock`/`TickingClock` — `spec/chronicle/clock_spec.cr`
+- [x] Cypher subset — `Chronicle.parse`/`Pattern`/`PatternMatcher`/
+      `UnsupportedPatternError` — `spec/chronicle/patterns_parser_spec.cr`, `patterns_matcher_spec.cr`
+- [x] JSON comparison — `Chronicle::JsonCompare` (numeric-aware equality, ordered
       comparisons, `in?`, data parsing) — shared by matcher + where predicate
-- [x] Frame value type — `Clarity::Frame` + `FrameStack` — `spec/clarity/frame_spec.cr`
-- [x] Behaviors — `Clarity::BehaviorRunner` (subscription, priority, fan-out) — `spec/clarity/behavior_runner_spec.cr`
+- [x] Frame value type — `Chronicle::Frame` + `FrameStack` — `spec/chronicle/frame_spec.cr`
+- [x] Behaviors — `Chronicle::BehaviorRunner` (subscription, priority, fan-out) — `spec/chronicle/behavior_runner_spec.cr`
 - [x] Session store, telemetry, effect artifacts, tool cache/permissions, approval,
-      content hashing — `spec/clarity/*_spec.cr`
+      content hashing — `spec/chronicle/*_spec.cr`
 
 ## Phase 1 — Graph write/emit surface (top structural drift)
 
 The single largest drift finding: `activegraph.core.graph.Graph` maps to
-`Clarity::GraphProjection`, but the Crystal side has only the read surface.
+`Chronicle::GraphProjection`, but the Crystal side has only the read surface.
 Upstream `Graph` is the write facade that owns the log + projection + store and
-emits events; Clarity currently builds projections by folding events manually.
+emits events; Chronicle currently builds projections by folding events manually.
 From `plans/generated/parity/python/parity.tsv`:
 
 - [x] `add_object(type, data, actor:)` — builds `object.created` event, stamps
@@ -114,19 +114,19 @@ From `plans/generated/parity/python/parity.tsv`:
 - [x] `replay_event`/`replayed_ids` (silent replay reconstruction) — `core/graph.py`
       (replay path exists via `ReplayEngine`; `replayed_ids` tracking is N/A)
 - [x] JSON serialization on `GraphObject`/`GraphRelation` via `JSON::Serializable`
-      (data blob uses shared `Clarity::RawJSON` converter) — `core/graph.py`
+      (data blob uses shared `Chronicle::RawJSON` converter) — `core/graph.py`
 - [x] Provenance stamping invariant: behaviors may not inject `provenance` via
-      data (raise `Clarity::ReservedFieldError`) — `core/graph.py`
+      data (raise `Chronicle::ReservedFieldError`) — `core/graph.py`
 
 ## Phase 2 — Persistence backends
 
-- [x] `Clarity::EventStore` interface + `MemoryEventStore` + `SQLiteEventStore`
+- [x] `Chronicle::EventStore` interface + `MemoryEventStore` + `SQLiteEventStore`
       (append/iter_events/get_event/count/truncate_after/close); appends reject
       duplicate ids with `DuplicateEventError`
 - [x] EventStore conformance suite (mirror `store/conformance.py`) run against
-      Memory + SQLite backends — `spec/clarity/event_store_conformance.cr`
-- [x] Store URL parsing — `Clarity.parse_store_url`/`StoreURL`/`InvalidStoreURL`
-      (sqlite:///, sqlite:////, postgres://, postgresql://) — `spec/clarity/store_url_spec.cr`
+      Memory + SQLite backends — `spec/chronicle/event_store_conformance.cr`
+- [x] Store URL parsing — `Chronicle.parse_store_url`/`StoreURL`/`InvalidStoreURL`
+      (sqlite:///, sqlite:////, postgres://, postgresql://) — `spec/chronicle/store_url_spec.cr`
 - [-] Postgres event store — deferred (needs `pg` shard + live server; the
       `EventStore` protocol is the path for adding it)
 - [-] Retention/compaction (`store/retention.py`) — deferred: offline snapshot +
@@ -136,23 +136,23 @@ From `plans/generated/parity/python/parity.tsv`:
 
 ## Phase 3 — Runtime execution surface
 
-`activegraph.runtime.runtime.Runtime` maps to `Clarity::LogAgent`; the drift
+`activegraph.runtime.runtime.Runtime` maps to `Chronicle::LogAgent`; the drift
 list shows the Crystal side is missing most of the run loop and effect emission.
 From `parity.tsv` (`missing_contains` on Runtime):
 
 - [x] Bounded run modes — `run_quantum(prompt, steps)` / `run_until_idle(prompt)`
-      via a step-capped `drive_loop` — `runtime/runtime.py` — `spec/clarity/runtime_phase3_spec.cr`
+      via a step-capped `drive_loop` — `runtime/runtime.py` — `spec/chronicle/runtime_phase3_spec.cr`
 - [x] Budget — `budget_remaining` / `start_budget` — `runtime/budget.py`
-- [x] Tool lookup — `get_tool(name)` — `spec/clarity/runtime_phase3_spec.cr`
+- [x] Tool lookup — `get_tool(name)` — `spec/chronicle/runtime_phase3_spec.cr`
 - [x] Approvals — `pending_approvals` / `approve` / `add_pending_approval` —
-      `runtime/runtime.py` — `spec/clarity/runtime_phase3_spec.cr`
+      `runtime/runtime.py` — `spec/chronicle/runtime_phase3_spec.cr`
 - [x] Authority — `authority_ceiling` / `set_authority_ceiling` /
       `evaluate_capability_authority` (read < write < admin < root) —
-      `runtime/authority.py` — `spec/clarity/runtime_phase3_spec.cr`
+      `runtime/authority.py` — `spec/chronicle/runtime_phase3_spec.cr`
 - [x] Trace/status output — `export_trace` (structured event JSON) / `status`
-      — `runtime/runtime.py`, `trace/*` — `spec/clarity/runtime_phase3_spec.cr`
+      — `runtime/runtime.py`, `trace/*` — `spec/chronicle/runtime_phase3_spec.cr`
 - [x] Structured effect events — `llm.requested/responded/failed`,
-      `tool.requested/responded` recorded around invocation (via `Clarity::AgentHook`
+      `tool.requested/responded` recorded around invocation (via `Chronicle::AgentHook`
       for the runner path and `Runtime` for the manual path)
 - [ ] Run loop — `run_goal`/`run_until`/`run_quantum`/`run_until_idle` full parity —
       `run_quantum`/`run_until_idle` done; `run_goal` naming deferred
@@ -167,8 +167,8 @@ From `parity.tsv` (`missing_contains` on Runtime):
 
 ## Phase 4 — LLM layer + replay cache
 
-- [x] Content-addressed store — `Clarity::EffectArtifactStore`/`LLMCache` base
-      — `spec/clarity/effect_artifact_spec.cr`, `llm_cache_spec.cr`
+- [x] Content-addressed store — `Chronicle::EffectArtifactStore`/`LLMCache` base
+      — `spec/chronicle/effect_artifact_spec.cr`, `llm_cache_spec.cr`
 - [x] Wire the LLM cache into replay/fork: `LLMCache.from_events` harvests
       `llm.responded` (via `caused_by` → `llm.requested` request_hash), skips
       error-shaped attempts, and `Runtime.load(replay_llm_cache: true)`
@@ -176,9 +176,9 @@ From `parity.tsv` (`missing_contains` on Runtime):
       and serves hits with `cache_hit: true` recorded; provider successes are
       recorded back into the cache. `replay_strict: true` raises
       `ReplayDivergenceError` on prompt-hash mismatch — `llm/cache.py`,
-      `runtime.py` — `spec/clarity/llm_cache_wiring_spec.cr`
+      `runtime.py` — `spec/chronicle/llm_cache_wiring_spec.cr`
 - [-] Provider adapters (Anthropic/OpenAI/native structured output) — deferred;
-      `Clarity::ModelExecutor` already routes through registered executors —
+      `Chronicle::ModelExecutor` already routes through registered executors —
       `llm/anthropic.py`, `llm/openai.py`, `llm/native.py`
 - [-] Wire protocol (request/response types, canonical serialization,
       `prompt_hash`) — deferred; the effect/llm event model already carries
@@ -187,47 +187,47 @@ From `parity.tsv` (`missing_contains` on Runtime):
 
 ## Phase 5 — Tools
 
-- [x] Tool base + registry — `Clarity::Tool` (name, description, callable),
-      `Clarity::ToolRegistry` (@tool-style snapshot/clear) — `tools/base.py`,
-      `tools/decorators.py` — `spec/clarity/tools_spec.cr`
-- [x] `graph_query` tool — `Clarity.make_graph_query_tool(graph)` bound to a
+- [x] Tool base + registry — `Chronicle::Tool` (name, description, callable),
+      `Chronicle::ToolRegistry` (@tool-style snapshot/clear) — `tools/base.py`,
+      `tools/decorators.py` — `spec/chronicle/tools_spec.cr`
+- [x] `graph_query` tool — `Chronicle.make_graph_query_tool(graph)` bound to a
       `GraphProjection`, returns object refs with limit/truncated —
-      `tools/graph_query.py` — `spec/clarity/tools_spec.cr`
+      `tools/graph_query.py` — `spec/chronicle/tools_spec.cr`
 - [x] Wire tools through the runtime — `Runtime` accepts `tools`; `drive_model`
       passes tool names as `allowed_tools`; `drive_tools` invokes tools by name,
       records `tool.requested`/`tool.responded`, and serves `ToolCache` hits;
       `Runtime.load(replay_tool_cache: true)` pre-populates the cache —
-      `tools/cache.py` — `spec/clarity/tools_spec.cr`
+      `tools/cache.py` — `spec/chronicle/tools_spec.cr`
 - [-] `web_fetch` tool — deferred (external HTTP at the platform edge) —
       `tools/web_fetch.py`
-- [x] Tool result caching via the existing `Clarity::ToolCache` (recorded replay)
+- [x] Tool result caching via the existing `Chronicle::ToolCache` (recorded replay)
 
 ## Phase 6 — Sinks + observability
 
-- [x] Sink base + bounded FIFO + overflow policy — `Clarity::Sink`, `SinkHandle`,
+- [x] Sink base + bounded FIFO + overflow policy — `Chronicle::Sink`, `SinkHandle`,
       `OverflowPolicy` (drop_newest/drop_oldest/fail_sink), `SinkState`,
-      `DeliveryContext`, `SinkStatus` — `sinks/base.py` — `spec/clarity/sinks_spec.cr`
+      `DeliveryContext`, `SinkStatus` — `sinks/base.py` — `spec/chronicle/sinks_spec.cr`
 - [x] Graph sink surface (completes Phase 1) — `GraphProjection#add_sink`/
       `remove_sink`/`flush_sinks`/`sink_statuses`; `emit` offers to sinks before
       listeners — `sinks/dispatch.py`
-- [x] Testing sink + JSONL sink — `Clarity::TestingSink`, `Clarity::JSONLSink` —
-      `sinks/testing.py`, `sinks/jsonl.py` — `spec/clarity/sinks_spec.cr`
+- [x] Testing sink + JSONL sink — `Chronicle::TestingSink`, `Chronicle::JSONLSink` —
+      `sinks/testing.py`, `sinks/jsonl.py` — `spec/chronicle/sinks_spec.cr`
 - [x] Sink conformance cases (order, unicode round-trip, bounded overflow,
-      status, remove) — `spec/clarity/sinks_spec.cr`
+      status, remove) — `spec/chronicle/sinks_spec.cr`
 - [-] Observability dashboards (metrics, status, logging, prometheus, otel) —
       deferred — `observability/*`
 - [-] Sink conformance as a reusable mixin — deferred (covered inline in sinks_spec)
 
 ## Phase 7 — Packs + policy
 
-- [x] Pack bundle — `Clarity::Pack` (name/version validation, object_types,
-      relation_types, tools, policies) — `packs/__init__.py` — `spec/clarity/packs_spec.cr`
-- [x] Per-behavior policy — `Clarity::Policy` (can_create, can_create_relation,
+- [x] Pack bundle — `Chronicle::Pack` (name/version validation, object_types,
+      relation_types, tools, policies) — `packs/__init__.py` — `spec/chronicle/packs_spec.cr`
+- [x] Per-behavior policy — `Chronicle::Policy` (can_create, can_create_relation,
       can_call_tool, requires_approval) — `policy.py`
 - [x] Runtime load — `Runtime#load_pack` (registers pack tools, records
       `pack.loaded`, `loaded_packs`) — `runtime/runtime.py`
 - [x] Policy approval routing — `tool_requires_approval?`; `invoke_tool` queues
-      a pending approval instead of executing — `spec/clarity/packs_spec.cr`
+      a pending approval instead of executing — `spec/chronicle/packs_spec.cr`
 - [-] Pack manifest/loader/scaffold (TOML, content hashing, `verify_surface`) —
       deferred — `packs/manifest.py`, `packs/loader.py`, `packs/scaffold.py`
 - [-] Diligence pack — deferred — `packs/diligence/*`
@@ -236,11 +236,11 @@ From `parity.tsv` (`missing_contains` on Runtime):
 
 ## Phase 8 — Frames wiring
 
-- [x] `Clarity::Frame` value + `FrameStack` — `spec/clarity/frame_spec.cr`
-- [x] `frame_id : String?` on `Clarity::Event` envelope (canonical_json +
-      `EventLogCodec` round-trip) — `spec/clarity/frames_spec.cr`
+- [x] `Chronicle::Frame` value + `FrameStack` — `spec/chronicle/frame_spec.cr`
+- [x] `frame_id : String?` on `Chronicle::Event` envelope (canonical_json +
+      `EventLogCodec` round-trip) — `spec/chronicle/frames_spec.cr`
 - [x] Runtime `push_frame`/`pop_frame`/`current_frame_id` lifecycle —
-      `frame.py` — `spec/clarity/frames_spec.cr`
+      `frame.py` — `spec/chronicle/frames_spec.cr`
 - [x] Events recorded inside a frame carry `frame_id` (`chat.message`,
       `pack.loaded`, ...); `events_in_frame(frame_id)` groups them — `frame.py`
 - [-] Group frames in trace export — deferred (export_trace lists all events;
@@ -248,21 +248,21 @@ From `parity.tsv` (`missing_contains` on Runtime):
 
 ## Phase 9 — Sandbox + CLI + trace printer
 
-- [x] Trace causal chain — `Clarity::Trace.causal_chain(events, graph, object_id)`
+- [x] Trace causal chain — `Chronicle::Trace.causal_chain(events, graph, object_id)`
       walks `caused_by` back to the goal with cycle detection — `trace/causal.py`
-      — `spec/clarity/trace_spec.cr`
-- [x] CLI trace command — `clarity-cli trace --file <log> --object <id>` renders
+      — `spec/chronicle/trace_spec.cr`
+- [x] CLI trace command — `chronicle-cli trace --file <log> --object <id>` renders
       the causal chain from a recorded log — `trace/printer.py` —
-      `spec/clarity/cli_spec.cr`
+      `spec/chronicle/cli_spec.cr`
 - [-] Sandbox executor/conformance (`_child`, `executor`, `conformance`) —
       deferred — `sandbox/*`
 - [-] CLI quickstart/renderers — deferred — `cli/quickstart.py`, `cli/renderers.py`
 
 ## Phase 10 — External GraphStore backends (stretch)
 
-- [x] SQLite-backed `GraphStore` — `Clarity::SQLiteGraphStore` stores entities as
+- [x] SQLite-backed `GraphStore` — `Chronicle::SQLiteGraphStore` stores entities as
       JSON::Serializable rows and passes the full conformance suite —
-      `spec/clarity/graph_store_sqlite_spec.cr`
+      `spec/chronicle/graph_store_sqlite_spec.cr`
 - [x] `graph_store=` injection seam — `GraphProjection.new(store:)` already
       accepts any `GraphStore` (Phase 5)
 - [-] Postgres / FalkorDB GraphStore pushdown — deferred — `store/postgres.py`,
@@ -275,14 +275,14 @@ From `parity.tsv` (`missing_contains` on Runtime):
 
 - **Ordered comparisons on incomparable types:** matching activegraph, ordered
   comparisons (`<`, `>`, `<=`, `>=`) raise on mixed/incomparable non-nil values.
-  Clarity raises `Clarity::PatternTypeError` (analogous to Python's `TypeError`).
+  Chronicle raises `Chronicle::PatternTypeError` (analogous to Python's `TypeError`).
   Nil operands still evaluate to no-match. Residual: Python compares arrays
-  lexicographically; Clarity raises for array operands. Equality ops use
+  lexicographically; Chronicle raises for array operands. Equality ops use
   numeric-aware comparison (`3 == 3.0` is true).
 - **`objects(where:)` ordered ops guard both operands.** Upstream guards only
-  `a` (`a is not None and a > b`); Clarity returns no-match for any nil operand,
+  `a` (`a is not None and a > b`); Chronicle returns no-match for any nil operand,
   consistent with the pattern matcher.
-- **JSON storage shape:** upstream `Object.data` is a Python dict; Clarity stores
+- **JSON storage shape:** upstream `Object.data` is a Python dict; Chronicle stores
   it as a canonical JSON `String`. WHERE/path semantics are identical.
 - **Time/randomness allowed in the core.** Only routing must be deterministic.
   `IDGen#run`/ULID uses wall clock + `Random::Secure`; the core I/O-safety gate

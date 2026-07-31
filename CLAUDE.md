@@ -1,6 +1,6 @@
-# Clarity
+# Chronicle
 
-Clarity is a Crystal library scaffold.
+Chronicle is a Crystal library scaffold.
 
 ## Commands
 
@@ -38,7 +38,7 @@ make clean
 ## Conventions
 
 - Production code belongs in `src/`; tests belong in `spec/`.
-- Define the library version as `Clarity::VERSION`.
+- Define the library version as `Chronicle::VERSION`.
 
 ## Deterministic Routing Guidance
 
@@ -51,7 +51,7 @@ test; DeepWiki is guidance, not the source of truth.
 
 ### Combined Router and Log Principle
 
-Clarity combines two designs:
+Chronicle combines two designs:
 
 - **Smista:** the router, not a channel client, owns deterministic
   classification, policy enforcement, provider/model selection, and ordered

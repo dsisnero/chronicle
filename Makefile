@@ -19,7 +19,7 @@ example:
 	crystal examples/deepseek_routing.cr
 
 chat:
-	crystal run src/clarity/cli.cr -- chat
+	crystal run src/chronicle/cli.cr -- chat
 
 clean:
 	find temp -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true

@@ -2,7 +2,7 @@
 
 ## Decision
 
-Clarity will use two related, deliberately separate contracts:
+Chronicle will use two related, deliberately separate contracts:
 
 1. **The event log is the durable agent protocol.** It is the authoritative,
    ordered history for runs, replay, fork, audit, and reconstruction.
@@ -57,7 +57,7 @@ cross-channel contract.
 Names are provisional until the Phase 0 tests establish the API.
 
 ```crystal
-module Clarity
+module Chronicle
   module Channel
     alias Command = SendMessage | Approve | Reject | Cancel | PreviewRoute
 
@@ -164,7 +164,7 @@ repeated network submission can be safely deduplicated.
 caused by that route receipt, and must contain the selected provider/model,
 request hash, and route-receipt ID. On an eligible fallback, emit a new route
 receipt or explicit `routing.fallback_selected` event before the new request;
-never silently swap the model. This closes a current gap: Clarity presently
+never silently swap the model. This closes a current gap: Chronicle presently
 previews a route but does not yet make the resulting target control provider
 execution.
 
@@ -206,7 +206,7 @@ duplicating routing logic:
    `ask` becomes an `approval.proposed` event and `deny` becomes an audited
    refusal, not a channel-only dialog.
 
-The precedence adopted from existing Clarity/Smista guidance remains:
+The precedence adopted from existing Chronicle/Smista guidance remains:
 explicit model override (if policy-valid), lower rule priority, greater
 specificity, then declaration order; privacy restrictions and tool permissions
 can only narrow at each later layer. All of those inputs and the outcome must

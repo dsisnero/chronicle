@@ -1,4 +1,4 @@
-require "../src/clarity"
+require "../src/chronicle"
 
 # A platform-edge executor that fulfills model EffectRequests via crig.
 # In a production system this would be part of CMLPlatformEdge; here it's
@@ -23,7 +23,7 @@ end
 
 def run_example
   puts "=" * 60
-  puts "Clarity: Deterministic Routing + DeepSeek Integration"
+  puts "Chronicle: Deterministic Routing + DeepSeek Integration"
   puts "=" * 60
 
   # 1. Create DeepSeek client
@@ -37,7 +37,7 @@ def run_example
 
   # 2. Load routing policy
   config_path = File.join(__DIR__, "routing_config.yml")
-  policy = Clarity::Routing::Config.from_file(config_path)
+  policy = Chronicle::Routing::Config.from_file(config_path)
   available = policy.configured_targets
 
   puts "\nAvailable targets:"
@@ -45,12 +45,12 @@ def run_example
 
   # 3. Test different intents
   test_cases = [
-    {text: "Hello, what can you do?", intent: Clarity::Routing::Intent::Chat},
-    {text: "Review this code for SQL injection vulnerabilities", intent: Clarity::Routing::Intent::Review},
-    {text: "Plan the architecture for a microservice deployment", intent: Clarity::Routing::Intent::Plan},
+    {text: "Hello, what can you do?", intent: Chronicle::Routing::Intent::Chat},
+    {text: "Review this code for SQL injection vulnerabilities", intent: Chronicle::Routing::Intent::Review},
+    {text: "Plan the architecture for a microservice deployment", intent: Chronicle::Routing::Intent::Plan},
   ]
 
-  router = Clarity::Routing::Router.new
+  router = Chronicle::Routing::Router.new
   executor = ModelEffectExecutor.new(client)
 
   test_cases.each do |test|
@@ -58,12 +58,12 @@ def run_example
     puts "Request: \"#{test[:text]}\""
     puts "Intent:  #{test[:intent]}"
 
-    request = Clarity::Routing::Request.new(
+    request = Chronicle::Routing::Request.new(
       test[:text],
       test[:intent],
       nil,
       [] of String,
-      [] of Clarity::Routing::ContextCandidate,
+      [] of Chronicle::Routing::ContextCandidate,
       nil,
       50,
     )

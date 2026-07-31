@@ -15,7 +15,7 @@ describe "core I/O safety" do
     # File.match? is a pure glob-pattern matcher (no filesystem I/O).
     exempt_file_usages = {"File.match?"}
 
-    core_paths = Dir.glob("src/clarity/**/*.cr").reject do |path|
+    core_paths = Dir.glob("src/chronicle/**/*.cr").reject do |path|
       path.ends_with?("platform_edge.cr") || path.ends_with?("routing_config.cr") || path.ends_with?("cli.cr") || path.ends_with?("session_store.cr") || path.ends_with?("config.cr")
     end
 

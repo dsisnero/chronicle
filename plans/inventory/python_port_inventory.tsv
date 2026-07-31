@@ -1,32 +1,31 @@
-source_symbol	target_symbol	status	test_refs	notes
-activegraph.core.clock.Clock	Clarity::Clock	ported	spec/clarity/clock_spec.cr	Abstract clock interface (CONTRACT #8)
-activegraph.core.clock.WallClock	Clarity::WallClock	ported	spec/clarity/clock_spec.cr	Real wall-clock UTC
-activegraph.core.clock.FrozenClock	Clarity::FrozenClock	ported	spec/clarity/clock_spec.cr	Fixed timestamp for test determinism
-activegraph.core.clock.TickingClock	Clarity::TickingClock	ported	spec/clarity/clock_spec.cr	Monotonically advancing clock
-activegraph.core.event.Event	Clarity::Event	ported	spec/clarity/event_spec.cr	Immutable event with id, type, payload, actor, caused_by, timestamp
-activegraph.core.graph.Graph	Clarity::GraphProjection	ported	spec/clarity/graph_projection_spec.cr	Projection of objects+relations from event log; query API objects/relations/get_relations/neighborhood (graph_query_spec.cr)
-activegraph.core.graph.Object	Clarity::GraphObject	ported	spec/clarity/graph_projection_spec.cr	Typed entity with id, type, data (JSON string), version, provenance
-activegraph.core.graph.Relation	Clarity::GraphRelation	ported	spec/clarity/graph_projection_spec.cr	Typed edge with from_id, to_id, type, provenance
-activegraph.core.graph.evaluate_where / _eval_where_on_object	Clarity::GraphProjection#objects(where:)	ported	spec/clarity/graph_query_spec.cr	Dict where predicate: equality + > < >= <= == != in not in over data fields
-activegraph.core.patch.Patch	Clarity::Patch / PatchState	ported	spec/clarity/patch_spec.cr	Patch lifecycle: proposed→applied|rejected with expected_version; apply handles patch.* events
-activegraph.core.view.View	Clarity::View / ViewSpec	ported	spec/clarity/view_spec.cr	Scoped graph subsets for behaviors (around, depth, types)
-activegraph.core.ids.IDGen	Clarity::IDGen	ported	spec/clarity/ids_spec.cr	Global monotonic object counter (task#1, task#2, claim#3) + evt_/rel_/patch_/frame_ + run/ULID + reseed_from_events
-activegraph.core.graph_store.GraphStore	Clarity::GraphStore	ported	spec/clarity/graph_store_conformance.cr	Abstract backend: put/get/remove/all × objects/relations/patches + query hooks + lifecycle
-activegraph.core.graph_store.InMemoryGraphStore	Clarity::InMemoryGraphStore	ported	spec/clarity/graph_store_spec.cr	Dict-backed default backend; passes full conformance suite
-activegraph.core.graph_store.ChainMatch	Clarity::ChainMatch	ported	spec/clarity/patterns_matcher_spec.cr	One structural chain match (objects + relations)
-activegraph.core.graph_store.GraphStore.match_chain	Clarity::GraphStore#match_chain	ported	spec/clarity/graph_store_conformance.cr	Homomorphic DFS structural chain walk; node {prop:value} + WHERE layered by matcher
-activegraph.store.graph_conformance.GraphStoreConformance	Clarity::GraphStoreConformance (spec mixin)	ported	spec/clarity/graph_store_conformance.cr	Reusable backend contract suite; InMemory passes all cases
-activegraph.runtime.runtime.Runtime	Clarity::LogAgent	partial	spec/clarity/log_agent_spec.cr	Event loop + behavior execution; missing frame/patch/view integration
-activegraph.runtime.diff.compute_diff	Clarity::GraphProjection#diff	ported	spec/clarity/graph_projection_spec.cr	Structural diff between graph projections
-activegraph.llm.cache.LLMCache	Clarity::EffectArtifactStore	partial	spec/clarity/effect_artifact_spec.cr	Content-addressed cache; not wired into replay/fork yet
+# source_symbol	target_symbol	status	test_refs	notes
+activegraph.core.clock.Clock	Chronicle::Clock	ported	spec/chronicle/clock_spec.cr	Abstract clock interface (CONTRACT #8)
+activegraph.core.clock.WallClock	Chronicle::WallClock	ported	spec/chronicle/clock_spec.cr	Real wall-clock UTC
+activegraph.core.clock.FrozenClock	Chronicle::FrozenClock	ported	spec/chronicle/clock_spec.cr	Fixed timestamp for test determinism
+activegraph.core.clock.TickingClock	Chronicle::TickingClock	ported	spec/chronicle/clock_spec.cr	Monotonically advancing clock
+activegraph.core.event.Event	Chronicle::Event	ported	spec/chronicle/event_spec.cr	Immutable event with id, type, payload, actor, caused_by, timestamp
+activegraph.core.graph.Graph	Chronicle::GraphProjection	ported	spec/chronicle/graph_projection_spec.cr	Projection of objects+relations from event log; query API objects/relations/get_relations/neighborhood (graph_query_spec.cr)
+activegraph.core.graph.Object	Chronicle::GraphObject	ported	spec/chronicle/graph_projection_spec.cr	Typed entity with id, type, data (JSON string), version, provenance
+activegraph.core.graph.Relation	Chronicle::GraphRelation	ported	spec/chronicle/graph_projection_spec.cr	Typed edge with from_id, to_id, type, provenance
+activegraph.core.graph.evaluate_where / _eval_where_on_object	Chronicle::GraphProjection#objects(where:)	ported	spec/chronicle/graph_query_spec.cr	Dict where predicate: equality + > < >= <= == != in not in over data fields
+activegraph.core.patch.Patch	Chronicle::Patch / PatchState	ported	spec/chronicle/patch_spec.cr	Patch lifecycle: proposed→applied|rejected with expected_version; apply handles patch.* events
+activegraph.core.view.View	Chronicle::View / ViewSpec	ported	spec/chronicle/view_spec.cr	Scoped graph subsets for behaviors (around, depth, types)
+activegraph.core.ids.IDGen	Chronicle::IDGen	ported	spec/chronicle/ids_spec.cr	Global monotonic object counter (task#1, task#2, claim#3) + evt_/rel_/patch_/frame_ + run/ULID + reseed_from_events
+activegraph.core.graph_store.GraphStore	Chronicle::GraphStore	ported	spec/chronicle/graph_store_conformance.cr	Abstract backend: put/get/remove/all × objects/relations/patches + query hooks + lifecycle
+activegraph.core.graph_store.InMemoryGraphStore	Chronicle::InMemoryGraphStore	ported	spec/chronicle/graph_store_spec.cr	Dict-backed default backend; passes full conformance suite
+activegraph.core.graph_store.ChainMatch	Chronicle::ChainMatch	ported	spec/chronicle/patterns_matcher_spec.cr	One structural chain match (objects + relations)
+activegraph.core.graph_store.GraphStore.match_chain	Chronicle::GraphStore#match_chain	ported	spec/chronicle/graph_store_conformance.cr	Homomorphic DFS structural chain walk; node {prop:value} + WHERE layered by matcher
+activegraph.store.graph_conformance.GraphStoreConformance	Chronicle::GraphStoreConformance (spec mixin)	ported	spec/chronicle/graph_store_conformance.cr	Reusable backend contract suite; InMemory passes all cases
+activegraph.runtime.runtime.Runtime	Chronicle::LogAgent	partial	spec/chronicle/log_agent_spec.cr	Event loop + behavior execution; missing frame/patch/view integration
+activegraph.runtime.diff.compute_diff	Chronicle::GraphProjection#diff	ported	spec/chronicle/graph_projection_spec.cr	Structural diff between graph projections
+activegraph.llm.cache.LLMCache	Chronicle::EffectArtifactStore	partial	spec/chronicle/effect_artifact_spec.cr	Content-addressed cache; not wired into replay/fork yet
 activegraph.frame.Frame	-	missing	-	Bounded sub-context: frame_id on events, push/pop lifecycle
-activegraph.core.graph.emit	Clarity::GraphProjection#apply	ported	spec/clarity/graph_projection_spec.cr	Event→state projection
-activegraph.runtime.behavior_graph	Clarity::BehaviorRunner	ported	spec/clarity/behavior_runner_spec.cr	Behavior subscription and scheduling
-activegraph.store.base.EventStore	Clarity::EventLog	ported	spec/clarity/event_log_spec.cr	Append-only event storage
-activegraph.store.serde	Clarity::EventLogCodec	ported	spec/clarity/event_log_codec_spec.cr	JSON serialization/deserialization
-activegraph.runtime.replay	Clarity::ReplayEngine	ported	spec/clarity/replay_spec.cr	Strict/permissive replay modes
-activegraph.runtime.patterns.parse	Clarity.parse	ported	spec/clarity/patterns_parser_spec.cr	Cypher-subset entry point (rev 8aedb1866cf5dce056af97529152ffd6f468a1ed)
-activegraph.runtime.patterns.Pattern / _Parser	Clarity::Pattern / PatternParser	ported	spec/clarity/patterns_parser_spec.cr	Recursive-descent parser for the locked v0.7 subset; refused keywords raise UnsupportedPatternError
-activegraph.runtime.patterns.PatternMatcher	Clarity::PatternMatcher	ported	spec/clarity/patterns_matcher_spec.cr	Matches (event, graph) → Match list; node prop equality, var consistency, WHERE eval
-activegraph.runtime.patterns.UnsupportedPatternError	Clarity::UnsupportedPatternError	ported	spec/clarity/patterns_parser_spec.cr	refused_feature / syntax_error factories; < PatternError < DomainError
-activegraph.core.graph_store.GraphStore.match_chain	Clarity::GraphProjection#match_chain	ported	spec/clarity/patterns_matcher_spec.cr	DFS structural chain walk; node {prop:value} + WHERE layered by matcher
+activegraph.core.graph.emit	Chronicle::GraphProjection#apply	ported	spec/chronicle/graph_projection_spec.cr	Event→state projection
+activegraph.runtime.behavior_graph	Chronicle::BehaviorRunner	ported	spec/chronicle/behavior_runner_spec.cr	Behavior subscription and scheduling
+activegraph.store.base.EventStore	Chronicle::EventLog	ported	spec/chronicle/event_log_spec.cr	Append-only event storage
+activegraph.store.serde	Chronicle::EventLogCodec	ported	spec/chronicle/event_log_codec_spec.cr	JSON serialization/deserialization
+activegraph.runtime.replay	Chronicle::ReplayEngine	ported	spec/chronicle/replay_spec.cr	Strict/permissive replay modes
+activegraph.runtime.patterns.parse	Chronicle.parse	ported	spec/chronicle/patterns_parser_spec.cr	Cypher-subset entry point (rev 8aedb1866cf5dce056af97529152ffd6f468a1ed)
+activegraph.runtime.patterns.Pattern / _Parser	Chronicle::Pattern / PatternParser	ported	spec/chronicle/patterns_parser_spec.cr	Recursive-descent parser for the locked v0.7 subset; refused keywords raise UnsupportedPatternError
+activegraph.runtime.patterns.PatternMatcher	Chronicle::PatternMatcher	ported	spec/chronicle/patterns_matcher_spec.cr	Matches (event, graph) → Match list; node prop equality, var consistency, WHERE eval
+activegraph.runtime.patterns.UnsupportedPatternError	Chronicle::UnsupportedPatternError	ported	spec/chronicle/patterns_parser_spec.cr	refused_feature / syntax_error factories; < PatternError < DomainError

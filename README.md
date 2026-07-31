@@ -1,6 +1,6 @@
-# Clarity
+# Chronicle
 
-Clarity is a Crystal library scaffold.
+Chronicle is a Crystal library scaffold.
 
 ## Installation
 
@@ -11,7 +11,7 @@ Add this shard to your application's `shard.yml`, then run `shards install`.
 Require the library from Crystal code:
 
 ```crystal
-require "clarity"
+require "chronicle"
 ```
 
 ## Development
@@ -21,7 +21,7 @@ See [the development guide](docs/development.md) for local commands and the
 
 ## Contributing
 
-1. Fork it (<https://github.com/dsisnero/clarity/fork>)
+1. Fork it (<https://github.com/dsisnero/chronicle/fork>)
 2. Create your feature branch (`git checkout -b my-new-feature`)
 3. Commit your changes (`git commit -am 'Add some feature'`)
 4. Push to the branch (`git push origin my-new-feature`)

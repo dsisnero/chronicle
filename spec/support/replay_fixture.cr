@@ -1,7 +1,7 @@
 module ReplayFixture
   extend self
 
-  def events : Array(Clarity::Event)
+  def events : Array(Chronicle::Event)
     goal = event(
       sequence: 1_u64,
       id: "evt_000001",
@@ -32,8 +32,8 @@ module ReplayFixture
     type : String,
     payload : String,
     caused_by : String? = nil,
-  ) : Clarity::Event
-    Clarity::Event.new(
+  ) : Chronicle::Event
+    Chronicle::Event.new(
       schema_version: 1_u16,
       sequence: sequence,
       id: id,

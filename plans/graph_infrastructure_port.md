@@ -1,9 +1,9 @@
 # Graph Infrastructure Port Plan
 
 Port the remaining activegraph *graph infrastructure* — the `GraphStore`
-backend abstraction, the graph query API, and the `IDGen` — into Clarity.
+backend abstraction, the graph query API, and the `IDGen` — into Chronicle.
 This is the layer underneath the pattern matcher already ported in
-`src/clarity/patterns.cr`.
+`src/chronicle/patterns.cr`.
 
 ## Source of Truth
 
@@ -22,21 +22,21 @@ behavior against the pinned source files:
 - `activegraph/store/falkordb.py` — `FalkorDBGraphStore` (pushdown example)
 - `activegraph/core/graph.py` — `objects/relations/get_relations/neighborhood/objects_in_types` + `evaluate_where`/`_eval_where_on_object`
 
-## Current State (Clarity)
+## Current State (Chronicle)
 
 - [x] Pinned upstream checkout at `vendor/activegraph/`
-- [x] `Clarity::GraphObject`, `Clarity::GraphRelation`, `Clarity::Patch` structs in `graph_projection.cr`
-- [x] `Clarity::GraphProjection#apply` (event → projection) and `#diff`
-- [x] `Clarity::ChainMatch` and `Clarity::GraphProjection#match_chain` (InMemory default walk)
-- [x] `Clarity.parse` / `Clarity::PatternMatcher` (Cypher subset)
+- [x] `Chronicle::GraphObject`, `Chronicle::GraphRelation`, `Chronicle::Patch` structs in `graph_projection.cr`
+- [x] `Chronicle::GraphProjection#apply` (event → projection) and `#diff`
+- [x] `Chronicle::ChainMatch` and `Chronicle::GraphProjection#match_chain` (InMemory default walk)
+- [x] `Chronicle.parse` / `Chronicle::PatternMatcher` (Cypher subset)
 - [x] `GraphProjection#patch_object`, `#propose_patch`, `#apply_patch`, `#reject_patch`, `#build_view`
 
 ## Missing (to port)
 
-- [x] `Clarity::IDGen` (objects/events/relations/patches/frames/runs + `reseed_from_events`)
-- [x] `Clarity::GraphStore` abstract backend (upsert/get/remove/enumerate + query hooks + lifecycle)
-- [x] `Clarity::InMemoryGraphStore` (default backend)
-- [x] `Clarity::GraphStoreConformance` spec suite (pins backend contracts)
+- [x] `Chronicle::IDGen` (objects/events/relations/patches/frames/runs + `reseed_from_events`)
+- [x] `Chronicle::GraphStore` abstract backend (upsert/get/remove/enumerate + query hooks + lifecycle)
+- [x] `Chronicle::InMemoryGraphStore` (default backend)
+- [x] `Chronicle::GraphStoreConformance` spec suite (pins backend contracts)
 - [x] Graph query API on `GraphProjection`: `get_relation`, `objects(type:, where:)`,
       `relations(source:, target:, type:)`, `get_relations`, `objects_in_types`,
       `has_object_of_type`, `neighborhood`
@@ -54,7 +54,7 @@ behavior against the pinned source files:
 
 ## Phase 1 — IDGen
 
-Port `activegraph/core/ids.py` as `Clarity::IDGen` in `src/clarity/ids.cr`.
+Port `activegraph/core/ids.py` as `Chronicle::IDGen` in `src/chronicle/ids.cr`.
 
 ID contracts (per-graph monotonic counters):
 - `object(type)` → `"#{type}##{n}"` — **global** counter, not per-type
@@ -66,24 +66,24 @@ ID contracts (per-graph monotonic counters):
 - `reseed_from_events(events)` → set counters past the highest id seen
   (regex `^[a-zA-Z]+_\d+$` for sequence ids; `^[^#]+#\d+$` for object ids)
 
-**Note:** `run`/ULID uses wall-clock + secure randomness. Clarity permits time
+**Note:** `run`/ULID uses wall-clock + secure randomness. Chronicle permits time
 and randomness in the core — only routing must stay deterministic — so this
 mirrors upstream. (The core I/O safety gate forbids only direct I/O and
 process capabilities.)
 
 Tasks:
-- [x] Write `spec/clarity/ids_spec.cr` (red) porting upstream `test_ids.py` behavior:
+- [x] Write `spec/chronicle/ids_spec.cr` (red) porting upstream `test_ids.py` behavior:
       monotonic per-kind counters, global object counter (`task#1`, `task#2`, `claim#3`),
       zero-padded event ids, reseed-from-events after replay
-- [x] Implement `Clarity::IDGen` with deterministic counters + `run`/ULID
+- [x] Implement `Chronicle::IDGen` with deterministic counters + `run`/ULID
 - [x] Relax the core I/O-safety spec and implementation.md: core may use
       clocks/randomness; only routing stays deterministic (Sans-IO boundary kept)
 - [x] Run focused spec + gates
 
 ## Phase 2 — GraphStore backend seam
 
-Port `activegraph/core/graph_store.py` as `Clarity::GraphStore` (abstract) +
-`Clarity::InMemoryGraphStore` in `src/clarity/graph_store.cr`.
+Port `activegraph/core/graph_store.py` as `Chronicle::GraphStore` (abstract) +
+`Chronicle::InMemoryGraphStore` in `src/chronicle/graph_store.cr`.
 
 Required abstract methods (per entity kind, id-keyed):
 - [x] `put_object`, `get_object`, `remove_object`, `all_objects`
@@ -111,7 +111,7 @@ Contract invariants to pin in specs:
 ## Phase 3 — GraphStoreConformance suite
 
 Port `activegraph/store/graph_conformance.py` as a reusable spec mixin
-`spec/clarity/graph_store_conformance_spec.cr` (or a shared module the
+`spec/chronicle/graph_store_conformance_spec.cr` (or a shared module the
 in-memory backend spec includes).
 
 Tasks:
@@ -131,10 +131,10 @@ and the `where` predicate evaluator.
 
 - [x] `get_relation(id)`
 - [x] `objects(type : String? = nil, where : Hash(String, JSON::Any)? = nil)`
-      — type filter pushed down, `where` evaluated in Clarity
+      — type filter pushed down, `where` evaluated in Chronicle
 - [x] `relations(source:, target:, type:)` — canonical AND filter API
 - [x] `get_relations(object_id, type, direction)` — legacy `(object_id, direction)`
-      alias; `"both"` pushes type filter and applies membership in Clarity
+      alias; `"both"` pushes type filter and applies membership in Chronicle
 - [x] `objects_in_types(types)` — used by `build_view`
 - [x] `has_object_of_type(type)`
 - [x] `neighborhood(object_id, depth = 1)` on the projection
@@ -168,7 +168,7 @@ Mirror `FalkorDBGraphStore`'s role: an external backend that overrides query
 hooks (`find_objects_in_types`, `neighborhood`, `match_chain`) with pushed-down
 queries, and proves the conformance suite keeps backends interchangeable.
 
-- [ ] `Clarity::SQLiteGraphStore` using the existing `sqlite3.cr` dependency — deferred (stretch)
+- [ ] `Chronicle::SQLiteGraphStore` using the existing `sqlite3.cr` dependency — deferred (stretch)
 - [ ] Override `match_chain`/`neighborhood` with SQL traversals (order aside) — deferred
 - [ ] Run the conformance suite against it — deferred
 - [ ] Wire an env/config switch (analogous to upstream `graph_store=` param) — deferred
@@ -198,15 +198,15 @@ queries, and proves the conformance suite keeps backends interchangeable.
 
 ## Design Notes / Resolved Decisions
 
-- Clarity splits upstream `Graph` into `EventLog` (append-only source) +
+- Chronicle splits upstream `Graph` into `EventLog` (append-only source) +
   `GraphProjection` (projection). The GraphStore seam lives on the projection
   side; `EventLog`/`EventStore` are not the same abstraction (upstream says
   losing a GraphStore is recoverable, losing the EventStore is not).
 - The `objects(where:)` predicate and the pattern matcher share the JSON
-  comparison semantics; they were unified into `Clarity::JsonCompare`
+  comparison semantics; they were unified into `Chronicle::JsonCompare`
   (`json_equal?`, `compare_json`/`ordered?`, `in?`, `object_data_hash`).
 - The upstream `where` predicate for `objects()` is a dict language distinct
-  from Cypher WHERE; ported as `Clarity::GraphProjection#objects(where:)`.
+  from Cypher WHERE; ported as `Chronicle::GraphProjection#objects(where:)`.
 - `GraphProjection` writes through its `GraphStore` in place, mirroring
   upstream `Graph` mutation semantics; replay builds a fresh projection and
   re-applies the recorded events.

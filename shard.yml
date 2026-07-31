@@ -1,14 +1,14 @@
-name: clarity
+name: chronicle
 version: 0.1.0
 
 authors:
   - Dominic Sisneros <dsisnero@gmail.com>
 
 targets:
-  clarity:
-    main: src/clarity.cr
-  clarity-cli:
-    main: src/clarity/cli.cr
+  chronicle:
+    main: src/chronicle.cr
+  chronicle-cli:
+    main: src/chronicle/cli.cr
 
 crystal: '>= 1.21.0'
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Build Clarity as a Crystal agent-runtime library whose execution history is an
+Build Chronicle as a Crystal agent-runtime library whose execution history is an
 append-only event log. The runtime derives graph state from that log, applies
 deterministic and explainable routing before any model call, and keeps network
 and operating-system effects at the edge.
@@ -11,7 +11,7 @@ This plan adapts the event-sourced, reactive-graph ideas in
 [The Log is the Agent](https://arxiv.org/html/2605.21997v1) and the
 local-first, versionable-policy approach of
 [smista.ai](https://github.com/smista-ai/smista.ai). They are design inputs,
-not dependencies or claims that Clarity implements either project.
+not dependencies or claims that Chronicle implements either project.
 
 ## Outcomes and Non-Goals
 
@@ -222,7 +222,7 @@ compares projected objects, relations, and patches—not opaque serialized state
   effect requests and results by SHA-256 payload hash. During replay, the
   store supplies recorded results without parsing `effect.responded` events.
   Deduplication is automatic (same payload → same hash → idempotent store).
-- [x] Add trace export via `tracing.cr`: `Clarity::Telemetry` emits structured
+- [x] Add trace export via `tracing.cr`: `Chronicle::Telemetry` emits structured
   `route.preview` spans with decision attributes.
 - [x] Add `log inspect` CLI: read and display events from a persisted log file.
 - [x] Add `replay` CLI: replay a log file and show reconstructed graph state.
@@ -287,11 +287,11 @@ routing:
 
 ### Differences from smista.ai
 
-Clarity omits `requires_capabilities` in the initial port. This can be
-added when the model-selection and capability systems mature. Clarity
+Chronicle omits `requires_capabilities` in the initial port. This can be
+added when the model-selection and capability systems mature. Chronicle
 uses `Float64` for `cost_limit` instead of `rust_decimal::Decimal`.
 
-Clarity's tool system follows activegraph's event-sourced pattern
+Chronicle's tool system follows activegraph's event-sourced pattern
 (tool.requested/tool.responded events, ToolCache by content hash) with
 Crig's ToolDyn/ToolServer at the platform edge for execution, rather
 than smista's client-mediated tool dispatch. Permission checking via

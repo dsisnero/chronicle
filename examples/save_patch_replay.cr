@@ -1,4 +1,4 @@
-require "../src/clarity"
+require "../src/chronicle"
 
 # Demonstrate the full event-sourcing cycle:
 # 1. Run an agent → events saved to SQLite
@@ -6,23 +6,23 @@ require "../src/clarity"
 # 3. Replay events → reconstruct graph state
 # 4. Structural diff between original and fork
 
-DB_PATH = "/tmp/_clarity_demo.db"
+DB_PATH = "/tmp/_chronicle_demo.db"
 RUN_ID  = "demo_run"
 
 def run_demo
   puts "=" * 60
-  puts "Clarity: Event-Sourced Agent — Save, Patch, Replay"
+  puts "Chronicle: Event-Sourced Agent — Save, Patch, Replay"
   puts "=" * 60
 
   # Phase 1: Create a SQLite-backed store and run an agent
   puts "\n[1] Running agent with SQLiteEventStore..."
   File.delete(DB_PATH) if File.exists?(DB_PATH)
 
-  store = Clarity::SQLiteEventStore.new(DB_PATH, RUN_ID)
-  graph = Clarity::GraphProjection.empty
+  store = Chronicle::SQLiteEventStore.new(DB_PATH, RUN_ID)
+  graph = Chronicle::GraphProjection.empty
 
   # Create objects directly (simulating what a behavior would do)
-  evt1 = Clarity::Event.new(
+  evt1 = Chronicle::Event.new(
     schema_version: 1_u16, sequence: 1_u64, id: "evt_001",
     type: "object.created", actor: "user", caused_by: nil,
     timestamp: Time.utc, payload: %({"id":"obj_001","type":"task","data":{"status":"pending","priority":"low"}}),
@@ -30,7 +30,7 @@ def run_demo
   graph = graph.apply(evt1)
   store.append(evt1)
 
-  evt2 = Clarity::Event.new(
+  evt2 = Chronicle::Event.new(
     schema_version: 1_u16, sequence: 2_u64, id: "evt_002",
     type: "object.created", actor: "user", caused_by: "evt_001",
     timestamp: Time.utc, payload: %({"id":"obj_002","type":"claim","data":{"assignee":"alice"}}),
@@ -43,7 +43,7 @@ def run_demo
   result = graph.patch_object("obj_001", %({"status":"in_progress","priority":"high"}), actor: "system")
   graph = result.graph
   # Record the patch event
-  evt3 = Clarity::Event.new(
+  evt3 = Chronicle::Event.new(
     schema_version: 1_u16, sequence: 3_u64, id: "evt_003",
     type: "patch.applied", actor: "system", caused_by: "evt_001",
     timestamp: Time.utc,
@@ -59,20 +59,20 @@ def run_demo
 
   # Phase 2: Fork the event log at sequence point 2 (before the patch)
   puts "\n[2] Forking event log at sequence 2 (before patch)..."
-  File.delete("/tmp/_clarity_demo_fork.db") if File.exists?("/tmp/_clarity_demo_fork.db")
+  File.delete("/tmp/_chronicle_demo_fork.db") if File.exists?("/tmp/_chronicle_demo_fork.db")
   fork_run_id = "fork_run"
 
   # Read original events, fork at seq 2
-  orig_store = Clarity::SQLiteEventStore.new(DB_PATH, RUN_ID)
+  orig_store = Chronicle::SQLiteEventStore.new(DB_PATH, RUN_ID)
   events = orig_store.iter_events(before: "evt_002")
   orig_store.close
 
   # Write forked events to new store
-  fork_store = Clarity::SQLiteEventStore.new("/tmp/_clarity_demo_fork.db", fork_run_id)
+  fork_store = Chronicle::SQLiteEventStore.new("/tmp/_chronicle_demo_fork.db", fork_run_id)
   events.each { |e| fork_store.append(e) }
 
   # Replay fork into a fresh graph
-  fork_graph = Clarity::GraphProjection.empty
+  fork_graph = Chronicle::GraphProjection.empty
   fork_events = fork_store.iter_events
   fork_events.each { |e| fork_graph = fork_graph.apply(e) }
   puts "  Fork has #{fork_graph.objects.size} objects"
@@ -90,9 +90,9 @@ def run_demo
 
   # Phase 4: Replay original from store and diff with fork
   puts "\n[4] Replaying original from store..."
-  replay_store = Clarity::SQLiteEventStore.new(DB_PATH, RUN_ID)
+  replay_store = Chronicle::SQLiteEventStore.new(DB_PATH, RUN_ID)
   replay_events = replay_store.iter_events
-  replay_graph = Clarity::GraphProjection.replay(replay_events)
+  replay_graph = Chronicle::GraphProjection.replay(replay_events)
   replay_store.close
 
   puts "  Replay has #{replay_graph.objects.size} objects"
@@ -109,7 +109,7 @@ def run_demo
 
   # Phase 5: Cleanup
   File.delete(DB_PATH) if File.exists?(DB_PATH)
-  File.delete("/tmp/_clarity_demo_fork.db") if File.exists?("/tmp/_clarity_demo_fork.db")
+  File.delete("/tmp/_chronicle_demo_fork.db") if File.exists?("/tmp/_chronicle_demo_fork.db")
 
   puts "\n" + "=" * 60
   puts "Done — full event-sourcing cycle demonstrated."
