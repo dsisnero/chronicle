@@ -220,10 +220,19 @@ From `parity.tsv` (`missing_contains` on Runtime):
 
 ## Phase 7 — Packs + policy
 
-- [ ] Pack loader/manifest/scaffold — `packs/loader.py`, `packs/manifest.py`, `packs/scaffold.py`
-- [ ] Diligence pack (object types, settings, tools, behaviors) — `packs/diligence/*`
-- [ ] Policy module — `policy.py`
-- [ ] Registration validation + reserved fields — `runtime/registration_errors.py`, `runtime/config_errors.py`
+- [x] Pack bundle — `Clarity::Pack` (name/version validation, object_types,
+      relation_types, tools, policies) — `packs/__init__.py` — `spec/clarity/packs_spec.cr`
+- [x] Per-behavior policy — `Clarity::Policy` (can_create, can_create_relation,
+      can_call_tool, requires_approval) — `policy.py`
+- [x] Runtime load — `Runtime#load_pack` (registers pack tools, records
+      `pack.loaded`, `loaded_packs`) — `runtime/runtime.py`
+- [x] Policy approval routing — `tool_requires_approval?`; `invoke_tool` queues
+      a pending approval instead of executing — `spec/clarity/packs_spec.cr`
+- [-] Pack manifest/loader/scaffold (TOML, content hashing, `verify_surface`) —
+      deferred — `packs/manifest.py`, `packs/loader.py`, `packs/scaffold.py`
+- [-] Diligence pack — deferred — `packs/diligence/*`
+- [-] Registration validation suite — deferred (reserved-field rejection already
+      lands in Phase 1) — `runtime/registration_errors.py`, `runtime/config_errors.py`
 
 ## Phase 8 — Frames wiring
 

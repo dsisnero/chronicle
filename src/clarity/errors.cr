@@ -54,4 +54,7 @@ module Clarity
 
   class InvalidLogEncodingError < DomainError
   end
+
+  class PackError < DomainError
+  end
 end

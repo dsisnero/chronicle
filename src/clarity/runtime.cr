@@ -10,6 +10,7 @@ module Clarity
     @execution_target_index = 0
     @approvals : ApprovalAdapter = ApprovalAdapter.new
     @authority_ceiling : String? = nil
+    @loaded_packs : Array(Pack) = [] of Pack
 
     # Action-class authority scale, lowest to highest.
     AUTHORITY_RANKS = {"read" => 0, "write" => 1, "admin" => 2, "root" => 3}
@@ -104,6 +105,35 @@ module Clarity
 
     def get_tool(name : String) : Tool?
       @tools.find { |tool| tool.name == name }
+    end
+
+    def load_pack(pack : Pack, settings : JSON::Any = JSON::Any.new({} of String => JSON::Any)) : self
+      pack.tools.each do |pack_tool|
+        @tools << pack_tool unless @tools.any? { |existing| existing.name == pack_tool.name }
+      end
+      @loaded_packs << pack
+      append_event("pack.loaded", JSON.build do |json|
+        json.object do
+          json.field "pack", pack.name
+          json.field "version", pack.version
+          json.field "settings" do
+            json.raw(settings.to_json)
+          end
+        end
+      end)
+      self
+    end
+
+    def loaded_packs : Array(String)
+      @loaded_packs.map(&.name)
+    end
+
+    def pack_policies : Array(Policy)
+      @loaded_packs.flat_map(&.policies)
+    end
+
+    def tool_requires_approval?(tool_name : String) : Bool
+      pack_policies.any?(&.requires_approval.includes?(tool_name))
     end
 
     def add_pending_approval(request : ApprovalRequest) : Nil
@@ -630,12 +660,29 @@ module Clarity
         record_tool_responded(request_event, name, args, cached)
         return cached
       end
+      if tool_requires_approval?(name)
+        add_pending_approval(ApprovalRequest.new("approval_#{next_seq}", ApprovalKind::Shell, "tool #{name}"))
+        placeholder = %({"pending_approval":true,"tool":"#{name}"})
+        record_tool_responded(request_event, name, args, placeholder)
+        return placeholder
+      end
       tool = @tools.find { |registered| registered.name == name }
       raise GraphProjectionError.new("unknown tool: #{name}") unless tool
       output = tool.call(args)
       record_tool_responded(request_event, name, args, output)
       @tool_cache.try(&.record(name, args, output))
       output
+    end
+
+    private def append_event(type : String, payload : String) : Event
+      event = Event.new(
+        schema_version: 1_u16, sequence: next_seq,
+        id: "#{type.gsub(".", "_")}_#{next_seq}",
+        type: type, actor: "runtime", caused_by: nil,
+        timestamp: Time.utc, payload: payload,
+      )
+      @store.append(event)
+      event
     end
 
     private def record_tool_requested(name : String, args : String) : Event
