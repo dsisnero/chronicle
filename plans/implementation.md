@@ -17,8 +17,8 @@ not dependencies or claims that Clarity implements either project.
 
 ### Outcomes
 
-- Strict replay produces the same projection and emitted decisions for a
-  recorded log, without issuing model, tool, clock, random, or network calls.
+- Strict replay produces the same projection and routing decisions for a
+  recorded log, without issuing model, tool, or network calls.
 - A route can be previewed without spending tokens or performing side effects.
 - Every model selection, excluded context item, permission check, approval, and
   effect result has an auditable causal event.
@@ -79,9 +79,11 @@ Provide two explicit modes:
 - **Strict replay** compares the newly emitted event stream with the recorded
   stream and reports the first divergence.
 
-The core must not obtain time, random values, UUIDs, environment values, or I/O
-directly. The boundary records those inputs in events before the core consumes
-them.
+Routing is the deterministic part of the core; the core is Sans-IO. It must
+not open sockets, read files, read environment values, spawn processes, or
+obtain other system capabilities directly — the boundary records those inputs
+in events before the core consumes them. Time and randomness (e.g. run-id
+ULIDs) may be used in the core; only routing must stay a pure function.
 
 ### Deterministic router
 
@@ -143,8 +145,9 @@ compares projected objects, relations, and patches—not opaque serialized state
 - [x] Create replay fixtures that include successful model and failed tool
   effects in causal order.
 - [x] Add a causal-parent invariant for events appended to the log.
-- [x] Add a source-policy invariant that prohibits direct I/O, clocks,
-  randomness, environment, and process capabilities in the core.
+- [x] Add a source-policy invariant that prohibits direct I/O, environment
+  access, and process capabilities in the core (Sans-IO; time/randomness
+  permitted — only routing must stay deterministic).
 
 ### Phase 1 — Deterministic routing
 

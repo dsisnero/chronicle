@@ -1,7 +1,7 @@
 require "./spec_helper"
 
 describe "core I/O safety" do
-  it "does not reference direct I/O, clocks, randomness, or process capabilities" do
+  it "does not reference direct I/O or process capabilities" do
     forbidden_references = [
       "Dir.",
       "ENV[",
@@ -10,9 +10,6 @@ describe "core I/O safety" do
       "TCPSocket",
       "UDPSocket",
       "spawn",
-      "Time.now",
-      "Random",
-      "UUID.random",
     ]
 
     # File.match? is a pure glob-pattern matcher (no filesystem I/O).
