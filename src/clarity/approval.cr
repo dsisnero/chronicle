@@ -35,6 +35,10 @@ module Clarity
   class ApprovalAdapter
     @pending = {} of String => ApprovalRequest
 
+    def pending_requests : Array(ApprovalRequest)
+      @pending.values
+    end
+
     def request(request : ApprovalRequest) : Nil
       raise ApprovalError.new("approval request already exists") if @pending.has_key?(request.id)
 

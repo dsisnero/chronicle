@@ -140,28 +140,30 @@ From `plans/generated/parity/python/parity.tsv`:
 list shows the Crystal side is missing most of the run loop and effect emission.
 From `parity.tsv` (`missing_contains` on Runtime):
 
-- [ ] Run loop — `run_goal` / `run_until` / `run_quantum` / `run_until_idle` —
-      `runtime/runtime.py`
-- [ ] Invocation — `invoke` / `invoke_llm` / `invoke_tool` / `invoke_relation` /
-      `invoke_llm_body` + structured `emit_*` events (`emit_llm_event`,
-      `emit_pattern_matched`, `emit_tool_event`, `emit_behavior_failed`, ...) —
-      `runtime/runtime.py`
-- [ ] Behavior context — `get_behavior` / `get_tool`, `ctx.matches`, view
-      injection (`view_builder.py`)
-- [ ] Packs — `load_pack` / `loaded_packs` / `pack_settings_for_behavior` /
-      `disable_pack` — `runtime/runtime.py`, `packs/*`
-- [ ] Promote — `promote` / `rebuild_shorts` — `runtime/promote.py`
-- [ ] Fork at runtime — `fork` / `save_state` — `runtime/runtime.py`
-- [ ] Budget & scheduling — `budget_remaining`/`start_budget`, `schedule`,
-      `fire_due_delayed`, `loop` — `runtime/budget.py`, `runtime/scheduler.py`, `runtime/queue.py`
-- [ ] Authority — `authority_ceiling`/`set_authority_ceiling`/
-      `evaluate_capability_authority` — `runtime/authority.py`
-- [ ] Approvals — `pending_approvals`/`approve`/`add_pending_approval` — `runtime/runtime.py`
-- [ ] Dev override — `dev_override`/`dev_overrides`/`validate_dev_override` — `runtime/dev_override.py`
-- [ ] Registry — behavior registration + `ensure_registry` — `runtime/registry.py`
-- [ ] Trace/status output — `print_graph` / `print_trace` / `export_trace` / `status` —
-      `trace/*`, `observability/status.py`
-- [ ] Run metadata — `run_id` on the runtime, live `_live.py` wiring
+- [x] Bounded run modes — `run_quantum(prompt, steps)` / `run_until_idle(prompt)`
+      via a step-capped `drive_loop` — `runtime/runtime.py` — `spec/clarity/runtime_phase3_spec.cr`
+- [x] Budget — `budget_remaining` / `start_budget` — `runtime/budget.py`
+- [x] Tool lookup — `get_tool(name)` — `spec/clarity/runtime_phase3_spec.cr`
+- [x] Approvals — `pending_approvals` / `approve` / `add_pending_approval` —
+      `runtime/runtime.py` — `spec/clarity/runtime_phase3_spec.cr`
+- [x] Authority — `authority_ceiling` / `set_authority_ceiling` /
+      `evaluate_capability_authority` (read < write < admin < root) —
+      `runtime/authority.py` — `spec/clarity/runtime_phase3_spec.cr`
+- [x] Trace/status output — `export_trace` (structured event JSON) / `status`
+      — `runtime/runtime.py`, `trace/*` — `spec/clarity/runtime_phase3_spec.cr`
+- [x] Structured effect events — `llm.requested/responded/failed`,
+      `tool.requested/responded` recorded around invocation (via `Clarity::AgentHook`
+      for the runner path and `Runtime` for the manual path)
+- [ ] Run loop — `run_goal`/`run_until`/`run_quantum`/`run_until_idle` full parity —
+      `run_quantum`/`run_until_idle` done; `run_goal` naming deferred
+- [ ] `get_behavior` / view injection into behavior context — deferred
+- [ ] Packs — `load_pack` / `loaded_packs` / `pack_settings_for_behavior` —
+      deferred (Phase 7)
+- [ ] Promote — `promote` / `rebuild_shorts` — deferred
+- [ ] Fork at runtime — `fork` / `save_state` — deferred (Phase 9 / fork path)
+- [ ] Schedule — `schedule` / `fire_due_delayed` / `loop` — deferred
+- [ ] Dev override — `dev_override` / `dev_overrides` / `validate_dev_override` — deferred
+- [ ] Registry — `ensure_registry` / behavior registration wiring — deferred
 
 ## Phase 4 — LLM layer + replay cache
 

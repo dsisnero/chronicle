@@ -8,6 +8,11 @@ module Clarity
     @decision : Routing::RouteDecision?
     @execution_targets = [] of Routing::Target
     @execution_target_index = 0
+    @approvals : ApprovalAdapter = ApprovalAdapter.new
+    @authority_ceiling : String? = nil
+
+    # Action-class authority scale, lowest to highest.
+    AUTHORITY_RANKS = {"read" => 0, "write" => 1, "admin" => 2, "root" => 3}
 
     # Budget limits for a run.
     struct Budget
@@ -39,7 +44,7 @@ module Clarity
     # 4. Records all events to the store
     @response_text : String = ""
 
-    def run(prompt : String, caused_by : String? = nil) : String
+    def run(prompt : String, caused_by : String? = nil, max_steps : Int32? = nil) : String
       # Emit goal.created
       goal_event = Event.new(
         schema_version: 1_u16, sequence: next_seq, id: "goal_created_#{next_seq}",
@@ -73,11 +78,98 @@ module Clarity
       msg = Crig::Completion::Message.user(prompt)
       @log_agent.start(msg)
 
+      drive_loop(user_message, max_steps)
+      @response_text
+    end
+
+    # Run the loop for at most `steps` iterations (a bounded quantum).
+    def run_quantum(prompt : String, steps : Int32, caused_by : String? = nil) : String
+      run(prompt, caused_by: caused_by, max_steps: steps)
+    end
+
+    # Run the loop until the agent reaches a done step.
+    def run_until_idle(prompt : String, caused_by : String? = nil) : String
+      run(prompt, caused_by: caused_by)
+    end
+
+    # Events still available under the budget.
+    def budget_remaining : Int64
+      @budget.max_events - @store.count
+    end
+
+    def start_budget(max_events : Int64) : self
+      @budget = Budget.new(max_events: max_events)
+      self
+    end
+
+    def get_tool(name : String) : Tool?
+      @tools.find { |tool| tool.name == name }
+    end
+
+    def add_pending_approval(request : ApprovalRequest) : Nil
+      @approvals.request(request)
+    end
+
+    def pending_approvals : Array(ApprovalRequest)
+      @approvals.pending_requests
+    end
+
+    def approve(request_id : String) : ApprovalResult
+      @approvals.resolve(ApprovalDecision.new(request_id, approved: true))
+    end
+
+    def authority_ceiling : String?
+      @authority_ceiling
+    end
+
+    # ameba:disable Naming/AccessorMethodName
+    def set_authority_ceiling(level : String) : self
+      @authority_ceiling = level
+      self
+    end
+
+    def evaluate_capability_authority(level : String) : Bool
+      ceiling = @authority_ceiling
+      return true if ceiling.nil?
+
+      (AUTHORITY_RANKS[level]? || -1) <= (AUTHORITY_RANKS[ceiling]? || -1)
+    end
+
+    def export_trace : String
+      JSON.build do |json|
+        json.object do
+          json.field "run_id", @run_id
+          json.field "events" do
+            json.array do
+              @store.iter_events.each do |event|
+                json.raw(event.canonical_json)
+              end
+            end
+          end
+        end
+      end
+    end
+
+    def status : Hash(String, JSON::Any)
+      {
+        "run_id"           => JSON::Any.new(@run_id),
+        "events"           => JSON::Any.new(@store.count),
+        "budget_remaining" => JSON::Any.new(budget_remaining),
+        "response"         => JSON::Any.new(@response_text),
+      }
+    end
+
+    private def drive_loop(user_message : Event, max_steps : Int32?) : Nil
+      steps = 0
       loop do
         if budget_exhausted?
           record_budget_exhausted
           break
         end
+        if max_steps && steps >= max_steps
+          break
+        end
+        steps += 1
         step = @log_agent.next_step
         case step.kind
         in .call_model?
@@ -92,7 +184,6 @@ module Clarity
           break
         end
       end
-      @response_text
     end
 
     # Accept a channel command exactly once, then execute its durable goal.
