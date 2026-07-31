@@ -38,6 +38,10 @@ from activegraph's design in this document.
 | Cypher parser | `Clarity.parse` → `Clarity::Pattern` | Recursive-descent parser for the locked v0.7 subset; refused features raise `UnsupportedPatternError` |
 | Cypher matcher | `Clarity::PatternMatcher` | `matches(event, graph) → Array(Match)`; WHERE eval, NOT EXISTS, var consistency |
 | Chain matching | `Clarity::GraphProjection#match_chain` | DFS structural walk ported from `InMemoryGraphStore.match_chain` |
+| IDs | `Clarity::IDGen` | Global monotonic object counter (`task#1`, `task#2`, `claim#3`) + `evt_`/`rel_`/`patch_`/`frame_` + `run`/ULID + `reseed_from_events` |
+| GraphStore backend | `Clarity::GraphStore` + `Clarity::InMemoryGraphStore` | Abstract put/get/remove/all × objects/relations/patches, query hooks, lifecycle; projection writes through it in place |
+| Store conformance | `spec/clarity/graph_store_conformance.cr` | Reusable backend contract suite ported from `GraphStoreConformance` |
+| Graph query API | `GraphProjection#objects/query/relations/get_relations/objects_in_types/has_object_of_type/neighborhood` | Ported from `Graph` read surface + `evaluate_where` predicate |
 
 ## Intentional Divergence
 
@@ -51,9 +55,17 @@ from activegraph's design in this document.
   while Clarity raises `PatternTypeError` for array operands. Equality ops
   (`=`, `==`, `!=`, `<>`) use numeric-aware comparison (`3 == 3.0` is true),
   matching Python.
+- **`objects(where:)` ordered ops guard both operands.** Upstream's where
+  predicate guards only `a` (`a is not None and a > b`), so `5 > NULL` raises;
+  Clarity returns no-match for any nil operand, consistent with the pattern
+  matcher.
 - **JSON storage shape:** upstream `Object.data` is a Python dict; Clarity stores
   it as a canonical JSON `String`. `resolve_path` and node property equality parse
   that string, so WHERE semantics are identical.
+- **Time/randomness allowed in the core.** Only routing must be deterministic.
+  `IDGen#run`/ULID uses the wall clock + `Random::Secure` in `src/`; the core
+  I/O-safety gate forbids only direct I/O, environment access, and process
+  capabilities (Sans-IO).
 
 ### Missing — High Priority
 

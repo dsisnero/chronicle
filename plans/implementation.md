@@ -139,7 +139,9 @@ compares projected objects, relations, and patches—not opaque serialized state
   encoding.
 - [x] Enforce append-only ordering and unique event IDs in in-memory storage.
 - [x] Write initial invariants for event ordering, ID uniqueness, payload
-  validity, canonical serialization, and immutable projections.
+  validity, and canonical serialization (the event log is append-only; the
+  graph projection is mutable state written through a GraphStore, following
+  activegraph semantics).
 - [x] Define a reusable canonical-content SHA-256 primitive and dedicated
   domain error types for invalid events, ordering, duplicate IDs, and causality.
 - [x] Create replay fixtures that include successful model and failed tool

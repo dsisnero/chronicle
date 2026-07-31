@@ -26,16 +26,12 @@ module GraphProjectionStoreSpecHelper
 end
 
 describe Clarity::GraphProjection do
-  it "uses an injected GraphStore as the seed state and applies immutably" do
+  it "accepts an injected GraphStore and writes through it on apply" do
     store = Clarity::InMemoryGraphStore.new
-    store.put_object(Clarity::GraphObject.new(id: "task#1", type: "task", data: "{}"))
     g = Clarity::GraphProjection.new(store: store)
-    g.get_object("task#1").should_not be_nil
-
-    g2 = g.apply(GraphProjectionStoreSpecHelper.rel_event(1_u64, "rel_1", "links", "task#1", "task#2"))
-    g2.all_relations.map(&.id).should eq(["rel_1"])
-    g.all_relations.should be_empty
-    store.all_relations.should be_empty
+    g = g.apply(GraphProjectionStoreSpecHelper.obj_event(1_u64, "task#1", "task", %({"title":"x"})))
+    store.get_object("task#1").should_not be_nil
+    g.get_object("task#1").not_nil!.type.should eq("task")
   end
 
   it "delegates reads to the injected store" do
@@ -66,13 +62,13 @@ describe Clarity::GraphProjection do
     a.diff(b).removed_object_ids.should be_empty
   end
 
-  it "round-trips patch flow into a new immutable projection" do
+  it "round-trips patch flow through the store" do
     store = Clarity::InMemoryGraphStore.new
     g = Clarity::GraphProjection.new(store: store)
       .apply(GraphProjectionStoreSpecHelper.obj_event(1_u64, "memo#1", "memo", %({"text":"first"})))
     result = g.patch_object("memo#1", %({"text":"second"}))
     result.graph.get_object("memo#1").not_nil!.data.should eq(%({"text":"second"}))
     result.graph.get_object("memo#1").not_nil!.version.should eq(2_i64)
-    g.get_object("memo#1").not_nil!.version.should eq(1_i64)
+    store.get_object("memo#1").not_nil!.version.should eq(2_i64)
   end
 end

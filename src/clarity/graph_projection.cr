@@ -238,26 +238,23 @@ module Clarity
     end
 
     def apply(event : Event) : self
-      store = @store.snapshot
-      patch_ids_by_target = @patch_ids_by_target.dup
-      applied_events = @applied_events.dup
-      applied_events << event
+      @applied_events << event
       payload = JSON.parse(event.payload).as_h
       provenance = Provenance.new(created_by: event.actor, caused_by_event: event.id)
 
       case event.type
       when "object.created", "object.patched"
         id = payload["id"].as_s
-        object_type = payload["type"]?.try(&.as_s) || store.get_object(id).try(&.type)
+        object_type = payload["type"]?.try(&.as_s) || @store.get_object(id).try(&.type)
         data = payload["data"].to_json
-        version = payload["version"]?.try(&.as_i.to_i64) || store.get_object(id).try(&.version) || 1_i64
+        version = payload["version"]?.try(&.as_i.to_i64) || @store.get_object(id).try(&.version) || 1_i64
         unless object_type
           raise GraphProjectionError.new("object type must be present")
         end
-        store.put_object(GraphObject.new(id, object_type, data, version, provenance))
+        @store.put_object(GraphObject.new(id, object_type, data, version, provenance))
       when "relation.created"
         id = payload["id"].as_s
-        store.put_relation(GraphRelation.new(
+        @store.put_relation(GraphRelation.new(
           id, payload["type"].as_s,
           payload["from_id"].as_s, payload["to_id"].as_s,
           provenance,
@@ -265,24 +262,24 @@ module Clarity
       when "patch.proposed"
         patch_data = payload["patch"].as_h
         patch = parse_patch(patch_data, PatchState::Proposed)
-        store.put_patch(patch)
-        ids = patch_ids_by_target.fetch(patch.target, [] of String)
-        patch_ids_by_target[patch.target] = ids + [patch.id]
+        @store.put_patch(patch)
+        ids = @patch_ids_by_target.fetch(patch.target, [] of String)
+        @patch_ids_by_target[patch.target] = ids + [patch.id]
       when "patch.applied"
         patch_data = payload["patch"].as_h
         target_id = payload["target"].as_s
         patch = parse_patch(patch_data, PatchState::Applied)
-        store.put_patch(patch)
-        if obj = store.get_object(target_id)
-          store.put_object(GraphObject.new(obj.id, obj.type, patch.value, obj.version + 1, provenance))
+        @store.put_patch(patch)
+        if obj = @store.get_object(target_id)
+          @store.put_object(GraphObject.new(obj.id, obj.type, patch.value, obj.version + 1, provenance))
         end
       when "patch.rejected"
         patch_data = payload["patch"].as_h
         patch = parse_patch(patch_data, PatchState::Rejected)
-        store.put_patch(patch)
+        @store.put_patch(patch)
       end
 
-      self.class.new(store, patch_ids_by_target, applied_events)
+      self
     rescue KeyError | JSON::ParseException
       raise GraphProjectionError.new("invalid graph event payload")
     end
@@ -309,16 +306,12 @@ module Clarity
         proposed_by: actor, status: PatchState::Applied,
       )
 
-      store = @store.snapshot
-      patch_ids_by_target = @patch_ids_by_target.dup
-      applied_events = @applied_events.dup
-      store.put_patch(applied)
-      store.put_object(GraphObject.new(obj.id, obj.type, value, ver + 1))
-      ids = patch_ids_by_target.fetch(target, [] of String)
-      patch_ids_by_target[target] = ids + [id]
+      @store.put_patch(applied)
+      @store.put_object(GraphObject.new(obj.id, obj.type, value, ver + 1))
+      ids = @patch_ids_by_target.fetch(target, [] of String)
+      @patch_ids_by_target[target] = ids + [id]
 
-      graph = self.class.new(store, patch_ids_by_target, applied_events)
-      PatchResult.new(patch: applied, graph: graph, diff: diff)
+      PatchResult.new(patch: applied, graph: self, diff: diff)
     end
 
     def build_view(spec : ViewSpec = ViewSpec.new) : View
@@ -372,10 +365,7 @@ module Clarity
       raise GraphProjectionError.new("unknown patch: #{patch_id}") unless patch
       raise GraphProjectionError.new("patch #{patch_id} already #{patch.status}") unless patch.status.proposed?
 
-      store = @store.snapshot
-      patch_ids_by_target = @patch_ids_by_target.dup
-
-      obj = store.get_object(patch.target)
+      obj = @store.get_object(patch.target)
       current_version = obj.try(&.version) || 0_i64
 
       if current_version != patch.expected_version
@@ -386,8 +376,8 @@ module Clarity
           status: PatchState::Rejected,
           rejection_reason: "version mismatch: expected #{patch.expected_version}, got #{current_version}",
         )
-        store.put_patch(rejected)
-        return self.class.new(store, patch_ids_by_target)
+        @store.put_patch(rejected)
+        return self
       end
 
       applied = Patch.new(
@@ -395,13 +385,13 @@ module Clarity
         value: patch.value, expected_version: patch.expected_version,
         proposed_by: patch.proposed_by, status: PatchState::Applied,
       )
-      store.put_patch(applied)
+      @store.put_patch(applied)
 
       if obj
-        store.put_object(GraphObject.new(obj.id, obj.type, patch.value, obj.version + 1))
+        @store.put_object(GraphObject.new(obj.id, obj.type, patch.value, obj.version + 1))
       end
 
-      self.class.new(store, patch_ids_by_target)
+      self
     end
 
     def reject_patch(patch_id : String, reason : String) : self
@@ -409,8 +399,6 @@ module Clarity
       raise GraphProjectionError.new("unknown patch: #{patch_id}") unless patch
       raise GraphProjectionError.new("patch #{patch_id} already #{patch.status}") unless patch.status.proposed?
 
-      store = @store.snapshot
-      patch_ids_by_target = @patch_ids_by_target.dup
       rejected = Patch.new(
         id: patch.id, target: patch.target, op: patch.op,
         value: patch.value, expected_version: patch.expected_version,
@@ -418,8 +406,8 @@ module Clarity
         status: PatchState::Rejected,
         rejection_reason: reason,
       )
-      store.put_patch(rejected)
-      self.class.new(store, patch_ids_by_target)
+      @store.put_patch(rejected)
+      self
     end
 
     # Delegate the structural chain walk to the GraphStore backend.

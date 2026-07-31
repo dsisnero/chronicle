@@ -129,11 +129,6 @@ module Clarity
 
     # ---- lifecycle ----
 
-    # Return a deep, independent copy of this store's state. Used by the
-    # copy-on-write GraphProjection snapshots; backends that cannot copy
-    # (e.g. external databases) may raise NotImplementedError.
-    abstract def snapshot : GraphStore
-
     def clear : Nil
       all_objects.each { |obj| remove_object(obj.id) }
       all_relations.each { |relation| remove_relation(relation.id) }
@@ -234,14 +229,6 @@ module Clarity
 
     def remove_patch(patch_id : String) : Nil
       @patches.delete(patch_id)
-    end
-
-    def snapshot : GraphStore
-      store = InMemoryGraphStore.new
-      @objects.each_value { |obj| store.put_object(obj) }
-      @relations.each_value { |relation| store.put_relation(relation) }
-      @patches.each_value { |patch| store.put_patch(patch) }
-      store
     end
 
     def clear : Nil
