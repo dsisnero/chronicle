@@ -108,4 +108,19 @@ describe Chronicle::Packs do
       Chronicle::Packs.load_prompts_from_dir(prompts_dir)
     end
   end
+
+  it "skips hidden and symlinked files" do
+    dir = pack_spec_dir("packs_prompt_spec")
+    prompts_dir = File.join(dir, "prompts_skip")
+    Dir.mkdir_p(prompts_dir)
+    body = "---\nversion = \"1.0.0\"\n---\nBody.\n"
+    File.write(File.join(prompts_dir, "real.md"), body)
+    File.write(File.join(prompts_dir, ".sneaky.md"), body)
+    outside = File.join(dir, "outside.md")
+    File.write(outside, body)
+    File.symlink(outside, File.join(prompts_dir, "linked.md"))
+
+    prompts = Chronicle::Packs.load_prompts_from_dir(prompts_dir)
+    prompts.map(&.name).should eq(["real"])
+  end
 end

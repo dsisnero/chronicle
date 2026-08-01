@@ -303,6 +303,10 @@ module Chronicle
             violations << "symlink rejected: #{rel}"
             next
           end
+          if rel.unicode_normalize(:nfc) != rel
+            violations << "path not NFC-normalized: #{rel.inspect}"
+            next
+          end
           if File.directory?(child)
             next if child_name == "__pycache__"
             walk.call(child)

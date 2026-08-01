@@ -52,6 +52,16 @@ describe Chronicle::Packs::Pack do
     a.should_not eq(c)
     a.hash.should eq(b.hash)
   end
+
+  it "rejects duplicate behavior names" do
+    behavior = Chronicle::Packs::PackBehavior.new(name: "ping")
+    expect_raises(Chronicle::Packs::PackValidationError, /duplicate behavior/) do
+      Chronicle::Packs::Pack.new(
+        name: "demo", version: "0.1.0",
+        behaviors: [behavior, behavior],
+      )
+    end
+  end
 end
 
 describe Chronicle::Runtime do

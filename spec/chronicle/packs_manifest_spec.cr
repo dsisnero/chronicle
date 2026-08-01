@@ -163,6 +163,43 @@ describe Chronicle::Packs, "verify_surface" do
     end
     ex.violations.any? { |v| v.includes?("risk_class mismatch") }.should be_true
   end
+
+  it "requires action_class agreement on both sides" do
+    declared = GOOD_MANIFEST.gsub(
+      %(risk_class = "medium"),
+      %(risk_class = "medium"\naction_class = "R2"),
+    )
+    root = write_pack(pack_spec_dir("packs_manifest_spec"), declared)
+    m = Chronicle::Packs.load_manifest(root)
+    m.capabilities.first.action_class.should eq("R2")
+
+    agreement = Chronicle::Packs::Pack.new(
+      name: "meeting_notes", version: "0.1.0",
+      object_types: [Chronicle::Packs::ObjectType.new("meeting")],
+      capabilities: [Chronicle::Packs::CapabilityDecl.new("meeting", "export_summary", "medium", "", "R2")],
+    )
+    Chronicle::Packs.verify_surface(m, agreement)
+
+    relabeled = Chronicle::Packs::Pack.new(
+      name: "meeting_notes", version: "0.1.0",
+      object_types: [Chronicle::Packs::ObjectType.new("meeting")],
+      capabilities: [Chronicle::Packs::CapabilityDecl.new("meeting", "export_summary", "medium", "", "R3")],
+    )
+    ex = expect_raises(Chronicle::Packs::PackManifestError) do
+      Chronicle::Packs.verify_surface(m, relabeled)
+    end
+    ex.violations.any? { |v| v.includes?("action_class mismatch") }.should be_true
+
+    undeclared = Chronicle::Packs::Pack.new(
+      name: "meeting_notes", version: "0.1.0",
+      object_types: [Chronicle::Packs::ObjectType.new("meeting")],
+      capabilities: [Chronicle::Packs::CapabilityDecl.new("meeting", "export_summary", "medium")],
+    )
+    ex = expect_raises(Chronicle::Packs::PackManifestError) do
+      Chronicle::Packs.verify_surface(m, undeclared)
+    end
+    ex.violations.any? { |v| v.includes?("action_class mismatch") }.should be_true
+  end
 end
 
 describe Chronicle::Packs, "content hash" do
@@ -205,6 +242,16 @@ describe Chronicle::Packs, "content hash" do
     File.write(File.join(outside_dir, "smuggled.py"), "s = 4\n")
     File.symlink(outside_dir, File.join(root, "linked_dir"))
     expect_raises(Chronicle::Packs::PackManifestError, /symlink/) do
+      Chronicle::Packs.compute_content_hash(root)
+    end
+  end
+
+  it "rejects non-NFC-normalized paths" do
+    root = write_pack(pack_spec_dir("packs_manifest_spec"))
+    nfd_name = "café.py".unicode_normalize(:nfd)
+    nfd_name.should_not eq("café.py")
+    File.write(File.join(root, nfd_name), "q = 5\n")
+    expect_raises(Chronicle::Packs::PackManifestError, /NFC/) do
       Chronicle::Packs.compute_content_hash(root)
     end
   end
@@ -254,6 +301,19 @@ describe Chronicle::Packs, "bundle hash" do
     root = write_pack(pack_spec_dir("packs_manifest_spec"))
     expect_raises(Chronicle::Packs::PackManifestError, /external pin/) do
       Chronicle::Packs.verify_bundle_hash("md5:abcd", root)
+    end
+  end
+
+  it "shares the walk rules with the content hash" do
+    root = write_pack(pack_spec_dir("packs_manifest_spec"))
+    baseline = Chronicle::Packs.compute_bundle_hash(root)
+    File.write(File.join(root, ".hidden"), "x")
+    File.write(File.join(root, "cached.pyc"), "\x00")
+    Chronicle::Packs.compute_bundle_hash(root).should eq(baseline)
+
+    File.symlink(File.join(root, "nowhere"), File.join(root, "bad_link"))
+    expect_raises(Chronicle::Packs::PackManifestError, /symlink/) do
+      Chronicle::Packs.compute_bundle_hash(root)
     end
   end
 end
