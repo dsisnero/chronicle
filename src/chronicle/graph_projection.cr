@@ -153,6 +153,8 @@ module Chronicle
     @event_store : EventStore?
     @listeners : Array(Proc(Event, Nil))
     @sinks : Hash(String, SinkHandle)
+    @pack_object_validator : Proc(String, String, String)?
+    @pack_relation_validator : Proc(String, String?, String?, Nil)?
 
     def initialize(
       @store : GraphStore = InMemoryGraphStore.new,
@@ -371,6 +373,9 @@ module Chronicle
       caused_by : String? = nil,
     ) : GraphObject
       reject_reserved_fields!(data)
+      if validator = @pack_object_validator
+        data = validator.call(type, data)
+      end
       object_id = @ids.object(type)
       emit(build_event("object.created", object_created_payload(object_id, type, data), actor, caused_by))
       get_object(object_id) || raise GraphProjectionError.new("object #{object_id} was not projected")
@@ -387,10 +392,20 @@ module Chronicle
       caused_by : String? = nil,
     ) : GraphRelation
       reject_reserved_fields!(data)
+      if validator = @pack_relation_validator
+        source_type = get_object(source).try(&.type)
+        target_type = get_object(target).try(&.type)
+        validator.call(type, source_type, target_type)
+      end
       relation_id = @ids.relation
       emit(build_event("relation.created", relation_created_payload(relation_id, type, source, target, data), actor, caused_by))
       get_relation(relation_id) || raise GraphProjectionError.new("relation #{relation_id} was not projected")
     end
+
+    # Schema validator hooks installed by the pack loader. Validators are
+    # idempotent: installing a new state replaces the previous hook.
+    property? pack_object_validator : Proc(String, String, String)?
+    property? pack_relation_validator : Proc(String, String?, String?, Nil)?
 
     def remove_object(object_id : String, *, actor : String = "system", caused_by : String? = nil) : Nil
       return if get_object(object_id).nil?

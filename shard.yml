@@ -26,5 +26,7 @@ dependencies:
   bubbletea:
     github: dsisnero/bubbletea.cr
     version: 2.0.8
+  toml:
+    github: crystal-community/toml.cr
 
 license: MIT

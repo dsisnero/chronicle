@@ -15,8 +15,16 @@ describe "core I/O safety" do
     # File.match? is a pure glob-pattern matcher (no filesystem I/O).
     exempt_file_usages = {"File.match?"}
 
+    # I/O boundary modules: these read/write filesystem or environment state
+    # at the platform edge. The pack *loader* (packs/loader.cr) stays pure;
+    # prompt loading, manifest parsing/hashing, and scaffolding touch disk.
+    io_boundary_paths = {
+      "platform_edge.cr", "routing_config.cr", "cli.cr", "session_store.cr",
+      "config.cr", "packs/prompt.cr", "packs/manifest.cr", "packs/scaffold.cr",
+    }
+
     core_paths = Dir.glob("src/chronicle/**/*.cr").reject do |path|
-      path.ends_with?("platform_edge.cr") || path.ends_with?("routing_config.cr") || path.ends_with?("cli.cr") || path.ends_with?("session_store.cr") || path.ends_with?("config.cr")
+      io_boundary_paths.any? { |suffix| path.ends_with?(suffix) }
     end
 
     core_paths.each do |path|

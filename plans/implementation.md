@@ -315,6 +315,86 @@ than smista's client-mediated tool dispatch. Permission checking via
 - HTTP/1 conformance fixtures pass without live sockets and malformed framing
   cannot cause an ambiguous message boundary.
 
+## Pack System (Phase 7)
+
+Ported from `activegraph.packs` (revision
+`8aedb1866cf5dce056af97529152ffd6f468a1ed`). Python's pack-aware decorators are
+Crystal annotations collected by the `Chronicle::Packs::DSL.pack` macro; see
+`plans/parity.md` Phase 7 + Intentional Divergence for the exact mapping.
+
+### Authoring a pack
+
+```crystal
+module MyPack
+  include Chronicle::Packs::DSL
+
+  struct MySettings
+    include JSON::Serializable
+    include Chronicle::Packs::SettingsSchema
+    getter threshold : Float64 = 0.5
+  end
+
+  @[ObjectType(name: "item")]
+  struct Item
+    include JSON::Serializable
+    getter name : String
+    getter notes : String = ""
+  end
+
+  @[Behavior(name: "hello", on: ["goal.created"])]
+  def hello(event : Chronicle::Event, graph : Chronicle::GraphProjection,
+            ctx : Chronicle::Packs::BehaviorContext, settings : MySettings)
+    graph.add_object("item", %({"name":"hello"}), caused_by: event.id)
+  end
+
+  pack(
+    name: "my_pack",
+    version: "0.1.0",
+    description: "A Chronicle pack.",
+    settings_schema: MySettings,
+  )
+end
+```
+
+Notes:
+
+- Annotated defs must appear **before** the `pack(...)` call.
+- The DSL `include` brings the annotation names (`Behavior`, `Tool`, ...) into
+  scope and `extend self`s the module, so behaviors/tools are plain instance
+  defs callable as `MyPack.hello`.
+- `pack(register: false)` suppresses discovery registration (the no-global-
+  side-effect contract).
+- Annotations live in `Chronicle::Packs::Annotations` (a nested module so the
+  names don't collide with the `ObjectType`/`RelationType` value objects);
+  the DSL `include` makes them available unqualified.
+
+### Loading lifecycle (`Runtime#load_pack`)
+
+1. Idempotency: same `(name, version)` already loaded → no-op (`false`).
+2. Version conflict: same name, different version → `PackVersionConflictError`.
+3. Build settings: `settings_schema` defaults or validates user input →
+   `PackSettingsMissingError` on failure.
+4. Pre-emptive conflict scan (no mutation): canonical behavior/tool/policy
+   names and object/relation type names against already-loaded packs +
+   `export_globally` tool collisions → `PackConflictError`.
+5. Mutate: record pack + settings, canonical-prefix behaviors/tools, stamp
+   owners, attach object/relation schema validators to the graph, record
+   gated object types, mark short-name ambiguity.
+6. Emit `pack.loaded` with the full component manifest + canonical settings.
+
+A failed load leaves the runtime unchanged. `run_until_idle` (no prompt)
+drains new log events through matching pack behaviors until quiescent
+(1000-iteration cap).
+
+### Divergences recorded
+
+- Cross-pack settings (`ctx.pack_settings`) are canonical hashes, not typed.
+- Pack tools take only `args` (compile-time error otherwise).
+- LLM behavior execution dispatch deferred to the Phase 3 LLM pipeline.
+- Discovery is a compile-time `Registry`; no Python entry points.
+- The I/O boundary (`prompt.cr`, `manifest.cr`, `scaffold.cr`) is exempt from
+  the Sans-IO core gate, matching `config.cr`/`cli.cr`.
+
 ## Research References
 
 - [Nakajima, *The Log is the Agent* (2026)](https://arxiv.org/html/2605.21997v1): log-primary state, deterministic projection, recorded effect replay, fork/diff, and behavior-based coordination.

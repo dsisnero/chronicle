@@ -172,6 +172,10 @@ shards:
     git: https://github.com/wyhaines/time-ext.cr.git
     version: 1.0.1
 
+  toml:
+    git: https://github.com/crystal-community/toml.cr.git
+    version: 0.8.1
+
   tracing:
     git: https://github.com/dsisnero/tracing.cr.git
     version: 0.5.1+git.commit.57b76d8b88f3c954284c5fd2cf4e2e887e0fb47c

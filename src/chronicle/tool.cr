@@ -11,18 +11,33 @@ module Chronicle
     getter name : String
     getter description : String
     getter? deterministic : Bool
+    getter? pack_local : Bool
+    getter? export_globally : Bool
     @fn : String -> String
 
     def initialize(
       @name : String,
       @description : String = "",
       @deterministic : Bool = false,
+      @pack_local : Bool = false,
+      @export_globally : Bool = false,
       &@fn : String -> String
     )
     end
 
     def call(args : String) : String
       @fn.call(args)
+    end
+
+    # A canonical (prefixed) copy stamped with pack ownership.
+    def with_pack_prefix(pack_name : String, short_name : String) : Tool
+      self.class.new(
+        "#{pack_name}.#{short_name}",
+        @description,
+        @deterministic,
+        @pack_local,
+        @export_globally,
+      ) { |args| call(args) }
     end
 
     # Provider-facing tool definition (sent in the `tools=` parameter).

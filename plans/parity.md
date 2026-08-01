@@ -220,19 +220,73 @@ From `parity.tsv` (`missing_contains` on Runtime):
 
 ## Phase 7 — Packs + policy
 
-- [x] Pack bundle — `Chronicle::Pack` (name/version validation, object_types,
-      relation_types, tools, policies) — `packs/__init__.py` — `spec/chronicle/packs_spec.cr`
-- [x] Per-behavior policy — `Chronicle::Policy` (can_create, can_create_relation,
-      can_call_tool, requires_approval) — `policy.py`
-- [x] Runtime load — `Runtime#load_pack` (registers pack tools, records
-      `pack.loaded`, `loaded_packs`) — `runtime/runtime.py`
-- [x] Policy approval routing — `tool_requires_approval?`; `invoke_tool` queues
-      a pending approval instead of executing — `spec/chronicle/packs_spec.cr`
-- [-] Pack manifest/loader/scaffold (TOML, content hashing, `verify_surface`) —
-      deferred — `packs/manifest.py`, `packs/loader.py`, `packs/scaffold.py`
-- [-] Diligence pack — deferred — `packs/diligence/*`
-- [-] Registration validation suite — deferred (reserved-field rejection already
-      lands in Phase 1) — `runtime/registration_errors.py`, `runtime/config_errors.py`
+The pack system is ported with Crystal annotations standing in for Python's
+pack-aware decorators: a pack module `include Chronicle::Packs::DSL`, annotates
+its structs/methods with `@[Behavior]`, `@[LLMBehavior]`, `@[RelationBehavior]`,
+`@[Tool]`, `@[ObjectType]`, `@[RelationType]`, and calls the `pack` macro, which
+collects them at compile time into a frozen `Pack` manifest. Nothing registers
+globally (CONTRACT v0.9 #3).
+
+- [x] Pack value objects — `Chronicle::Packs::ObjectType`, `RelationType`,
+      `PackPolicy`, `PackPrompt` (content hash), `CapabilityDecl`, `Pack`
+      (identity by `(name, version)`, name/version + uniqueness validation,
+      `prompt_manifest`) — `packs/__init__.py` —
+      `spec/chronicle/packs_spec.cr`
+- [x] Annotations + DSL macro — `@[Behavior]` / `@[LLMBehavior]` /
+      `@[RelationBehavior]` / `@[Tool]` / `@[ObjectType]` / `@[RelationType]`
+      collected by `Chronicle::Packs::DSL.pack`; pack-local, no global
+      registration — `packs/__init__.py` decorators —
+      `spec/chronicle/packs_dsl_spec.cr`
+- [x] Prompt loading — `load_prompts_from_dir` (TOML frontmatter, SHA-256
+      content hash, duplicate/hidden/symlink rules, `PackPromptLoadError`) —
+      `packs/__init__.py` — `spec/chronicle/packs_prompt_spec.cr`
+- [x] Typed settings via macro — a settings struct `include JSON::Serializable`
+      + `Chronicle::Packs::SettingsSchema`; defaults, required-field
+      enforcement, dict coercion, canonical dump, `PackSettingsMissingError` —
+      `packs/__init__.py` EmptySettings —
+      `spec/chronicle/packs_dsl_spec.cr`
+- [x] Loader lifecycle — `Chronicle::Packs::Loader` +
+      `PackRuntimeState`; idempotency on `(name, version)`, version conflict,
+      pre-emptive conflict scan (behaviors/tools/object types/relation
+      types/policies + `export_globally` tools), canonical prefixing, settings
+      injection, schema attach, short-name ambiguity, `pack.loaded` event with
+      full payload — `packs/loader.py` — `spec/chronicle/packs_dsl_spec.cr`
+- [x] Graph schema validators — object validation raises
+      `PackSchemaViolation` (post-load only); relation source/target type
+      checks — `packs/loader.py` + `core/graph.py` — `spec/chronicle/packs_dsl_spec.cr`
+- [x] Behavior dispatch — `Runtime#run_until_idle` drains new log events
+      through matching pack behaviors (typed-settings injection Form 1,
+      `ctx.settings` Form 2, `ctx.pack_settings` Form 3, `where` predicates)
+      — `runtime/runtime.py` — `spec/chronicle/packs_dsl_spec.cr`
+- [x] Discovery registry — `Chronicle::Packs::Registry` (`discover` /
+      `load_by_name` / `clear_discovery_cache`, `PackNotFoundError`); the
+      Crystal analogue of the `activegraph.packs` entry-point group —
+      `packs/__init__.py` — `spec/chronicle/packs_discovery_spec.cr`
+- [x] Manifest — `load_manifest` (aggregated `PackManifestError` violations,
+      PEP 440 syntax, reserved signature rejection), `verify_surface`
+      (two-way, capabilities + risk/action-class agreement),
+      `compute_content_hash` / `compute_bundle_hash` (§4 byte stream,
+      symlink/`.hidden`/`.pyc`/`__pycache__` rules),
+      `verify_content_hash` / `verify_bundle_hash` —
+      `packs/manifest.py` — `spec/chronicle/packs_manifest_spec.cr`
+- [x] Scaffold — `normalize_pack_name` (kebab→snake) + `scaffold_pack`
+      (runnable Crystal pack layout with annotations DSL + smoke spec) —
+      `packs/scaffold.py` — `spec/chronicle/packs_scaffold_spec.cr`
+- [x] Pack capabilities — `CapabilityDecl` validation (closed risk/action
+      classes) and `capabilities` block in the `pack.loaded` payload —
+      `packs/__init__.py` + `packs/manifest.py` —
+      `spec/chronicle/packs_manifest_spec.cr`
+- [-] LLM behavior *execution* dispatch — declaration/registration/prefixing
+      works; firing the handler needs the Phase 3 LLM effect pipeline and is
+      deferred — `runtime/runtime.py`
+- [-] Diligence reference pack — deferred — `packs/diligence/*`
+- [-] `pack.settings_overridden` fork override + `approve`-materialization of
+      gated object types — the gating bookkeeping (`gated_object_types`,
+      `propose_object`) is in place; the full approve-flow and the CLI `--set`
+      override are deferred — `packs/loader.py`
+- [-] Manifest warning tier on `load_pack` (CONTRACT v1.6) — deferred:
+      `load_manifest`/`verify_surface` are callable directly but `load_pack`
+      does not yet warn
 
 ## Phase 8 — Frames wiring
 
@@ -289,6 +343,32 @@ From `parity.tsv` (`missing_contains` on Runtime):
   forbids only direct I/O, environment access, and process capabilities (Sans-IO).
 - **Projection writes through its GraphStore in place**, mirroring upstream
   `Graph._state` mutation; replay builds a fresh projection.
+- **Pack decorators are compile-time annotations.** Python's
+  `@behavior`/`@tool`/`@ObjectType` become Crystal `@[Behavior]`/`@[Tool]`/
+  `@[ObjectType]` annotations collected by the `Chronicle::Packs::DSL.pack`
+  macro. Behaviors/tools are instance defs in the pack module (the DSL
+  `extend self`s it); settings injection is resolved at compile time from the
+  def's `settings` parameter. No runtime signature introspection (no dynamic
+  `**kwargs` injection).
+- **Cross-pack settings (`ctx.pack_settings`) return the canonical settings
+  Hash**, not a typed object — typed cross-pack access isn't expressible in
+  Crystal. Behavior-local settings stay fully typed.
+- **Pack tools accept only `args`** (no `ctx`/settings parameter yet); the DSL
+  raises at compile time if a `@[Tool]` method declares other parameters.
+- **Object/relation schemas use `JSON::Serializable` + a DSL-generated
+  validator**; Pydantic `Field(ge=...)`-style constraint annotations aren't
+  supported (type/requiredness checks are).
+- **Discovery uses an explicit `Registry`** (the DSL registers the pack when
+  its module is required) instead of Python entry points; `discover()` caches
+  per process and `register`/`clear_discovery_cache` invalidate.
+- **`_pack_local` is enforced at compile time** (only the DSL builds pack
+  objects) rather than via a runtime flag on every `Behavior`/`Tool`.
+- **LLM behavior execution dispatch is deferred** to the Phase 3 LLM effect
+  pipeline; declaration, prefixing, and `get_behavior` work.
+- **Pack tool/behavior short-name lookup** raises
+  `Chronicle::Packs::AmbiguousBehaviorError` / `BehaviorNotFoundError`
+  (Chronicle-specific types) mirroring upstream's `ValueError`/`LookupError`
+  surface.
 
 ## Acceptance Gates
 

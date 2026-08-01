@@ -10,8 +10,13 @@ module Chronicle
     @execution_target_index = 0
     @approvals : ApprovalAdapter = ApprovalAdapter.new
     @authority_ceiling : String? = nil
-    @loaded_packs : Array(Pack) = [] of Pack
     @frame_stack : FrameStack = FrameStack.new
+    @pack_state : Packs::PackRuntimeState = Packs::PackRuntimeState.new
+    @pack_behaviors : Array(Packs::PackBehavior) = [] of Packs::PackBehavior
+    @pack_tools : Array(Tool) = [] of Tool
+    @graph : GraphProjection?
+    @dispatch_cursor : Int32 = 0
+    @tool_approval_policies : Array(Policy) = [] of Policy
 
     # Action-class authority scale, lowest to highest.
     AUTHORITY_RANKS = {"read" => 0, "write" => 1, "admin" => 2, "root" => 3}
@@ -36,6 +41,8 @@ module Chronicle
       @strict_expected_hashes : Array(String)? = nil,
       @tools : Array(Tool) = [] of Tool,
       @tool_cache : ToolCache? = nil,
+      @graph : GraphProjection? = nil,
+      @tool_approval_policies : Array(Policy) = [] of Policy,
     )
     end
 
@@ -105,36 +112,123 @@ module Chronicle
     end
 
     def get_tool(name : String) : Tool?
-      @tools.find { |tool| tool.name == name }
+      @tools.find { |tool| tool.name == name } ||
+        @pack_tools.find { |tool| tool.name == name } ||
+        resolve_pack_short_tool(name)
     end
 
-    def load_pack(pack : Pack, settings : JSON::Any = JSON::Any.new({} of String => JSON::Any)) : self
-      pack.tools.each do |pack_tool|
-        @tools << pack_tool unless @tools.any? { |existing| existing.name == pack_tool.name }
-      end
-      @loaded_packs << pack
-      append_event("pack.loaded", JSON.build do |json|
-        json.object do
-          json.field "pack", pack.name
-          json.field "version", pack.version
-          json.field "settings" do
-            json.raw(settings.to_json)
-          end
-        end
-      end)
-      self
+    # Load a pack into this runtime. Idempotent on (name, version); raises
+    # PackVersionConflictError / PackConflictError pre-mutation; records a
+    # `pack.loaded` event. Returns true if newly loaded, false if a no-op.
+    def load_pack(pack : Pack, settings : Hash(String, JSON::Any)? = nil) : Bool
+      Packs::Loader.load_pack_into_runtime(self, pack, settings)
+    end
+
+    def pack_state : Packs::PackRuntimeState
+      @pack_state
+    end
+
+    def pack_behaviors : Array(Packs::PackBehavior)
+      @pack_behaviors
+    end
+
+    def pack_tools : Array(Tool)
+      @pack_tools
+    end
+
+    def graph : GraphProjection?
+      @graph
     end
 
     def loaded_packs : Array(String)
-      @loaded_packs.map(&.name)
+      @pack_state.loaded_packs.keys.sort!
     end
 
-    def pack_policies : Array(Policy)
-      @loaded_packs.flat_map(&.policies)
+    def pack_policies : Array(Packs::PackPolicy)
+      @pack_state.loaded_packs.values.flat_map(&.policies)
     end
 
     def tool_requires_approval?(tool_name : String) : Bool
-      pack_policies.any?(&.requires_approval.includes?(tool_name))
+      @tool_approval_policies.any?(&.requires_approval.includes?(tool_name))
+    end
+
+    # Look up a registered behavior by canonical or short name. Short names
+    # resolve only when unambiguous; raises AmbiguousBehaviorError otherwise.
+    def get_behavior(name : String) : Packs::PackBehavior
+      if name.includes?('.')
+        found = @pack_behaviors.find { |b| b.name == name }
+        raise Packs::BehaviorNotFoundError.new(name) unless found
+        return found
+      end
+      canonical = @pack_state.behavior_short_to_canonical[name]?
+      if canonical.nil?
+        raise Packs::BehaviorNotFoundError.new(name)
+      end
+      if canonical == Packs::AMBIGUOUS
+        raise Packs::AmbiguousBehaviorError.new(
+          "behavior name #{name.inspect} is ambiguous: it is provided by multiple loaded packs; use the fully-qualified name"
+        )
+      end
+      found = @pack_behaviors.find { |b| b.name == canonical }
+      raise Packs::BehaviorNotFoundError.new(name) unless found
+      found
+    end
+
+    # Drain pack behaviors until no new events are produced. The no-prompt
+    # form of run_until_idle: dispatches registered pack behaviors over new
+    # events in the log, letting them mutate the attached graph.
+    def run_until_idle : Nil
+      dispatch_pack_behaviors
+    end
+
+    # Deferred object creation behind a policy approval. Records the proposal
+    # durably and returns the approval id (reused as the object id on approve).
+    def propose_object(
+      object_type : String,
+      data : String,
+      reason : String = "",
+      caused_by : String? = nil,
+    ) : String
+      state = @pack_state
+      gating = state.gated_object_types[object_type]? || [] of String
+      owner_pack = gating.empty? ? "" : gating[0].split(".", 1)[0]
+      n = state.next_approval_n
+      state.next_approval_n = n + 1
+      approval_id = "approval_%03d" % n
+      approval = Packs::PackPendingApproval.new(
+        id: approval_id, kind: "object", object_type: object_type,
+        data: data, reason: reason, pack: owner_pack,
+      )
+      state.pack_pending_approvals << approval
+      append_event("approval.proposed", JSON.build do |json|
+        json.object do
+          json.field "approval_id", approval_id
+          json.field "kind", "object"
+          json.field "object_type", object_type
+          json.field "data" do
+            json.raw(data)
+          end
+          json.field "reason", reason
+          json.field "pack", owner_pack
+          json.field "caused_by", caused_by
+        end
+      end)
+      approval_id
+    end
+
+    def pack_pending_approvals : Array(Packs::PackPendingApproval)
+      @pack_state.pack_pending_approvals
+    end
+
+    # Approve a pending pack approval and materialize the deferred object.
+    def approve_pack(approval_id : String) : GraphObject
+      list = @pack_state.pack_pending_approvals
+      approval = list.find { |a| a.id == approval_id }
+      raise ApprovalError.new("pack approval not found: #{approval_id}") unless approval
+      list.delete(approval)
+      graph = @graph
+      raise ApprovalError.new("pack approval requires an attached graph") unless graph
+      graph.add_object(approval.object_type, approval.data, actor: "runtime")
     end
 
     def current_frame_id : String?
@@ -205,6 +299,141 @@ module Chronicle
         "budget_remaining" => JSON::Any.new(budget_remaining),
         "response"         => JSON::Any.new(@response_text),
       }
+    end
+
+    private def resolve_pack_short_tool(name : String) : Tool?
+      canonical = @pack_state.tool_short_to_canonical[name]?
+      return nil if canonical.nil? || canonical == Packs::AMBIGUOUS
+      @pack_tools.find { |pack_tool| pack_tool.name == canonical }
+    end
+
+    # The durable `pack.loaded` event: full component manifest + canonical
+    # settings. Mirrors activegraph.packs.loader._build_pack_loaded_payload.
+    def record_pack_loaded(pack : Pack, settings_obj : Hash(String, JSON::Any)) : Event
+      append_event("pack.loaded", JSON.build do |json|
+        json.object do
+          json.field "name", pack.name
+          json.field "version", pack.version
+          json.field "description", pack.description
+          json.field "object_types" do
+            json.array { pack.object_types.each { |object_type| json.string(object_type.name) } }
+          end
+          json.field "relation_types" do
+            json.array { pack.relation_types.each { |relation_type| json.string(relation_type.name) } }
+          end
+          json.field "behaviors" do
+            json.array { pack.behaviors.each { |b| json.string("#{pack.name}.#{b.name}") } }
+          end
+          json.field "tools" do
+            json.array { pack.tools.each { |tool| json.string("#{pack.name}.#{tool.name}") } }
+          end
+          json.field "policies" do
+            json.array { pack.policies.each { |policy| json.string("#{pack.name}.#{policy.name}") } }
+          end
+          json.field "prompts" do
+            json.object do
+              pack.prompt_manifest.each do |prompt_name, info|
+                json.field prompt_name do
+                  json.object do
+                    json.field "version", info["version"]
+                    json.field "hash", info["hash"]
+                  end
+                end
+              end
+            end
+          end
+          json.field "settings" do
+            json.object do
+              settings_obj.each do |key, value|
+                json.field key do
+                  json.raw(value.to_json)
+                end
+              end
+            end
+          end
+          json.field "capabilities" do
+            json.array do
+              pack.capabilities.each do |capability|
+                json.object do
+                  json.field "provider", capability.provider
+                  json.field "capability", capability.capability
+                  json.field "risk_class", capability.risk_class
+                  json.field "credential_ref", capability.credential_ref
+                  unless capability.action_class.empty?
+                    json.field "action_class", capability.action_class
+                  end
+                end
+              end
+            end
+          end
+        end
+      end)
+    end
+
+    # Deterministic fan-out: process new log events through matching pack
+    # behaviors until a pass produces no new events. Behaviors mutate the
+    # attached graph, which appends to the same store.
+    private def dispatch_pack_behaviors : Nil
+      return if @pack_behaviors.empty?
+
+      graph = @graph
+      if graph.nil?
+        raise GraphProjectionError.new("pack behavior dispatch requires an attached graph")
+      end
+
+      iterations = 0
+      loop do
+        events = @store.iter_events
+        if @dispatch_cursor >= events.size
+          break
+        end
+
+        new_events = events[@dispatch_cursor..]
+        @dispatch_cursor = events.size
+        break if new_events.empty?
+
+        scheduled = [] of {Event, Packs::PackBehavior}
+        new_events.each do |event|
+          @pack_behaviors.each do |behavior|
+            scheduled << {event, behavior} if behavior.matches?(event)
+          end
+        end
+        break if scheduled.empty?
+
+        scheduled.sort_by! { |entry| {entry[0].sequence, -entry[1].priority, entry[1].name} }
+        scheduled.each do |event, behavior|
+          invoke_pack_behavior(behavior, event, graph)
+        end
+
+        iterations += 1
+        break if iterations >= 1000
+      end
+    end
+
+    private def invoke_pack_behavior(
+      behavior : Packs::PackBehavior,
+      event : Event,
+      graph : GraphProjection,
+    ) : Nil
+      owner = behavior.pack_owner || ""
+      settings = @pack_state.pack_settings[owner]? || {} of String => JSON::Any
+      provider = ->(name : String) : Hash(String, JSON::Any)? { @pack_state.pack_settings[name]? }
+      ctx = Packs::BehaviorContext.new(owner, settings, provider)
+
+      case behavior.kind
+      in Packs::PackBehaviorKind::Behavior
+        behavior.handler.try(&.call(event, graph, ctx))
+      in Packs::PackBehaviorKind::Relation
+        if event.type == "relation.created"
+          payload = JSON.parse(event.payload).as_h
+          if relation = graph.get_relation(payload["id"].as_s)
+            behavior.relation_handler.try(&.call(relation, event, graph, ctx))
+          end
+        end
+      in Packs::PackBehaviorKind::LLM
+        # LLM behavior execution needs the LLM effect pipeline (Phase 3
+        # registry + model dispatch wiring); deferred this cycle.
+      end
     end
 
     private def drive_loop(user_message : Event, max_steps : Int32?) : Nil
