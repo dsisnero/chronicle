@@ -290,6 +290,93 @@ describe Chronicle::Routing::Router do
     end
   end
 
+  it "keeps a matched local_only rule's whole chain local (remote fallback foreclosed)" do
+    remote = RoutingSpecHelper.target("anthropic", "claude-sonnet")
+    rule = Chronicle::Routing::RouteRule.new(
+      "secrets stay local",
+      remote,
+      local_only: true,
+      fallbacks: [remote],
+    )
+    policy = RoutingSpecHelper.policy(routing_rules: [rule])
+
+    expect_raises(Chronicle::NoLocalTargetError, "no eligible local target") do
+      Chronicle::Routing::Router.new.preview(
+        RoutingSpecHelper.request("handle secrets", explicit_intent: RoutingIntent::Plan),
+        policy,
+        [remote],
+      )
+    end
+  end
+
+  it "routes a matched local_only rule to an available local fallback over a remote primary" do
+    remote = RoutingSpecHelper.target("openai", "primary")
+    local = RoutingSpecHelper.target("local", "fallback", false)
+    rule = Chronicle::Routing::RouteRule.new(
+      "sensitive edits",
+      remote,
+      priority: 10,
+      intent: RoutingIntent::Edit,
+      fallbacks: [local],
+      local_only: true,
+    )
+    policy = RoutingSpecHelper.policy(routing_rules: [rule])
+
+    decision = Chronicle::Routing::Router.new.preview(
+      RoutingSpecHelper.request("edit secrets", explicit_intent: RoutingIntent::Edit),
+      policy,
+      [remote, local],
+    )
+
+    decision.target.should eq(local)
+    decision.fallback_used?.should be_true
+    decision.eligible_targets.should eq([local])
+  end
+
+  it "routes a matched local_only rule to its local primary" do
+    local = RoutingSpecHelper.target("local", "llama3", false)
+    rule = Chronicle::Routing::RouteRule.new(
+      "local only planning",
+      local,
+      priority: 10,
+      intent: RoutingIntent::Plan,
+      local_only: true,
+    )
+    policy = RoutingSpecHelper.policy(routing_rules: [rule])
+
+    decision = Chronicle::Routing::Router.new.preview(
+      RoutingSpecHelper.request("plan", explicit_intent: RoutingIntent::Plan),
+      policy,
+      [local],
+    )
+
+    decision.target.should eq(local)
+    decision.fallback_used?.should be_false
+  end
+
+  it "lets an explicit override bypass a matched local_only rule" do
+    remote = RoutingSpecHelper.target("openai", "remote")
+    local = RoutingSpecHelper.target("local", "fallback", false)
+    rule = Chronicle::Routing::RouteRule.new(
+      "local only planning",
+      local,
+      priority: 10,
+      intent: RoutingIntent::Plan,
+      fallbacks: [remote],
+      local_only: true,
+    )
+    policy = RoutingSpecHelper.policy(routing_rules: [rule])
+
+    decision = Chronicle::Routing::Router.new.preview(
+      RoutingSpecHelper.request("plan", explicit_intent: RoutingIntent::Plan, explicit_target: remote),
+      policy,
+      [remote, local],
+    )
+
+    decision.target.should eq(remote)
+    decision.override_used?.should be_true
+  end
+
   it "rejects a route when no primary or fallback target is available" do
     target = RoutingSpecHelper.target("openai", "missing")
     policy = RoutingSpecHelper.policy(default_target: target)

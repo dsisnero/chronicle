@@ -297,6 +297,31 @@ Crig's ToolDyn/ToolServer at the platform edge for execution, rather
 than smista's client-mediated tool dispatch. Permission checking via
 `Routing::PermissionMode` is ported and available for tool gating.
 
+### `local_only` privacy rule (adopted 2026-08)
+
+Source of truth: smista-router `crates/smista-router/src/router/resolver/model.rs`
+(validated at upstream revision `8a4313a7`, DeepWiki consulted first —
+guidance, not the source). Adopted rule:
+
+- `local_required = restricted_context || matched_rule.local_only`, where
+  `restricted_context` is Chronicle's existing required-and-restricted context
+  candidates (`request.context` with `required? && restricted_for_remote?`).
+- When `local_required`, the matched rule's **primary target and its entire
+  fallback chain** are filtered to `remote: false` targets only (a remote
+  candidate is foreclosed, matching Smista's `usable` skip at model.rs:181).
+- If no eligible local target remains, routing raises
+  `Chronicle::NoLocalTargetError` (Smista's `ModelSelectorError::NoLocalModel`,
+  model.rs:147).
+- An **explicit override bypasses rule-based `local_only`** (Smista's
+  `matched_rule()` is `None` for `RouteSource::Override`), but never the
+  `restricted_context` floor — a remote override on restricted context still
+  raises `NoLocalTargetError`.
+
+Covered deterministically in `spec/chronicle/routing_spec.cr` (foreclosed
+remote fallback, local fallback over remote primary, local primary success,
+override-bypass boundary). The old "honors local_only" specs only asserted
+parsing; `Router#preview` now enforces the flag.
+
 ## Acceptance Gates
 
 - Identical logs yield byte-identical canonical projections in strict replay.

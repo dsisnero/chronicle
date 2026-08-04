@@ -486,9 +486,15 @@ module Chronicle
         rule = select_rule(classification.intent, request.paths, policy.routing_rules)
         target, override_used = selected_target(request, policy, rule)
         fallbacks = override_used ? ([] of Target) : (rule.try(&.fallbacks) || policy.default_fallbacks)
-        requires_local = request.context.any? { |candidate| candidate.required? && candidate.restricted_for_remote? }
-        eligible_targets = eligible_targets(target, fallbacks, available_targets, requires_local)
-        selected_target, fallback_used = available_target(eligible_targets, target, requires_local)
+        context_restricted = request.context.any? { |candidate| candidate.required? && candidate.restricted_for_remote? }
+        # A matched rule's `local_only` restricts its target AND fallback chain
+        # to local models (Smista model.rs: local_required = restricted_context
+        # || matched_rule.local_only). An explicit override bypasses the rules,
+        # so rule-based local_only does not apply to it (matched_rule is None
+        # for RouteSource::Override).
+        local_required = context_restricted || (!override_used && rule.try(&.local_only?) == true)
+        eligible_targets = eligible_targets(target, fallbacks, available_targets, local_required)
+        selected_target, fallback_used = available_target(eligible_targets, target, local_required)
         permissions = effective_permissions(policy.default_permissions, rule)
         included, excluded = select_context(request, policy.token_budget, selected_target)
         cost = estimate_cost(included, request.estimated_completion_tokens, selected_target)
