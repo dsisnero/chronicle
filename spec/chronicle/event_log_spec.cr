@@ -74,6 +74,25 @@ describe Chronicle::EventLog do
     log.events.map(&.id).should eq(["evt_000001", "evt_000002"])
     fork.events.map(&.id).should eq(["evt_000001", "evt_fork_000002"])
   end
+
+  it "exposes count, get_event, iter_events, and truncate_after conveniences" do
+    log = Chronicle::EventLog.new
+    first = EventLogSpecHelper.event(sequence: 1_u64, id: "evt_000001")
+    second = EventLogSpecHelper.event(sequence: 2_u64, id: "evt_000002", caused_by: first.id)
+    third = EventLogSpecHelper.event(sequence: 3_u64, id: "evt_000003", caused_by: second.id)
+    log.append(first)
+    log.append(second)
+    log.append(third)
+
+    log.count.should eq(3_i64)
+    log.get_event("evt_000002").should eq(second)
+    log.get_event("evt_999").should be_nil
+    log.iter_events.map(&.id).should eq(["evt_000001", "evt_000002", "evt_000003"])
+
+    log.truncate_after("evt_000001")
+    log.events.map(&.id).should eq(["evt_000001"])
+    log.count.should eq(1_i64)
+  end
 end
 
 describe Chronicle::EventLogCodec do

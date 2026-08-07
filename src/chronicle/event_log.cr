@@ -46,6 +46,33 @@ module Chronicle
       log
     end
 
+    # Number of appended events. Mirrors the EventStore protocol's `count`.
+    def count : Int64
+      @events.size.to_i64
+    end
+
+    # Look up an appended event by id, or nil. Mirrors `EventStore#get_event`.
+    def get_event(id : String) : Event?
+      @events.find { |event| event.id == id }
+    end
+
+    # All appended events in log order. Mirrors `EventStore#iter_events`.
+    def iter_events : Array(Event)
+      @events.dup
+    end
+
+    # Drop every event after `event_id`, keeping `event_id` and everything
+    # before it. Unknown ids truncate nothing (mirrors `EventStore#truncate_after`).
+    def truncate_after(event_id : String) : Nil
+      index = @events.index { |event| event.id == event_id }
+      return if index.nil?
+
+      dropped = @events[(index + 1)..]
+      dropped.each { |event| @event_ids.delete(event.id) }
+      @events = @events[0..index]
+      @last_sequence = @events.empty? ? nil : @events.last.sequence
+    end
+
     # Returns a snapshot so callers cannot mutate the log's internal storage.
     def events : Array(Event)
       @events.dup
