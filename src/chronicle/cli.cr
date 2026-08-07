@@ -378,6 +378,9 @@ module Chronicle
       events.each do |evt|
         io.puts "  [#{evt.sequence}] #{evt.type} (#{evt.id})"
         io.puts "    actor: #{evt.actor}, time: #{evt.timestamp}"
+        if frame_id = evt.frame_id
+          io.puts "    frame: #{frame_id}"
+        end
         io.puts "    payload: #{evt.payload}"
         io.puts
       end

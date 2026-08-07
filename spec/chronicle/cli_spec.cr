@@ -37,6 +37,18 @@ describe Chronicle::CLI do
     end
   end
 
+  it "log inspect renders frame_id on events that carry one" do
+    header = %({"format":"chronicle.event-log","version":1})
+    goal = %({"schema_version":1,"sequence":1,"id":"goal_1","type":"goal.created","actor":"user","caused_by":null,"frame_id":null,"timestamp":"2026-07-24T12:00:00Z","payload":{"goal":"ship"}})
+    framed = %({"schema_version":1,"sequence":2,"id":"evt_2","type":"object.created","actor":"test","caused_by":"goal_1","frame_id":"frame_7","timestamp":"2026-07-24T12:00:00Z","payload":{"id":"doc#1","type":"doc","data":{}}})
+    log_content = "#{header}\n#{goal}\n#{framed}\n"
+
+    with_temp_log(log_content) do |path|
+      output = Chronicle::CLI.run(["log", "inspect", "--file", path])
+      output.should contain("frame_7")
+    end
+  end
+
   it "renders a causal chain from a log file" do
     header = %({"format":"chronicle.event-log","version":1})
     goal = %({"schema_version":1,"sequence":1,"id":"goal_1","type":"goal.created","actor":"user","caused_by":null,"frame_id":null,"timestamp":"2026-07-24T12:00:00Z","payload":{"goal":"ship"}})
