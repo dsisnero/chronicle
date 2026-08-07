@@ -125,6 +125,13 @@ module Chronicle
       Packs::Loader.load_pack_into_runtime(self, pack, settings)
     end
 
+    # Canonical settings for any loaded pack by name (Form 3 cross-pack lookup,
+    # CONTRACT v0.9 #7), or nil if the pack isn't loaded. Ported from
+    # activegraph.runtime.runtime.Runtime#pack_settings.
+    def pack_settings(pack_name : String) : Hash(String, JSON::Any)?
+      @pack_state.pack_settings[pack_name]?
+    end
+
     # Deregister a loaded pack: its behaviors stop firing NOW, tools stop
     # resolving, typed-object schemas and relation specs revert to untyped,
     # and gating policies are removed from this runtime's live registries.
@@ -233,6 +240,10 @@ module Chronicle
       @graph
     end
 
+    def llm_cache : LLMCache?
+      @llm_cache
+    end
+
     def loaded_packs : Array(String)
       @pack_state.loaded_packs.keys.sort!
     end
@@ -313,7 +324,7 @@ module Chronicle
     # reseeds the graph's id counters, and returns a Runtime that continues
     # from the fork point. Forks-of-forks work the same way. Ported from
     # activegraph.runtime.runtime.Runtime#fork.
-    def fork(at_event : String, label : String? = nil) : Runtime(M)
+    def fork(at_event : String, label : String? = nil, *, replay_llm_cache : Bool = false, replay_tool_cache : Bool = false) : Runtime(M)
       store = @store
       unless store.is_a?(SQLiteEventStore)
         raise IncompatibleRuntimeState.new(
@@ -342,7 +353,17 @@ module Chronicle
       fork_graph.ids.reseed_from_events(fork_events)
 
       fork_log = LogAgent(M).new(@log_agent.agent, store: fork_store, max_turns: 1)
-      fork_rt = Runtime(M).new(store: fork_store, log_agent: fork_log, graph: fork_graph, run_id: new_run_id)
+      # Caches are populated from the PARENT's recorded llm.responded /
+      # tool.responded events, not the fork's (which only contains events up to
+      # and including at_event). A diverging fork that regenerates an identical
+      # prompt hits the cache; a divergent prompt falls through to the provider
+      # (CONTRACT v0.6 #8).
+      fork_cache = replay_llm_cache ? LLMCache.from_events(@store.iter_events) : nil
+      fork_tool_cache = replay_tool_cache ? ToolCache.from_events(@store.iter_events) : nil
+      fork_rt = Runtime(M).new(
+        store: fork_store, log_agent: fork_log, graph: fork_graph,
+        run_id: new_run_id, llm_cache: fork_cache, tool_cache: fork_tool_cache,
+      )
       fork_rt.inherit_pack_registrations(@pack_behaviors, @pack_state, @pack_tools)
       fork_rt.resume_from_idle(fork_events)
       fork_rt
@@ -948,33 +969,48 @@ module Chronicle
       new_events : Array(Event),
       graph : GraphProjection,
     ) : Nil
-      to_invoke = [] of {Event, Packs::PackBehavior}
+      registry = Registry.new(@pack_behaviors)
+      to_invoke = [] of {Event, RegistryMatch}
       new_events.each do |event|
         # Promote applies its delta quiescently (CONTRACT v1.3 #4): the
         # `promote:`-actor delta events project and persist but are never
         # matched to behaviors — the `promote.applied` marker is the only
         # reaction point and is dispatched normally.
         next if event.actor.to_s.starts_with?("promote:")
-        @pack_behaviors.each do |behavior|
-          if behavior.matches?(event)
-            if after = behavior.activate_after
-              schedule_delayed(behavior, event, after)
-            else
-              to_invoke << {event, behavior}
-            end
+        registry.match(event, graph).each do |match|
+          if after = match.behavior.activate_after
+            schedule_delayed(match.behavior, event, after)
+          else
+            to_invoke << {event, match}
           end
         end
       end
-      to_invoke.sort_by! { |entry| {entry[0].sequence, -entry[1].priority, entry[1].name} }
-      to_invoke.each do |event, behavior|
-        invoke_pack_behavior(behavior, event, graph)
+      to_invoke.sort_by! { |entry| {entry[0].sequence, -entry[1].behavior.priority, entry[1].behavior.name} }
+      to_invoke.each do |event, match|
+        emit_pattern_matched(match, event) if match.behavior.pattern && !match.pattern_matches.empty?
+        invoke_pack_behavior(match.behavior, event, graph, match.relations)
       end
+    end
+
+    # Emit a `pattern.matched` lifecycle marker so the trace shows the pattern
+    # bindings for a pattern-based behavior that fired. Ported from
+    # activegraph.runtime.runtime.Runtime#_emit_pattern_matched.
+    private def emit_pattern_matched(match : RegistryMatch, event : Event) : Nil
+      append_event("pattern.matched", JSON.build do |json|
+        json.object do
+          json.field "behavior", match.behavior.name
+          json.field "event_id", event.id
+          json.field "matches_count", match.pattern_matches.size
+          json.field "pattern", match.behavior.pattern
+        end
+      end)
     end
 
     private def invoke_pack_behavior(
       behavior : Packs::PackBehavior,
       event : Event,
       graph : GraphProjection,
+      relations : Array(GraphRelation) = [] of GraphRelation,
     ) : Nil
       owner = behavior.pack_owner || ""
       settings = @pack_state.pack_settings[owner]? || {} of String => JSON::Any
@@ -985,11 +1021,10 @@ module Chronicle
       in Packs::PackBehaviorKind::Behavior
         behavior.handler.try(&.call(event, graph, ctx))
       in Packs::PackBehaviorKind::Relation
-        if event.type == "relation.created"
-          payload = JSON.parse(event.payload).as_h
-          if relation = graph.get_relation(payload["id"].as_s)
-            behavior.relation_handler.try(&.call(relation, event, graph, ctx))
-          end
+        # Registry.match already selected the candidate relations referenced by
+        # this event (upstream `_matching_relations`); invoke once per match.
+        relations.each do |relation|
+          behavior.relation_handler.try(&.call(relation, event, graph, ctx))
         end
       in Packs::PackBehaviorKind::LLM
         invoke_llm_behavior(behavior, event, ctx)

@@ -130,4 +130,24 @@ describe Chronicle::Runtime do
       loaded.run("some prompt")
     end
   end
+
+  it "populates the cache on Runtime#fork with replay_llm_cache from the parent's recorded events" do
+    db = File.join(Dir.tempdir, "chronicle_fork_cache_#{Random::Secure.hex(4)}.db")
+    store = Chronicle::SQLiteEventStore.new(db, run_id: "cache_parent")
+    graph = Chronicle::GraphProjection.empty.attach_store(store)
+    agent = Crig::Agent(CacheMockModel).new(model: CacheMockModel.new)
+    runtime = Chronicle::Runtime(CacheMockModel).new(store: store, log_agent: Chronicle::LogAgent(CacheMockModel).new(agent, store: store), graph: graph, run_id: store.run_id)
+    runtime.run("Fork cache")
+    store.count.should be > 0
+
+    fork = runtime.fork(at_event: store.iter_events[-1].id, replay_llm_cache: true)
+    fork_agent = Crig::Agent(ExplodingModel).new(model: ExplodingModel.new)
+    fork_rt = Chronicle::Runtime(ExplodingModel).new(
+      store: fork.store, log_agent: Chronicle::LogAgent(ExplodingModel).new(fork_agent, store: fork.store),
+      graph: fork.graph, run_id: fork.run_id, llm_cache: fork.llm_cache,
+    )
+    fork_rt.run("Fork cache").should_not be_empty
+  ensure
+    File.delete(db) if db && File.exists?(db)
+  end
 end
