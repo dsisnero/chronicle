@@ -155,6 +155,7 @@ module Chronicle
     @sinks : Hash(String, SinkHandle)
     @pack_object_validator : Proc(String, String, String)?
     @pack_relation_validator : Proc(String, String?, String?, Nil)?
+    @replayed_ids : Set(String)
 
     def initialize(
       @store : GraphStore = InMemoryGraphStore.new,
@@ -166,6 +167,7 @@ module Chronicle
       @listeners : Array(Proc(Event, Nil)) = [] of Proc(Event, Nil),
     )
       @sinks = {} of String => SinkHandle
+      @replayed_ids = Set(String).new
     end
 
     def self.empty : self
@@ -175,8 +177,24 @@ module Chronicle
     # The graph's ID generator, for reseeding after a replay (fork/load).
     getter ids : IDGen
 
+    # Rebuild graph state from a recorded log WITHOUT persisting or firing
+    # listeners (CONTRACT v0.5 #14 — replay does not fire behaviors). Every
+    # replayed event id is recorded in `replayed_ids`. Ported from
+    # activegraph.core.graph.Graph._replay_event.
     def self.replay(events : Array(Event)) : self
-      events.reduce(empty) { |projection, event| projection.apply(event) }
+      events.reduce(empty) { |projection, event| projection.apply(event) }.mark_replayed(events)
+    end
+
+    # The ids of every event this graph rebuilt via `replay` (the
+    # `Runtime.load` / `Runtime.fork` seam), distinct from live-emitted events.
+    # Ported from activegraph.core.graph.Graph.replayed_ids.
+    def replayed_ids : Set(String)
+      @replayed_ids.dup
+    end
+
+    protected def mark_replayed(events : Array(Event)) : self
+      events.each { |event| @replayed_ids << event.id }
+      self
     end
 
     def all_objects : Array(GraphObject)
