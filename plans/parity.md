@@ -132,7 +132,12 @@ From `plans/generated/parity/python/parity.tsv`:
 - [-] Retention/compaction (`store/retention.py`) — deferred: offline snapshot +
       archive-tier compaction depends on a snapshot sidecar and `causal_chain`,
       both not yet ported
-- [ ] `EventLog` gains `count`/`get_event`/`iter_events` conveniences if needed
+- [x] `EventLog` gains `count`/`get_event`/`iter_events`/`truncate_after`
+      conveniences, mirroring the upstream `EventStore` protocol (append,
+      iterate, count, lookup, truncate-after — CONTRACT v0.5 #2) on the
+      in-memory append-only log. `truncate_after` drops every event after the
+      given id and rewinds the sequence/causality bookkeeping.
+      `spec/chronicle/event_log_spec.cr`.
 
 ## Phase 3 — Runtime execution surface
 
@@ -183,8 +188,14 @@ From `parity.tsv` (`missing_contains` on Runtime):
       pack → `PackNotFoundError`; re-load = `load_pack` clears the disabled
       flag and returns true (fresh load, not idempotent skip). Ported from
       activegraph.test_disable_pack — `spec/chronicle/disable_pack_spec.cr`.
-- [ ] Packs — `load_pack` / `loaded_packs` / `pack_settings_for_behavior` —
-      deferred (Phase 7; partial: load_pack/loaded_packs/get_behavior/get_tool)
+- [x] Packs — `load_pack` / `loaded_packs` / `pack_settings(pack_name)` /
+      `get_behavior` / `get_tool` / `disable_pack` / `loaded_packs`.
+      `Runtime#pack_settings` is the Form 3 cross-pack lookup (CONTRACT v0.9
+      #7): canonical settings for any loaded pack by name, nil if not loaded,
+      nil after disable — upstream's `_pack_settings_for_behavior` is a private
+      helper whose lookup Chronicle's dispatch inlines. Ported from
+      activegraph.runtime.runtime.Runtime#pack_settings —
+      `spec/chronicle/pack_settings_spec.cr`.
 - [x] Promote — `Runtime#promote(fork, dry_run:)` applies a fork's net
       structural delta to its parent (CONTRACT v1.3 #4). Three-way
       base/parent/fork comparison (`Promote.compute_promote_plan` rebuilds the
@@ -246,7 +257,10 @@ From `parity.tsv` (`missing_contains` on Runtime):
       mid-run point can still re-fire recorded behaviors on `run_until_idle`;
       upstream's `fired_on` set built from `behavior.started` prevents that.
       Ported from activegraph.test_diff — `spec/chronicle/diff_spec.cr`.
-- [ ] Promote — `rebuild_shorts` — deferred (Phase 9 / fork path)
+- [x] Promote — `rebuild_shorts` — folded into `Runtime#disable_pack`: the
+      short-name maps are recomputed from the surviving canonical owners, so
+      disabling one of two same-short-name packs resolves the AMBIGUOUS
+      sentinel to the survivor (see the disable_pack row).
 - [x] Fork at runtime — `Runtime#fork(at_event, label:)` copies the parent
       log up to and including `at_event` into a fresh SQLite `run_id`, records
       lineage (`runs` table via `SQLiteEventStore.fork_run`/`list_runs`/
@@ -275,7 +289,20 @@ From `parity.tsv` (`missing_contains` on Runtime):
       (exact run-local receipts, promotion/event-log/R4 gates rejected before
       emission, receipts rebuilt from the log) — `runtime/dev_override.py` —
       `spec/chronicle/dev_override_spec.cr`
-- [ ] Registry — `ensure_registry` / behavior registration wiring — deferred
+- [x] Registry — `Chronicle::Registry` matches events to behaviors (CONTRACT
+      #10, registration order for ties): `all` / `index_of` / `match(event,
+      graph)` returning (behavior, matching_relations, pattern_matches)
+      triples. A behavior with both `on=[...]` and `pattern=` requires BOTH
+      conditions; pattern-only (empty `on`) behaviors match every non-lifecycle
+      event (behavior./relation_behavior./runtime./llm./tool./embedding./dev.
+      suppressed); relation behaviors fire on ANY event whose payload
+      references a candidate relation's source or target (`_matching_relations`
+      walks the payload for string ids, `where=` re-checked). Runtime dispatch
+      (`dispatch_new_events`) now uses the Registry, so relation behaviors fire
+      on referencing events (not just relation.created) and pattern-only
+      behaviors work. Removed the pre-port `PackBehavior#matches?` predicate
+      the vendor does not have. Ported from activegraph.runtime.registry —
+      `spec/chronicle/registry_spec.cr`.
 
 ## Phase 4 — LLM layer + replay cache
 
@@ -490,14 +517,52 @@ globally (CONTRACT v0.9 #3).
 
 ## Acceptance Gates
 
-- [ ] Same event log → same projection and routing decisions on replay
-- [ ] Any GraphStore backend passes the full `GraphStoreConformance` suite
-- [ ] `GraphProjection` write/emit surface matches upstream `Graph`
-      (add/remove/attach_store/listeners/sinks)
-- [ ] `LogAgent` run loop (`run_goal`/`invoke_*`) emits causally-linked
-      `llm.*`/`pattern.*`/`tool.*` events with provenance
-- [ ] LLM cache serves recorded responses on matching hashes during replay/fork;
-      strict mismatch raises `ReplayDivergenceError`
-- [ ] `frame_id` preserved on events and visible in log inspect
+- [x] Same event log → same projection and routing decisions on replay —
+      verified determinism: running the same prompt against the same policy
+      twice yields byte-identical `routing.decided` receipts (routing is pure:
+      smista-style precedence, tie-breaks, privacy, fallback narrowing), and
+      `GraphProjection.replay` over a recorded log rebuilds the identical
+      object/relation projection. No code change was needed — the property
+      already held; the gate is now pinned by spec —
+      `spec/chronicle/replay_determinism_spec.cr`.
+- [x] Any GraphStore backend passes the full `GraphStoreConformance` suite —
+      the reusable contract suite (`spec/chronicle/graph_store_conformance.cr`,
+      ported from activegraph.store.graph_conformance) covers every upstream
+      method (object/relation/patch round-trips, clear, find_objects,
+      find_objects_in_types, find_relations, neighborhood incl. placeholders +
+      cycles, match_chain single/one-hop/multi-hop/homomorphic/branching) and
+      both backends (`InMemoryGraphStore`, `SQLiteGraphStore`) run it verbatim
+      — 44 conformance examples, 0 failures.
+- [x] `GraphProjection` write/emit surface matches upstream `Graph`
+      (add/remove/attach_store/listeners/sinks). Added `replayed_ids` — every
+      event id rebuilt by `GraphProjection.replay` (the `Runtime.load`/`fork`
+      seam), distinct from live-emitted events (upstream `Graph.replayed_ids` /
+      `_replay_event`, CONTRACT v0.5 #14). `GraphProjection#store` getter not
+      needed: the runtime holds the store. Ported from activegraph test_replay —
+      `spec/chronicle/replayed_ids_spec.cr`.
+- [x] `LogAgent` run loop (`run_goal`/`invoke_*`) emits causally-linked
+      `llm.*`/`pattern.*`/`tool.*` events with provenance. `llm.requested` /
+      `llm.responded` / `llm.failed` and `tool.requested` / `tool.responded`
+      were already causally linked via `caused_by`; added the `pattern.matched`
+      lifecycle marker emitted when a pattern-based behavior fires (payload:
+      behavior, event_id, matches_count, pattern) — upstream
+      `_emit_pattern_matched`. Ported from activegraph test_pattern_subscriptions
+      / test_diligence_with_tools — `spec/chronicle/pattern_matched_spec.cr`.
+- [x] LLM cache serves recorded responses on matching hashes during replay/fork;
+      strict mismatch raises `ReplayDivergenceError`. `Runtime.load(replay_llm_cache:)`
+      and strict hash-checked replay were already wired; added `Runtime#fork(replay_llm_cache:)`
+      / `replay_tool_cache:` which pre-populate the fork's caches from the
+      PARENT's recorded llm.responded / tool.responded events (CONTRACT v0.6
+      #8 — a diverging fork that regenerates an identical prompt hits the
+      cache; a divergent prompt falls through), plus a `Runtime#llm_cache`
+      getter. Ported from activegraph runtime.py fork cache wiring —
+      `spec/chronicle/llm_cache_wiring_spec.cr`.
+- [x] `frame_id` preserved on events and visible in log inspect — the event
+      envelope already carried `frame_id` through `canonical_json` and the
+      codec round-trip (`frames_spec.cr`); `Runtime#export_trace` already
+      emitted it via `canonical_json`. Gap closed: the CLI `log inspect`
+      renderer now prints a `frame:` line for events that carry a frame id.
+      Ported from activegraph test_event.py to_dict round-trip + trace printer
+      — `spec/chronicle/cli_spec.cr`, `spec/chronicle/frames_spec.cr`.
 - [ ] `check_source_parity.sh` and `check_test_parity.sh` pass; `check_port_inventory.sh`
       reports no untracked symbols once the ledger is expanded
