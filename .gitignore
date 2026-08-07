@@ -19,3 +19,5 @@ mise.toml
 .lattice-cache/
 vendor/activegraph/
 chat.db
+chat.db-shm
+chat.db-wal
