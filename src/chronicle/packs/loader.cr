@@ -58,6 +58,30 @@ module Chronicle
         @disabled_packs = Set(String).new
         @next_approval_n = 1
       end
+
+      # A fork's runtime owns an independent pack snapshot: loading a pack on
+      # the fork must never leak into the parent (mirrors activegraph, where a
+      # fork's pack state is created fresh by load_pack). Shares the immutable
+      # Pack/schema values; copies the mutable containers.
+      def fork_snapshot : PackRuntimeState
+        copy = PackRuntimeState.new
+        copy.loaded_packs.merge!(@loaded_packs)
+        copy.pack_settings.merge!(@pack_settings)
+        copy.behavior_owners.merge!(@behavior_owners)
+        copy.tool_owners.merge!(@tool_owners)
+        copy.policy_owners.merge!(@policy_owners)
+        copy.object_type_owners.merge!(@object_type_owners)
+        copy.relation_type_owners.merge!(@relation_type_owners)
+        copy.behavior_short_to_canonical.merge!(@behavior_short_to_canonical)
+        copy.tool_short_to_canonical.merge!(@tool_short_to_canonical)
+        copy.object_type_schemas.merge!(@object_type_schemas)
+        copy.relation_type_specs.merge!(@relation_type_specs)
+        copy.gated_object_types.merge!(@gated_object_types)
+        copy.pack_pending_approvals.concat(@pack_pending_approvals)
+        copy.disabled_packs.concat(@disabled_packs)
+        copy.next_approval_n = @next_approval_n
+        copy
+      end
     end
 
     # Sentinel for a short name claimed by two packs.

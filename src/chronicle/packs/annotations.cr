@@ -162,6 +162,7 @@ module Chronicle
                   priority: {% if ann[:priority] %}{{ ann[:priority] }}{% else %}0{% end %},
                   creates: {% if ann[:creates] %}{{ ann[:creates] }}{% else %}[] of String{% end %},
                   pattern: {% if ann[:pattern] %}{{ ann[:pattern] }}{% else %}nil{% end %},
+                  activate_after: {% if ann[:activate_after] %}::Chronicle::Packs.parse_activate_after({{ ann[:activate_after] }}){% else %}nil{% end %},
                   description: {% if ann[:description] %}{{ ann[:description] }}{% else %}""{% end %},
                   handler: ->(event : ::Chronicle::Event, graph : ::Chronicle::GraphProjection, ctx : ::Chronicle::Packs::BehaviorContext) : Nil {
                     {% if method.args.any? { |arg| arg.name == :settings } %}
@@ -189,6 +190,7 @@ module Chronicle
                   priority: {% if ann[:priority] %}{{ ann[:priority] }}{% else %}0{% end %},
                   creates: {% if ann[:creates] %}{{ ann[:creates] }}{% else %}[] of String{% end %},
                   pattern: {% if ann[:pattern] %}{{ ann[:pattern] }}{% else %}nil{% end %},
+                  activate_after: {% if ann[:activate_after] %}::Chronicle::Packs.parse_activate_after({{ ann[:activate_after] }}){% else %}nil{% end %},
                   description: {% if ann[:description] %}{{ ann[:description] }}{% else %}""{% end %},
                   relation_handler: ->(relation : ::Chronicle::GraphRelation, event : ::Chronicle::Event, graph : ::Chronicle::GraphProjection, ctx : ::Chronicle::Packs::BehaviorContext) : Nil {
                     {% if method.args.any? { |arg| arg.name == :settings } %}
@@ -215,6 +217,7 @@ module Chronicle
                   priority: {% if ann[:priority] %}{{ ann[:priority] }}{% else %}0{% end %},
                   creates: {% if ann[:creates] %}{{ ann[:creates] }}{% else %}[] of String{% end %},
                   pattern: {% if ann[:pattern] %}{{ ann[:pattern] }}{% else %}nil{% end %},
+                  activate_after: {% if ann[:activate_after] %}::Chronicle::Packs.parse_activate_after({{ ann[:activate_after] }}){% else %}nil{% end %},
                   description: {% if ann[:description] %}{{ ann[:description] }}{% else %}""{% end %},
                   model: {% if ann[:model] %}{{ ann[:model] }}{% else %}"claude-sonnet-4-5"{% end %},
                   prompt_template: {% if ann[:prompt_template] %}{{ ann[:prompt_template] }}{% else %}nil{% end %},

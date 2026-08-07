@@ -46,6 +46,7 @@ module Chronicle
       getter max_tool_turns : Int32
       getter tools : Array(String)
       getter pack_owner : String?
+      getter activate_after : Int32?
 
       getter handler : Proc(Event, GraphProjection, BehaviorContext, Nil)?
       getter relation_handler : Proc(GraphRelation, Event, GraphProjection, BehaviorContext, Nil)?
@@ -71,6 +72,7 @@ module Chronicle
         @llm_handler : Proc(Event, GraphProjection, BehaviorContext, String, Nil)? = nil,
         @kind : PackBehaviorKind = PackBehaviorKind::Behavior,
         @pack_owner : String? = nil,
+        @activate_after : Int32? = nil,
       )
       end
 
@@ -106,6 +108,7 @@ module Chronicle
           llm_handler: @llm_handler,
           kind: @kind,
           pack_owner: pack.name,
+          activate_after: @activate_after,
         )
         copy
       end

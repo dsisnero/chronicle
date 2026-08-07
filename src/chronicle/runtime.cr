@@ -17,6 +17,7 @@ module Chronicle
     @graph : GraphProjection?
     @dispatch_cursor : Int32 = 0
     @tool_approval_policies : Array(Policy) = [] of Policy
+    @delayed : Packs::DelayedQueue = Packs::DelayedQueue.new
 
     # Action-class authority scale, lowest to highest.
     AUTHORITY_RANKS = {"read" => 0, "write" => 1, "admin" => 2, "root" => 3}
@@ -124,6 +125,98 @@ module Chronicle
       Packs::Loader.load_pack_into_runtime(self, pack, settings)
     end
 
+    # Deregister a loaded pack: its behaviors stop firing NOW, tools stop
+    # resolving, typed-object schemas and relation specs revert to untyped,
+    # and gating policies are removed from this runtime's live registries.
+    # Pack-created state stays (disabling code never rewrites history).
+    # Emits `pack.disabled` with the deregistered surface. Idempotent: a
+    # second disable returns false and emits nothing. Re-enable is `load_pack`
+    # again (fresh load, not idempotent skip). Raises PackNotFoundError for a
+    # name this runtime never loaded. Ported from
+    # activegraph.runtime.runtime.Runtime#disable_pack (CONTRACT v1.4 #3).
+    def disable_pack(name : String) : Bool
+      state = @pack_state
+      unless state.loaded_packs.has_key?(name)
+        if state.disabled_packs.includes?(name)
+          return false
+        end
+        raise Packs::PackNotFoundError.new(name, state.loaded_packs.keys)
+      end
+
+      pack = state.loaded_packs[name]
+      state.loaded_packs.delete(name)
+      state.pack_settings.delete(name)
+
+      removed_behaviors = state.behavior_owners.keys.select { |canonical| state.behavior_owners[canonical] == name }.sort!
+      removed_tools = state.tool_owners.keys.select { |canonical| state.tool_owners[canonical] == name }.sort!
+      removed_object_types = state.object_type_owners.keys.select { |object_type| state.object_type_owners[object_type] == name }.sort!
+      removed_relation_types = state.relation_type_owners.keys.select { |relation_type| state.relation_type_owners[relation_type] == name }.sort!
+
+      removed_behaviors.each { |canonical| state.behavior_owners.delete(canonical) }
+      removed_tools.each { |canonical| state.tool_owners.delete(canonical) }
+      removed_object_types.each { |object_type| state.object_type_owners.delete(object_type); state.object_type_schemas.delete(object_type) }
+      removed_relation_types.each { |relation_type| state.relation_type_owners.delete(relation_type); state.relation_type_specs.delete(relation_type) }
+      state.policy_owners.keys.select { |canonical| state.policy_owners[canonical] == name }.each { |canonical| state.policy_owners.delete(canonical) }
+
+      prefix = "#{name}."
+      state.gated_object_types.keys.each do |object_type|
+        remaining = state.gated_object_types[object_type].reject(&.starts_with?(prefix))
+        if remaining.empty?
+          state.gated_object_types.delete(object_type)
+        else
+          state.gated_object_types[object_type] = remaining
+        end
+      end
+
+      # Short-name maps: recompute from the surviving canonicals — removal can
+      # RESOLVE an ambiguity, not just delete entries.
+      state.behavior_short_to_canonical.clear.merge!(rebuild_shorts(state.behavior_owners))
+      state.tool_short_to_canonical.clear.merge!(rebuild_shorts(state.tool_owners))
+
+      @pack_behaviors = @pack_behaviors.reject { |behavior| behavior.pack_owner == name }
+      @pack_tools = @pack_tools.reject(&.name.starts_with?(prefix))
+
+      state.disabled_packs.add(name)
+
+      # Validators read state maps live; if the graph is attached, reinstall
+      # them so the disabled pack's schemas stop enforcing (typed → untyped).
+      if graph = @graph
+        Packs::Loader.install_graph_validators(graph, state)
+      end
+
+      append_event("pack.disabled", JSON.build do |json|
+        json.object do
+          json.field "name", name
+          json.field "version", pack.version
+          json.field "behaviors" do
+            json.array { removed_behaviors.each { |behavior_name| json.string(behavior_name) } }
+          end
+          json.field "tools" do
+            json.array { removed_tools.each { |tool_name| json.string(tool_name) } }
+          end
+          json.field "object_types" do
+            json.array { removed_object_types.each { |object_type| json.string(object_type) } }
+          end
+          json.field "relation_types" do
+            json.array { removed_relation_types.each { |relation_type| json.string(relation_type) } }
+          end
+        end
+      end)
+      true
+    end
+
+    # Recompute a short-name map from the surviving canonical owners: a short
+    # name maps to its canonical when unambiguous, AMBIGUOUS when two packs
+    # claim it. Ported from activegraph's `_rebuild_shorts`.
+    private def rebuild_shorts(owners : Hash(String, String)) : Hash(String, String)
+      shorts = {} of String => String
+      owners.each_key do |canonical|
+        short = canonical.split(".", 2)[1]
+        shorts[short] = shorts.has_key?(short) ? Packs::AMBIGUOUS : canonical
+      end
+      shorts
+    end
+
     def pack_state : Packs::PackRuntimeState
       @pack_state
     end
@@ -176,9 +269,373 @@ module Chronicle
 
     # Drain pack behaviors until no new events are produced. The no-prompt
     # form of run_until_idle: dispatches registered pack behaviors over new
-    # events in the log, letting them mutate the attached graph.
+    # events in the log, letting them mutate the attached graph. Mirrors
+    # upstream `Runtime#run_until_idle`, which emits the idle marker (or a
+    # budget-exhausted marker) once the log quiesces.
     def run_until_idle : Nil
       dispatch_pack_behaviors
+      emit_idle_or_exhausted
+    end
+
+    # Drain pack behaviors until the predicate over the attached graph is
+    # satisfied, the log quiesces, or the budget stops the loop, then record
+    # the idle/budget marker. Ported from
+    # activegraph.runtime.runtime.Runtime#run_until.
+    def run_until(predicate : Proc(GraphProjection, Bool)) : Nil
+      dispatch_pack_behaviors(stop_when: predicate)
+      emit_idle_or_exhausted
+    end
+
+    # Pack-driven entry point: emit a `goal.created` event (actor `user` by
+    # default) and run pack behaviors until the log quiesces. Ported from
+    # activegraph.runtime.runtime.Runtime#run_goal.
+    def run_goal(goal : String, *, actor : String = "user") : Nil
+      event = Event.new(
+        schema_version: 1_u16,
+        sequence: next_seq,
+        id: "goal_created_#{next_seq}",
+        type: "goal.created",
+        actor: actor,
+        caused_by: nil,
+        frame_id: current_frame_id,
+        timestamp: Time.utc,
+        payload: JSON.build do |json|
+          json.object { json.field "goal", goal }
+        end,
+      )
+      @store.append(event)
+      run_until_idle
+    end
+
+    # Branch this run at `at_event` into an independent new run (CONTRACT
+    # v0.5 #9). Requires a SQLite-backed store. Copies events up to and
+    # including `at_event` into a fresh run_id, replays them into a new graph,
+    # reseeds the graph's id counters, and returns a Runtime that continues
+    # from the fork point. Forks-of-forks work the same way. Ported from
+    # activegraph.runtime.runtime.Runtime#fork.
+    def fork(at_event : String, label : String? = nil) : Runtime(M)
+      store = @store
+      unless store.is_a?(SQLiteEventStore)
+        raise IncompatibleRuntimeState.new(
+          "runtime.fork() requires a SQLite-backed runtime (current: #{store.class.name})"
+        )
+      end
+      graph = @graph
+      raise IncompatibleRuntimeState.new("runtime.fork() requires an attached graph") unless graph
+
+      reject_mid_promote_block_fork(graph.events, at_event)
+
+      new_run_id = graph.ids.run
+      SQLiteEventStore.fork_run(
+        path: store.db_path,
+        parent_run_id: store.run_id,
+        new_run_id: new_run_id,
+        at_event_id: at_event,
+        label: label,
+        created_at: Time.utc.to_rfc3339,
+      )
+      fork_store = SQLiteEventStore.new(store.db_path, run_id: new_run_id)
+
+      fork_events = fork_store.iter_events
+      fork_graph = GraphProjection.replay(fork_events)
+      fork_graph.attach_store(fork_store)
+      fork_graph.ids.reseed_from_events(fork_events)
+
+      fork_log = LogAgent(M).new(@log_agent.agent, store: fork_store, max_turns: 1)
+      fork_rt = Runtime(M).new(store: fork_store, log_agent: fork_log, graph: fork_graph, run_id: new_run_id)
+      fork_rt.inherit_pack_registrations(@pack_behaviors, @pack_state, @pack_tools)
+      fork_rt.resume_from_idle(fork_events)
+      fork_rt
+    end
+
+    # Re-open a stored run by `run_id` and return a Runtime wired to continue
+    # from where the log left off (CONTRACT v0.5 #6). The caller supplies the
+    # agent; the store and graph are rebuilt from the log. Ported from
+    # activegraph.runtime.runtime.Runtime.load.
+    def self.load(
+      path : String,
+      run_id : String,
+      agent : Crig::Agent(M),
+      *,
+      max_turns : Int32 = 1,
+    ) : Runtime(M)
+      store = SQLiteEventStore.new(path, run_id: run_id)
+      events = store.iter_events
+      graph = GraphProjection.replay(events)
+      graph.attach_store(store)
+      graph.ids.reseed_from_events(events)
+      log = LogAgent(M).new(agent, store: store, max_turns: max_turns)
+      runtime = Runtime(M).new(store: store, log_agent: log, graph: graph, run_id: run_id)
+      runtime.resume_from_idle(events)
+      runtime
+    end
+
+    # Copy the parent's loaded-pack registrations into a freshly forked
+    # runtime so it can continue dispatching the same pack behaviors.
+    protected def inherit_pack_registrations(
+      pack_behaviors : Array(Packs::PackBehavior),
+      pack_state : Packs::PackRuntimeState,
+      pack_tools : Array(Tool),
+    ) : self
+      @pack_behaviors = pack_behaviors
+      @pack_state = pack_state.fork_snapshot
+      @pack_tools = pack_tools
+      self
+    end
+
+    # Seed the dispatch cursor past every event already drained by the last
+    # `runtime.idle` marker (CONTRACT v0.5 diff #8). A fork/load must not
+    # re-dispatch behaviors whose work already completed; only events emitted
+    # after the last idle are candidates. Ported from activegraph's
+    # `_requeue_unfired` high-water-mark rule.
+    protected def resume_from_idle(events : Array(Event)) : self
+      cursor = 0
+      events.each_with_index do |event, index|
+        cursor = index + 1 if event.type == "runtime.idle"
+      end
+      @dispatch_cursor = cursor
+      self
+    end
+
+    # Raise when a fork cutoff would slice a promote block in half (CONTRACT
+    # v1.3 #4). The cut is invalid iff any event after the cutoff is a
+    # `promote:`-actor delta whose marker sits at or before the cutoff — the
+    # child would inherit the marker without its full delta, breaking promote's
+    # atomicity. Cutting before the marker (block fully excluded) or at the
+    # block's last delta event (block fully included) is fine. Ported from
+    # activegraph's `_reject_mid_promote_block_fork`.
+    private def reject_mid_promote_block_fork(events : Array(Event), at_event : String) : Nil
+      cut_index = events.index { |event| event.id == at_event }
+      return if cut_index.nil? # unknown ids get EventNotFoundError downstream
+
+      markers_before = Set(String).new
+      events[0..cut_index].each do |event|
+        markers_before << event.id if event.type == "promote.applied"
+      end
+      events[(cut_index + 1)..].each do |event|
+        next unless event.actor.to_s.starts_with?("promote:")
+        marker_id = event.caused_by
+        next unless marker_id && markers_before.includes?(marker_id)
+        raise IncompatibleRuntimeState.new(
+          "fork(at_event=#{at_event.inspect}) would slice the promote block anchored at #{marker_id.inspect}: marker plus its quiescent delta events are one atomic unit"
+        )
+      end
+    end
+
+    # Apply `fork`'s net structural delta to this runtime (the parent).
+    # Ported from activegraph.runtime.runtime.Runtime#promote (CONTRACT v1.3
+    # #4). Three-way comparison against this run's state at the recorded fork
+    # point: fork-only changes apply as ordinary parent events; both-sides
+    # changes raise PromoteConflictError before any mutation (fail-closed,
+    # atomic); this run's own post-fork work is left alone. Referential
+    # integrity is part of the conflict check. Application is quiescent: delta
+    # events append, project, and persist but do not fire behaviors — the
+    # single reaction point is the `promote.applied` marker, emitted first,
+    # then every delta event is `caused_by` it. Requires both runtimes on the
+    # same SQLite store and `fork` to be a direct fork of this run per the
+    # store's lineage records.
+    def promote(fork : Runtime(M), *, dry_run : Bool = false) : PromotePlan | PromoteResult
+      parent_store = @store
+      unless parent_store.is_a?(SQLiteEventStore)
+        raise IncompatibleRuntimeState.new("runtime.promote() requires a SQLite-backed receiver (got #{parent_store.class.name})")
+      end
+      fork_store = fork.store
+      unless fork_store.is_a?(SQLiteEventStore)
+        raise IncompatibleRuntimeState.new("runtime.promote() requires a SQLite-backed fork (got #{fork_store.class.name})")
+      end
+
+      parent_graph = graph
+      fork_graph = fork.graph
+      raise IncompatibleRuntimeState.new("runtime.promote() requires attached graphs") unless parent_graph && fork_graph
+
+      if parent_store.db_path != fork_store.db_path
+        raise PromoteLineageError.new("the runs live in different stores (#{parent_store.db_path.inspect} vs #{fork_store.db_path.inspect})")
+      end
+
+      record = fork_store.get_run
+      if record.nil? || record.parent_run_id != self.run_id
+        raise PromoteLineageError.new(
+          "store records #{record.try(&.parent_run_id).inspect} as its parent, not #{self.run_id.inspect}"
+        )
+      end
+      forked_at = record.forked_at_event_id
+      raise PromoteLineageError.new("the store has no forked_at_event_id for this run") if forked_at.nil?
+
+      warnings = Promote.promote_warnings(parent_store.iter_events, fork_store.iter_events, forked_at)
+      plan = Promote.compute_promote_plan(
+        parent_graph, fork_graph,
+        from_run: fork.run_id, into_run: self.run_id,
+        forked_at_event: forked_at, warnings: warnings,
+      )
+
+      return plan if dry_run
+      unless plan.is_promotable
+        raise PromoteConflictError.new(plan.conflicts)
+      end
+
+      validate_promote_schema(plan, parent_graph)
+
+      # ---- apply (marker first, then the delta, quiescently) ----
+      actor = "promote:#{fork.run_id}"
+      frame_id = self.current_frame_id
+      sequence = parent_graph.events.size.to_u64
+      marker = parent_graph.emit(Event.new(
+        schema_version: 1_u16,
+        sequence: (sequence += 1_u64),
+        id: parent_graph.ids.event,
+        type: "promote.applied",
+        actor: "runtime",
+        caused_by: nil,
+        frame_id: frame_id,
+        timestamp: Time.utc,
+        payload: JSON.build do |json|
+          json.object do
+            json.field "from_run", plan.from_run
+            json.field "forked_at_event", plan.forked_at_event
+            json.field "computed_against", plan.computed_against
+            json.field "objects_created", plan.object_creates.map(&.["id"].as_s)
+            json.field "objects_patched", plan.object_patches.map(&.["id"].as_s)
+            json.field "objects_removed", plan.object_removes
+            json.field "relations_created", plan.relation_creates.map(&.["id"].as_s)
+            json.field "relations_removed", plan.relation_removes
+            json.field "warnings", plan.warnings
+          end
+        end,
+      ))
+      emit_delta = ->(type : String, payload : String) {
+        parent_graph.emit(Event.new(
+          schema_version: 1_u16,
+          sequence: (sequence += 1_u64),
+          id: parent_graph.ids.event,
+          type: type,
+          actor: actor,
+          caused_by: marker.id,
+          frame_id: frame_id,
+          timestamp: Time.utc,
+          payload: payload,
+        ))
+      }
+
+      applied = [] of String
+
+      # Order: explicit relation removals first, then object removals, then
+      # creates/patches, then relation creates.
+      plan.relation_removes.each do |relation_id|
+        applied << emit_delta.call("relation.removed", JSON.build { |j| j.object { j.field "id", relation_id } }).id
+      end
+      plan.object_removes.each do |object_id|
+        applied << emit_delta.call("object.removed", JSON.build { |j| j.object { j.field "id", object_id } }).id
+      end
+      plan.object_creates.each do |entry|
+        applied << emit_delta.call("object.created", JSON.build do |j|
+          j.object do
+            j.field "id", entry["id"].as_s
+            j.field "type", entry["type"].as_s
+            j.field "data" do
+              j.raw(entry["data"].to_json)
+            end
+            j.field "version", 1
+          end
+        end).id
+      end
+      plan.object_patches.each do |entry|
+        current = parent_graph.get_object(entry["id"].as_s)
+        expected = current.try(&.version) || 0_i64
+        applied << emit_delta.call("patch.applied", JSON.build do |j|
+          j.object do
+            j.field "patch" do
+              j.object do
+                j.field "id", parent_graph.ids.patch
+                j.field "target", entry["id"].as_s
+                j.field "op", "replace"
+                j.field "value" do
+                  j.raw(entry["data"].to_json)
+                end
+                j.field "expected_version", expected
+                j.field "proposed_by", actor
+              end
+            end
+            j.field "target", entry["id"].as_s
+          end
+        end).id
+      end
+      plan.relation_creates.each do |entry|
+        applied << emit_delta.call("relation.created", JSON.build do |j|
+          j.object do
+            j.field "id", entry["id"].as_s
+            j.field "type", entry["type"].as_s
+            j.field "from_id", entry["source"].as_s
+            j.field "to_id", entry["target"].as_s
+          end
+        end).id
+      end
+
+      # Promoted entities keep their fork-minted ids; bump this run's
+      # generators past them so future mints can't collide.
+      parent_graph.ids.reseed_from_events(parent_graph.events)
+
+      PromoteResult.new(plan: plan, marker_event_id: marker.id, applied_event_ids: applied)
+    end
+
+    # Structural comparison of this run against `other` (typically a fork):
+    # shared event prefix + each side's tail (lifecycle events filtered) plus
+    # per-id divergent objects/relations. Ported from
+    # activegraph.runtime.runtime.Runtime#diff (CONTRACT v0.5 #10).
+    def diff(other : Runtime(M)) : Diff
+      parent_graph = graph
+      fork_graph = other.graph
+      raise IncompatibleRuntimeState.new("runtime.diff() requires attached graphs") unless parent_graph && fork_graph
+
+      Diff.compute(
+        parent_graph, fork_graph,
+        parent_events: self.store.iter_events,
+        fork_events: other.store.iter_events,
+        parent_run_id: self.run_id, fork_run_id: other.run_id,
+      )
+    end
+
+    private def emit_idle_or_exhausted : Nil
+      payload = JSON.build do |json|
+        json.object do
+          json.field "snapshot", %({"events":#{@store.count}})
+        end
+      end
+      append_event(budget_exhausted? ? "runtime.budget_exhausted" : "runtime.idle", payload)
+    end
+
+    # Pre-mutation schema validation for a promote delta (CONTRACT v1.3 #4).
+    # The delta is applied through hand-built events, which bypass add_object's
+    # pack-schema hook — so validate here, against THIS runtime's loaded packs,
+    # before anything mutates. Types no loaded pack declares pass through
+    # untyped; typed data that violates the parent's schema raises
+    # PackSchemaViolation with the parent byte-identical to before the call.
+    # Validated (canonicalized) data replaces the raw delta payload. Ported
+    # from activegraph.runtime.runtime.Runtime#promote.
+    private def validate_promote_schema(plan : PromotePlan, parent_graph : GraphProjection) : Nil
+      if obj_validator = parent_graph.pack_object_validator?
+        (plan.object_creates + plan.object_patches).each do |entry|
+          entry["data"] = JSON.parse(obj_validator.call(entry["type"].as_s, entry["data"].to_json))
+        end
+      end
+      rel_validator = parent_graph.pack_relation_validator?
+      return if rel_validator.nil?
+
+      created_types = {} of String => String
+      plan.object_creates.each { |entry| created_types[entry["id"].as_s] = entry["type"].as_s }
+      endpoint_type = ->(object_id : String) {
+        if created_types.has_key?(object_id)
+          created_types[object_id]
+        else
+          parent_graph.get_object(object_id).try(&.type)
+        end
+      }
+      plan.relation_creates.each do |entry|
+        rel_validator.call(
+          entry["type"].as_s,
+          endpoint_type.call(entry["source"].as_s),
+          endpoint_type.call(entry["target"].as_s),
+        )
+      end
     end
 
     # Deferred object creation behind a policy approval. Records the proposal
@@ -277,6 +734,79 @@ module Chronicle
       (AUTHORITY_RANKS[level]? || -1) <= (AUTHORITY_RANKS[ceiling]? || -1)
     end
 
+    # Record and return one exact, run-local developer override receipt. The
+    # event crosses normal store acceptance before this method returns;
+    # promotion, event logging, and R4 governance authority are rejected before
+    # emission. Ported from activegraph.runtime.runtime.Runtime#dev_override.
+    def dev_override(
+      *,
+      actor : String,
+      reason : String,
+      target_gate : String,
+      scope : String,
+      resulting_authority : String,
+    ) : DevOverride
+      DevOverrideValidation.validate_override_request(
+        actor: actor, reason: reason, target_gate: target_gate,
+        scope: scope, resulting_authority: resulting_authority,
+      )
+      event = Event.new(
+        schema_version: 1_u16,
+        sequence: next_seq,
+        id: "dev_override_#{next_seq}",
+        type: "dev.override",
+        actor: actor,
+        frame_id: current_frame_id,
+        caused_by: nil,
+        timestamp: Time.utc,
+        payload: JSON.build do |json|
+          json.object do
+            json.field "actor", actor
+            json.field "reason", reason
+            json.field "target_gate", target_gate
+            json.field "scope", scope
+            json.field "resulting_authority", resulting_authority
+          end
+        end,
+      )
+      @store.append(event)
+      DevOverride.new(
+        event_id: event.id, run_id: @run_id, actor: actor, reason: reason,
+        target_gate: target_gate, scope: scope,
+        resulting_authority: resulting_authority,
+      )
+    end
+
+    # Reconstruct accepted developer override receipts from the log.
+    def dev_overrides : Array(DevOverride)
+      @store.iter_events.compact_map { |event| DevOverrideValidation.receipt_from_event(event, @run_id) }
+    end
+
+    # Validate an exact receipt for one local gate decision. No wildcard,
+    # prefix, cross-run, promotion, event-log, or R4 match is possible. The
+    # referenced event must still exist with identical fields.
+    def validate_dev_override(
+      receipt : DevOverride,
+      *,
+      target_gate : String,
+      scope : String,
+      required_authority : String,
+    ) : Bool
+      if receipt.run_id != @run_id || DevOverrideValidation.gate_forbidden?(target_gate)
+        return false
+      end
+      if target_gate != receipt.target_gate || scope != receipt.scope
+        return false
+      end
+      unless DevOverrideValidation.authority_allows?(receipt.resulting_authority, required_authority)
+        return false
+      end
+      event = @store.get_event(receipt.event_id)
+      return false unless event
+      recorded = DevOverrideValidation.receipt_from_event(event, @run_id)
+      recorded == receipt
+    end
+
     def export_trace : String
       JSON.build do |json|
         json.object do
@@ -373,7 +903,7 @@ module Chronicle
     # Deterministic fan-out: process new log events through matching pack
     # behaviors until a pass produces no new events. Behaviors mutate the
     # attached graph, which appends to the same store.
-    private def dispatch_pack_behaviors : Nil
+    private def dispatch_pack_behaviors(*, stop_when : Proc(GraphProjection, Bool)? = nil) : Nil
       return if @pack_behaviors.empty?
 
       graph = @graph
@@ -383,6 +913,12 @@ module Chronicle
 
       iterations = 0
       loop do
+        if budget_exhausted?
+          break
+        end
+        if predicate = stop_when
+          break if predicate.call(graph)
+        end
         events = @store.iter_events
         if @dispatch_cursor >= events.size
           break
@@ -392,21 +928,46 @@ module Chronicle
         @dispatch_cursor = events.size
         break if new_events.empty?
 
-        scheduled = [] of {Event, Packs::PackBehavior}
-        new_events.each do |event|
-          @pack_behaviors.each do |behavior|
-            scheduled << {event, behavior} if behavior.matches?(event)
-          end
-        end
-        break if scheduled.empty?
+        dispatch_new_events(new_events, graph)
 
-        scheduled.sort_by! { |entry| {entry[0].sequence, -entry[1].priority, entry[1].name} }
-        scheduled.each do |event, behavior|
-          invoke_pack_behavior(behavior, event, graph)
-        end
+        # Fire any `activate_after` entries whose dispatch window has arrived.
+        # Chronicle derives the tick from the event sequence; graph mutations
+        # that emit events (add_object) advance it, so entries become due as
+        # later events dispatch.
+        fire_due_delayed(events.last?.try(&.sequence) || 0u64)
 
         iterations += 1
         break if iterations >= 1000
+      end
+    end
+
+    # Build the per-chunk dispatch list: behaviors with `activate_after` are
+    # scheduled instead of invoked; the rest are invoked in deterministic
+    # (sequence, -priority, name) order.
+    private def dispatch_new_events(
+      new_events : Array(Event),
+      graph : GraphProjection,
+    ) : Nil
+      to_invoke = [] of {Event, Packs::PackBehavior}
+      new_events.each do |event|
+        # Promote applies its delta quiescently (CONTRACT v1.3 #4): the
+        # `promote:`-actor delta events project and persist but are never
+        # matched to behaviors — the `promote.applied` marker is the only
+        # reaction point and is dispatched normally.
+        next if event.actor.to_s.starts_with?("promote:")
+        @pack_behaviors.each do |behavior|
+          if behavior.matches?(event)
+            if after = behavior.activate_after
+              schedule_delayed(behavior, event, after)
+            else
+              to_invoke << {event, behavior}
+            end
+          end
+        end
+      end
+      to_invoke.sort_by! { |entry| {entry[0].sequence, -entry[1].priority, entry[1].name} }
+      to_invoke.each do |event, behavior|
+        invoke_pack_behavior(behavior, event, graph)
       end
     end
 
@@ -431,9 +992,205 @@ module Chronicle
           end
         end
       in Packs::PackBehaviorKind::LLM
-        # LLM behavior execution needs the LLM effect pipeline (Phase 3
-        # registry + model dispatch wiring); deferred this cycle.
+        invoke_llm_behavior(behavior, event, ctx)
       end
+    end
+
+    # Emit `behavior.scheduled` and push a delayed-queue entry for a behavior
+    # whose `activate_after=N` defers its invocation by N events. The fire
+    # moment is derived from the triggering event's sequence (Chronicle's
+    # dispatch tick).
+    private def schedule_delayed(
+      behavior : Packs::PackBehavior,
+      event : Event,
+      after : Int32,
+    ) : Nil
+      current = event.sequence
+      sched = append_event("behavior.scheduled", JSON.build do |json|
+        json.object do
+          json.field "behavior", behavior.name
+          json.field "event_id", event.id
+          json.field "activate_after", after
+          json.field "fire_at_tick", current + after
+          json.field "current_tick", current
+        end
+      end)
+      @delayed.push(Packs::ScheduledEntry.new(
+        behavior_name: behavior.name,
+        triggering_event_id: event.id,
+        fire_at_sequence: current + after,
+        scheduled_event_id: sched.id,
+      ))
+    end
+
+    # Fire every `activate_after` entry whose fire window has arrived, after
+    # re-checking `where=` against the triggering event's payload. A where
+    # that no longer holds is skipped silently (CONTRACT v0.7 #13). Ported
+    # from activegraph.runtime.runtime.Runtime#_fire_due_delayed.
+    private def fire_due_delayed(current_sequence : UInt64) : Nil
+      graph = @graph
+      return if graph.nil?
+      @delayed.pop_due(current_sequence).each do |entry|
+        ev = @store.get_event(entry.triggering_event_id)
+        next unless ev
+        behavior = @pack_behaviors.find { |b| b.name == entry.behavior_name }
+        next unless behavior
+        if where = behavior.where
+          next unless Packs.where_matches?(where, ev.payload)
+        end
+        next if behavior.kind == Packs::PackBehaviorKind::Relation
+        invoke_pack_behavior(behavior, ev, graph)
+      end
+    end
+
+    # Auto-run an `@[LLMBehavior]` handler against the recorded LLM effect
+    # pipeline: emit `behavior.started`, compose the prompt, route through
+    # `execute_model_request` (which records llm.requested / llm.responded and
+    # honors the llm cache), invoke the handler with the model output, then
+    # emit `behavior.completed`. Failures become a durable `behavior.failed`.
+    private def invoke_llm_behavior(
+      behavior : Packs::PackBehavior,
+      event : Event,
+      ctx : Packs::BehaviorContext,
+    ) : Nil
+      graph = @graph
+      if graph.nil?
+        raise GraphProjectionError.new("LLM behavior dispatch requires an attached graph")
+      end
+      record_behavior_started(behavior, event)
+      objects_before = graph.all_objects.size
+      relations_before = graph.all_relations.size
+
+      begin
+        if behavior.llm_handler.nil?
+          raise Packs::PackError.new("LLM behavior #{behavior.name} is missing its handler")
+        end
+        output = execute_llm_behavior_request(behavior, event, ctx, graph)
+        behavior.llm_handler.try(&.call(event, graph, ctx, output))
+        record_behavior_completed(
+          behavior, event, output,
+          objects_created: graph.all_objects.size - objects_before,
+          relations_created: graph.all_relations.size - relations_before,
+        )
+      rescue ex : Exception
+        record_behavior_failed(behavior, event, ex)
+      end
+    end
+
+    # Compose the LLM behavior prompt and run it through the same model effect
+    # pipeline used by the agent loop (llm.requested -> execute -> llm.responded,
+    # with cache and fallback). Returns the model output text.
+    private def execute_llm_behavior_request(
+      behavior : Packs::PackBehavior,
+      event : Event,
+      ctx : Packs::BehaviorContext,
+      graph : GraphProjection,
+    ) : String
+      system = build_llm_system(behavior)
+      user = build_llm_user_message(behavior, event, graph)
+      payload = JSON.build do |json|
+        json.object do
+          json.field "behavior", behavior.name
+          json.field "system", system
+          json.field "user", user
+          json.field "model", behavior.model.to_s
+          json.field "max_tokens", behavior.max_tokens
+          json.field "temperature", behavior.temperature
+        end
+      end
+
+      effect = EffectRequest.new(
+        "llm_behavior_#{next_seq}",
+        EffectKind::Model,
+        payload,
+      )
+
+      builder = Crig::Completion::Request::CompletionRequestBuilder.new(
+        user
+      )
+      builder = builder
+        .preamble(system)
+        .model(behavior.model || "claude-sonnet-4-5")
+        .temperature(behavior.temperature)
+        .max_tokens(behavior.max_tokens.to_i64)
+
+      response = execute_model_request(effect, builder.build, caused_by: event.id)
+      response.choice.first.text.try(&.text) || ""
+    end
+
+    # System prompt: the behavior description composed with its (Optional)
+    # named prompt body, mirroring upstream `_resolve_description`.
+    private def build_llm_system(behavior : Packs::PackBehavior) : String
+      parts = [] of String
+      parts << behavior.description.strip unless behavior.description.empty?
+      template = behavior.prompt_template
+      parts << template.strip unless template.nil? || template.strip.empty?
+      return "You are executing the #{behavior.name} behavior." if parts.empty?
+      parts.join("\n\n")
+    end
+
+    # User message: the triggering event plus a bounded serialization of the
+    # current graph so the model has context to act on.
+    private def build_llm_user_message(
+      behavior : Packs::PackBehavior,
+      event : Event,
+      graph : GraphProjection,
+    ) : String
+      String.build do |io|
+        io << "## Triggering event\n"
+        io << event.canonical_json
+        io << "\n\n## Graph context\n"
+        io << "{"
+        graph.all_objects.each_with_index do |obj, index|
+          io << ',' unless index == 0
+          io << obj.id.to_json << ":{\"type\":" << obj.type.to_json << ",\"data\":"
+          io << obj.data
+          io << '}'
+        end
+        io << '}'
+        io << "\n\nClassified by behavior: "
+        io << behavior.name
+      end
+    end
+
+    private def record_behavior_started(behavior : Packs::PackBehavior, event : Event) : Nil
+      append_event("behavior.started", JSON.build do |json|
+        json.object do
+          json.field "behavior", behavior.name
+          json.field "kind", behavior.kind.to_s
+          json.field "trigger_event_id", event.id
+        end
+      end)
+    end
+
+    private def record_behavior_completed(
+      behavior : Packs::PackBehavior,
+      event : Event,
+      output : String,
+      *,
+      objects_created : Int32 = 0,
+      relations_created : Int32 = 0,
+    ) : Nil
+      append_event("behavior.completed", JSON.build do |json|
+        json.object do
+          json.field "behavior", behavior.name
+          json.field "trigger_event_id", event.id
+          json.field "objects_created", objects_created
+          json.field "relations_created", relations_created
+          json.field "output", output
+        end
+      end)
+    end
+
+    private def record_behavior_failed(behavior : Packs::PackBehavior, event : Event, error : Exception) : Nil
+      append_event("behavior.failed", JSON.build do |json|
+        json.object do
+          json.field "behavior", behavior.name
+          json.field "trigger_event_id", event.id
+          json.field "error_class", error.class.to_s
+          json.field "reason", error.message || error.class.to_s
+        end
+      end)
     end
 
     private def drive_loop(user_message : Event, max_steps : Int32?) : Nil
@@ -670,6 +1427,7 @@ module Chronicle
     private def execute_model_request(
       effect : EffectRequest,
       request : Crig::Completion::Request::CompletionRequest,
+      caused_by : String? = nil,
     )
       loop do
         target = current_execution_target || Routing::Target.new("legacy", "default", false)
@@ -677,7 +1435,7 @@ module Chronicle
         if hashes = @strict_expected_hashes
           assert_prompt_hash!(hashes, effect.content_hash)
         end
-        request_event = record_llm_requested(effect, target, cache_hit: !cached.nil?)
+        request_event = record_llm_requested(effect, target, cache_hit: !cached.nil?, caused_by: caused_by)
 
         if cached_result = cached
           response = completion_response_from_cache(cached_result)
@@ -801,6 +1559,7 @@ module Chronicle
       effect : EffectRequest,
       target : Routing::Target?,
       cache_hit : Bool = false,
+      caused_by : String? = nil,
     ) : Event
       event = Event.new(
         schema_version: 1_u16,
@@ -808,7 +1567,7 @@ module Chronicle
         id: "llm_requested_#{next_seq}",
         type: "llm.requested",
         actor: "runtime",
-        caused_by: nil,
+        caused_by: caused_by,
         timestamp: Time.utc,
         payload: JSON.build do |json|
           json.object do

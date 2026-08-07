@@ -172,6 +172,9 @@ module Chronicle
       new
     end
 
+    # The graph's ID generator, for reseeding after a replay (fork/load).
+    getter ids : IDGen
+
     def self.replay(events : Array(Event)) : self
       events.reduce(empty) { |projection, event| projection.apply(event) }
     end
@@ -294,7 +297,8 @@ module Chronicle
         patch = parse_patch(patch_data, PatchState::Applied)
         @store.put_patch(patch)
         if obj = @store.get_object(target_id)
-          @store.put_object(GraphObject.new(obj.id, obj.type, patch.value, obj.version + 1, provenance))
+          value = patch.op == PatchOp::Update ? merge_object_data(obj.data, patch.value) : patch.value
+          @store.put_object(GraphObject.new(obj.id, obj.type, value, obj.version + 1, provenance))
         end
       when "patch.rejected"
         patch_data = payload["patch"].as_h
@@ -418,7 +422,9 @@ module Chronicle
     end
 
     # Auto-apply shortcut: build patch, version-check, emit applied/rejected in one step.
-    # Ported from activegraph.graph.Graph.patch_object.
+    # Ported from activegraph.graph.Graph.patch_object. Upstream's `update` op
+    # is a field-level merge: `value` carries only the changed fields and the
+    # projection merges them into the object's current data.
     def patch_object(
       target : String,
       value : String,
@@ -431,20 +437,32 @@ module Chronicle
 
       ver = obj.version
       id = patch_id || "patch_#{@store.all_patches.size + 1}"
-      diff = compute_diff(obj.data, value)
+      merged = merge_object_data(obj.data, value)
+      diff = compute_diff(obj.data, merged)
 
       applied = Patch.new(
         id: id, target: target, op: PatchOp::Update,
-        value: value, expected_version: ver,
+        value: merged, expected_version: ver,
         proposed_by: actor, status: PatchState::Applied,
       )
 
       @store.put_patch(applied)
-      @store.put_object(GraphObject.new(obj.id, obj.type, value, ver + 1))
+      @store.put_object(GraphObject.new(obj.id, obj.type, merged, ver + 1))
       ids = @patch_ids_by_target.fetch(target, [] of String)
       @patch_ids_by_target[target] = ids + [id]
 
       PatchResult.new(patch: applied, graph: self, diff: diff)
+    end
+
+    # Field-level merge for an `update` patch: `updates` top-level keys override
+    # the corresponding keys in `current`; all other keys are preserved. Ported
+    # from activegraph's `obj.data.update(patch.value)` on patch.applied.
+    private def merge_object_data(current : String, updates : String) : String
+      current_h = JSON.parse(current).as_h? || {} of String => JSON::Any
+      updates_h = JSON.parse(updates).as_h? || {} of String => JSON::Any
+      merged = current_h.dup
+      updates_h.each { |k, v| merged[k] = v }
+      merged.to_json
     end
 
     def build_view(spec : ViewSpec = ViewSpec.new) : View
