@@ -76,16 +76,6 @@ module Chronicle
       )
       end
 
-      # Whether this behavior subscribes to the given event. `on` empty means
-      # any event; `where` (dotted paths against the event payload) must pass.
-      def matches?(event : Event) : Bool
-        return false unless event_types.empty? || event_types.includes?(event.type)
-        where = @where
-        return true if where.nil?
-
-        Packs.where_matches?(where, event.payload)
-      end
-
       # Canonical copy with the pack prefix applied and ownership stamped.
       def canonicalize(pack : Pack, settings : Hash(String, JSON::Any)) : PackBehavior
         copy = PackBehavior.new(
