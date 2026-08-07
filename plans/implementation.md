@@ -415,7 +415,11 @@ drains new log events through matching pack behaviors until quiescent
 
 - Cross-pack settings (`ctx.pack_settings`) are canonical hashes, not typed.
 - Pack tools take only `args` (compile-time error otherwise).
-- LLM behavior execution dispatch deferred to the Phase 3 LLM pipeline.
+- LLM behavior execution dispatch runs through the LLM effect pipeline: the
+  runtime composes the behavior prompt, routes it via `execute_model_request`
+  (emitting `llm.requested`/`llm.responded` and honoring the llm cache), then
+  invokes the handler with the model output. No structured-output schema typing
+  yet; the handler receives the raw output string.
 - Discovery is a compile-time `Registry`; no Python entry points.
 - The I/O boundary (`prompt.cr`, `manifest.cr`, `scaffold.cr`) is exempt from
   the Sans-IO core gate, matching `config.cr`/`cli.cr`.

@@ -154,15 +154,127 @@ From `parity.tsv` (`missing_contains` on Runtime):
 - [x] Structured effect events — `llm.requested/responded/failed`,
       `tool.requested/responded` recorded around invocation (via `Chronicle::AgentHook`
       for the runner path and `Runtime` for the manual path)
-- [ ] Run loop — `run_goal`/`run_until`/`run_quantum`/`run_until_idle` full parity —
-      `run_quantum`/`run_until_idle` done; `run_goal` naming deferred
-- [ ] `get_behavior` / view injection into behavior context — deferred
+- [x] Run loop — `run_goal`/`run_until`/`run_quantum`/`run_until_idle` —
+      `run_goal(goal, actor:)` emits `goal.created` and drains pack behaviors;
+      `run_until(predicate)` drains until the predicate over the graph is
+      satisfied, the log quiesces, or the budget stops the loop; the no-prompt
+      `run_until_idle` emits a `runtime.idle` /
+      `runtime.budget_exhausted` marker; the dispatch loop respects the event
+      budget — `runtime/runtime.py` — `spec/chronicle/run_goal_spec.cr`,
+      `spec/chronicle/run_until_spec.cr`
+- [x] `get_behavior` — canonical lookup, unambiguous short-name resolution,
+      `AmbiguousBehaviorError` on ambiguity (fully-qualified names still work)
+      — `runtime/runtime.py`, `registration_errors.py` —
+      `spec/chronicle/packs_dsl_spec.cr`, `spec/chronicle/runtime_phase3_spec.cr`
+      (note: upstream has no separate "view injection into behavior context"
+      feature; behaviors receive the attached graph directly)
+- [x] `disable_pack` — `Runtime#disable_pack(name)` deregisters a loaded pack
+      (CONTRACT v1.4 #3): behaviors stop firing NOW, tools stop resolving,
+      typed-object schemas / relation specs revert to untyped (graph validators
+      reinstalled), gating policies pruned from `gated_object_types`,
+      pack-created state untouched. Registry maps (behavior/tool/object_type/
+      relation_type/policy owners, object_type_schemas, relation_type_specs,
+      loaded_packs, pack_settings) are pruned; `_pack_behaviors`/`_pack_tools`
+      are filtered; short-name maps are rebuilt via `rebuild_shorts` (removal
+      RESOLVES a previously-AMBIGUOUS short name to the surviving pack — e.g.
+      `alpha.worker`+`beta.worker` → disable alpha → `worker` → `beta.worker`).
+      Emits `pack.disabled` (name, version, behaviors, tools, object_types,
+      relation_types). Idempotent (second disable → false, no event); unknown
+      pack → `PackNotFoundError`; re-load = `load_pack` clears the disabled
+      flag and returns true (fresh load, not idempotent skip). Ported from
+      activegraph.test_disable_pack — `spec/chronicle/disable_pack_spec.cr`.
 - [ ] Packs — `load_pack` / `loaded_packs` / `pack_settings_for_behavior` —
-      deferred (Phase 7)
-- [ ] Promote — `promote` / `rebuild_shorts` — deferred
-- [ ] Fork at runtime — `fork` / `save_state` — deferred (Phase 9 / fork path)
-- [ ] Schedule — `schedule` / `fire_due_delayed` / `loop` — deferred
-- [ ] Dev override — `dev_override` / `dev_overrides` / `validate_dev_override` — deferred
+      deferred (Phase 7; partial: load_pack/loaded_packs/get_behavior/get_tool)
+- [x] Promote — `Runtime#promote(fork, dry_run:)` applies a fork's net
+      structural delta to its parent (CONTRACT v1.3 #4). Three-way
+      base/parent/fork comparison (`Promote.compute_promote_plan` rebuilds the
+      parent's state at the fork point), producing creates/patches/removes for
+      objects and relations. Both-sides changes conflict fail-closed and
+      atomically (`PromoteConflictError` with `kind` in
+      both_changed/dangling_relation/orphaning_removal, incl. same-id
+      both-created collisions, identical concurrent edits, remove/modify
+      pairs, referential-integrity checks); `dry_run` returns an advisory
+      `PromotePlan` (is_promotable/is_empty/computed_against) without
+      mutating; apply is quiescent — delta events persist/project but never
+      fire behaviors (dispatch skips `promote:` actors), and the single
+      reaction point is the `promote.applied` marker (actor "runtime") emitted
+      first with every delta event `caused_by` it. Requires both runtimes on
+      the same SQLite store and a direct-fork lineage (`PromoteLineageError`
+      on reversed/grandchild/cross-store; `IncompatibleRuntimeState` on
+      non-SQLite). `promote_warnings` surfaces fork-only pack loads and
+      `pack.settings_overridden` (positional fork-tail detection). Promoted
+      ids keep their fork-minted ids; parent id counters reseed past them.
+      Additional CONTRACT v1.3 #4 semantics ported from test_promote —
+      `spec/chronicle/promote_quiescence_spec.cr`: fork cannot slice a promote
+      block (`Runtime#fork` raises `IncompatibleRuntimeState` when the cutoff
+      sits at the marker or mid-delta; block fully included/excluded is fine);
+      quiescent apply verified (delta events never fire behaviors — dispatch
+      skips `promote:` actors; only the `promote.applied` marker reacts once,
+      seeing post-promote state); load does not requeue delta events; both
+      removed / same-id both created conflict as `both_changed`; unrelated
+      same-store and cross-store runs rejected as `PromoteLineageError`;
+      fork-of-fork promotes one level at a time; cascade removals promote
+      cleanly; residue policy (fork tail removals of fork-created entities read
+      base-None/fork-None and vanish from the delta and marker payload);
+      settings-override warnings; pre-mutation schema validation
+      (`validate_promote_schema` runs the parent graph's pack object/relation
+      validators — canonicalizing valid typed data, raising `PackSchemaViolation`
+      on violations, passing undeclared types through untyped). Forks own an
+      independent pack-state snapshot (`PackRuntimeState#fork_snapshot`) so
+      fork-side `load_pack` never leaks into the parent. Divergence: Chronicle's
+      `patch_object`/`patch.applied` now honor upstream `update`-op field-merge
+      semantics (op "replace" replaces); `Runtime#promote` emits "replace"
+      patches of the fork's full object state. `Runtime#diff` and strict-replay
+      promote-block exclusion remain separate deferred features.
+      Ported from activegraph.test_promote — `spec/chronicle/promote_spec.cr`,
+      `spec/chronicle/promote_quiescence_spec.cr`.
+- [x] Diff — `Runtime#diff(other)` structural run comparison (CONTRACT v0.5
+      #10). `Chronicle::Diff` (struct with `copy_with`), `DivergentObject` /
+      `DivergentRelation` value structs with `summary`. Event partition: shared
+      prefix matching by id+type+payload (a same-id-different-payload
+      collision is NOT shared — CONTRACT #12), lifecycle events
+      (`behavior.*`/`relation_behavior.*`/`runtime.*`; `promote.*` not
+      filtered) excluded from the partition; divergent objects/relations via
+      provenance-stripped snapshots compared per-id. `is_identical?` is the
+      no-divergence check. The event partition reads the runs' append-only
+      store logs (`store.iter_events`), not `graph.events` (which in Chronicle
+      holds only graph-emitted events). `fork`/`load` now seed the dispatch
+      cursor via `resume_from_idle` past the last `runtime.idle` (upstream
+      `_requeue_unfired` high-water mark), so already-drained behaviors are not
+      re-dispatched on reload. Known divergence: Chronicle doesn't emit
+      `behavior.started` for plain (non-LLM) behaviors, so a fork at a
+      mid-run point can still re-fire recorded behaviors on `run_until_idle`;
+      upstream's `fired_on` set built from `behavior.started` prevents that.
+      Ported from activegraph.test_diff — `spec/chronicle/diff_spec.cr`.
+- [ ] Promote — `rebuild_shorts` — deferred (Phase 9 / fork path)
+- [x] Fork at runtime — `Runtime#fork(at_event, label:)` copies the parent
+      log up to and including `at_event` into a fresh SQLite `run_id`, records
+      lineage (`runs` table via `SQLiteEventStore.fork_run`/`list_runs`/
+      `upsert_run`: parent_run_id, forked_at_event_id, label), replays into a
+      new graph, reseeds id counters (CONTRACT v0.5 #12), supports
+      forks-of-forks, and refuses non-SQLite / unknown-event forks (raises
+      `IncompatibleRuntimeState` / `EventNotFoundError`); the cut may not slice
+      a promote block (CONTRACT v1.3 #4 — `reject_mid_promote_block_fork`).
+      WAL + synchronous=NORMAL on every connection; copied rows materialized
+      before insert to dodge
+      `database is locked`. Ported from test_fork / `SQLiteEventStore.fork_run` —
+      `spec/chronicle/fork_spec.cr`. Divergence: `Runtime.load` takes a
+      `Crig::Agent(M)`/`max_turns` (generic runtime); `save_state` still deferred.
+- [x] Schedule — `activate_after` delayed-queue scheduling — a behavior with
+      `activate_after=N` emits `behavior.scheduled` and fires N events later
+      (where= re-checked at fire time, CONTRACT v0.7 #13); `parse_activate_after`
+      accepts int / "N" / "N event" / "N events" and rejects bool, zero/negative,
+      wall-clock units, and garbage — `runtime/runtime.py:_schedule/_fire_due_delayed`,
+      `runtime/scheduler.py` — `spec/chronicle/activate_after_spec.cr`.
+      Intentional divergence: Chronicle's dispatch tick is the event sequence
+      (add_object emits events that advance it); `patch_object` does not emit a
+      log event, so patches do not advance the schedule tick (upstream's
+      object.updated does). The `schedule`/`loop` wall-clock extension is not
+      ported.
+- [x] Dev override — `dev_override` / `dev_overrides` / `validate_dev_override`
+      (exact run-local receipts, promotion/event-log/R4 gates rejected before
+      emission, receipts rebuilt from the log) — `runtime/dev_override.py` —
+      `spec/chronicle/dev_override_spec.cr`
 - [ ] Registry — `ensure_registry` / behavior registration wiring — deferred
 
 ## Phase 4 — LLM layer + replay cache
@@ -276,9 +388,11 @@ globally (CONTRACT v0.9 #3).
       classes) and `capabilities` block in the `pack.loaded` payload —
       `packs/__init__.py` + `packs/manifest.py` —
       `spec/chronicle/packs_manifest_spec.cr`
-- [-] LLM behavior *execution* dispatch — declaration/registration/prefixing
-      works; firing the handler needs the Phase 3 LLM effect pipeline and is
-      deferred — `runtime/runtime.py`
+- [x] LLM behavior *execution* dispatch — `@[LLMBehavior]` handlers auto-run
+      through the LLM effect pipeline (`behavior.started` -> llm.requested ->
+      llm.responded -> handler -> `behavior.completed` / `behavior.failed`),
+      reusing the cache + fallback path — `runtime/runtime.py` —
+      `spec/chronicle/llm_behavior_runtime_spec.cr`
 - [-] Diligence reference pack — deferred — `packs/diligence/*`
 - [-] `pack.settings_overridden` fork override + `approve`-materialization of
       gated object types — the gating bookkeeping (`gated_object_types`,
@@ -363,12 +477,16 @@ globally (CONTRACT v0.9 #3).
   per process and `register`/`clear_discovery_cache` invalidate.
 - **`_pack_local` is enforced at compile time** (only the DSL builds pack
   objects) rather than via a runtime flag on every `Behavior`/`Tool`.
-- **LLM behavior execution dispatch is deferred** to the Phase 3 LLM effect
-  pipeline; declaration, prefixing, and `get_behavior` work.
+- **LLM behavior execution dispatch runs through the LLM effect pipeline**;
+  structured-output schema typing is not yet ported, so `@[LLMBehavior]`
+  handlers receive the raw output string.
 - **Pack tool/behavior short-name lookup** raises
   `Chronicle::Packs::AmbiguousBehaviorError` / `BehaviorNotFoundError`
   (Chronicle-specific types) mirroring upstream's `ValueError`/`LookupError`
   surface.
+- **Dev-override validation raises `Chronicle::DevOverrideError`**
+  (a `DomainError`) instead of upstream's bare `ValueError`; gate/authority
+  semantics are identical.
 
 ## Acceptance Gates
 
