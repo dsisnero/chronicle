@@ -96,7 +96,7 @@ module Chronicle
 
       # Returns True if the pack was newly loaded, False if it was already
       # loaded (idempotency).
-      def load_pack_into_runtime(rt : Runtime(M), pack : Pack, settings : Hash(String, JSON::Any)? = nil) : Bool forall M
+      def load_pack_into_runtime(rt : Runtime(M), pack : Pack, settings : Hash(String, JSON::Any)? = nil, *, manifest_path : String? = nil) : Bool forall M
         state = rt.pack_state
 
         # ---- 1. idempotency / version conflict ---------------------------
@@ -111,6 +111,7 @@ module Chronicle
 
         # ---- 2. settings -------------------------------------------------
         settings_obj = build_settings(pack, settings)
+        settings_obj = apply_recorded_settings_overrides(rt, pack, settings_obj)
 
         # ---- 3. pre-emptive conflict detection (no mutation yet) ---------
         detect_conflicts(rt, pack, state)
@@ -170,12 +171,62 @@ module Chronicle
         # ---- 5. emit pack.loaded -----------------------------------------
         rt.record_pack_loaded(pack, settings_obj)
 
+        # ---- 6. manifest warning tier (CONTRACT v1.6 #1) ------------------
+        warn_on_manifest_violations(rt, pack, manifest_path)
+
         true
+      end
+
+      # Manifest warning tier: when a manifest.toml path is supplied to
+      # load_pack, parse and verify its surface against the pack and record a
+      # structured warning on violations — the pack still loads (never an error
+      # before 2.0). Absent manifest: silent. Ported from
+      # activegraph.packs.loader._warn_on_manifest_violations.
+      private def warn_on_manifest_violations(rt : Runtime(M), pack : Pack, manifest_path : String?) : Nil forall M
+        return if manifest_path.nil?
+        begin
+          manifest = Chronicle::Packs.load_manifest(manifest_path)
+          Chronicle::Packs.verify_surface(manifest, pack)
+        rescue ex : PackManifestError
+          rt.record_pack_warning(
+            "pack #{pack.name}@#{pack.version}: manifest.toml found at #{manifest_path} but validation " \
+            "failed with #{ex.violations.size} violation(s). The pack still loads — this stays a warning " \
+            "until 2.0. First violation: #{ex.violations.first? || ""}"
+          )
+        end
       end
 
       def build_settings(pack : Pack, settings : Hash(String, JSON::Any)?) : Hash(String, JSON::Any)
         input = settings.nil? ? nil : JSON::Any.new(settings)
         pack.settings_builder.call(input)
+      end
+
+      # Apply fork-local `pack.settings_overridden` events for this pack onto
+      # the freshly-built settings. The CLI records `fork --set` as events so
+      # the parent prefix remains intact and the fork carries an auditable
+      # override; validation stays here at pack registration time, where the
+      # settings schema is known. Ported from
+      # activegraph.packs.loader._apply_recorded_settings_overrides.
+      def apply_recorded_settings_overrides(
+        rt : Runtime(M),
+        pack : Pack,
+        settings_obj : Hash(String, JSON::Any),
+      ) : Hash(String, JSON::Any) forall M
+        matching = rt.store.iter_events.select do |event|
+          event.type == "pack.settings_overridden" &&
+            (JSON.parse(event.payload).as_h["pack"]?.try(&.as_s) == pack.name)
+        end
+        return settings_obj if matching.empty?
+
+        merged = settings_obj.dup
+        matching.each do |event|
+          overrides = JSON.parse(event.payload).as_h["overrides"]?
+          next unless overrides.is_a?(JSON::Any) && overrides.as_h?
+          overrides.as_h.each do |key, value|
+            merged[key] = value
+          end
+        end
+        merged
       end
 
       private def detect_conflicts(rt : Runtime(M), pack : Pack, state : PackRuntimeState) : Nil forall M
