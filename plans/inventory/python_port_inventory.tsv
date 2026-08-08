@@ -279,22 +279,22 @@ llm/openai.py::method::OpenAIProvider.estimate_cost	method	missing	-	auto-genera
 llm/openai.py::method::OpenAIProvider.recognizes_model	method	missing	-	auto-generated
 llm/openai.py::method::OpenAIProvider.supports_native_structured_output	method	missing	-	auto-generated
 llm/parsing.py::function::parse_structured_response	function	missing	-	auto-generated
-llm/prompt.py::class::AssembledPrompt	class	missing	-	auto-generated
-llm/prompt.py::function::_canonical	function	missing	-	auto-generated
-llm/prompt.py::function::_event_summary	function	missing	-	auto-generated
-llm/prompt.py::function::_example_instance	function	missing	-	auto-generated
-llm/prompt.py::function::_serialize_event	function	missing	-	auto-generated
-llm/prompt.py::function::_strip_volatile	function	missing	-	auto-generated
-llm/prompt.py::function::assemble_prompt	function	missing	-	auto-generated
-llm/prompt.py::function::build_instruction	function	missing	-	auto-generated
-llm/prompt.py::function::build_system_prompt	function	missing	-	auto-generated
-llm/prompt.py::function::build_user_message	function	missing	-	auto-generated
-llm/prompt.py::function::example_instance_from_schema	function	missing	-	auto-generated
-llm/prompt.py::function::schema_to_json	function	missing	-	auto-generated
-llm/prompt.py::function::serialize_view	function	missing	-	auto-generated
-llm/prompt.py::method::AssembledPrompt.canonical_json	method	missing	-	auto-generated
-llm/prompt.py::method::AssembledPrompt.hash	method	missing	-	auto-generated
-llm/prompt.py::method::AssembledPrompt.to_hashable	method	missing	-	auto-generated
+llm/prompt.py::class::AssembledPrompt	class	ported	spec/chronicle/prompt_spec.cr	Prompt::AssembledPrompt struct with to_hashable/canonical_json/hash
+llm/prompt.py::function::_canonical	function	ported	spec/chronicle/prompt_spec.cr	Prompt.canonical_json sorted-key emitter (spaced/compact)
+llm/prompt.py::function::_event_summary	function	ported	spec/chronicle/prompt_spec.cr	Prompt.event_summary (adapted to Chronicle flat payload shapes)
+llm/prompt.py::function::_example_instance	function	ported	spec/chronicle/prompt_spec.cr	Prompt.example_instance recursive worker (depth-bounded)
+llm/prompt.py::function::_serialize_event	function	ported	spec/chronicle/prompt_spec.cr	Prompt.serialize_event (volatile-stripped, canonical JSON)
+llm/prompt.py::function::_strip_volatile	function	ported	spec/chronicle/prompt_spec.cr	Prompt.strip_volatile (recursive provenance/timestamp/run_id drop)
+llm/prompt.py::function::assemble_prompt	function	ported	spec/chronicle/prompt_spec.cr	Prompt.assemble_prompt (4 locked sources + prompt_template swap)
+llm/prompt.py::function::build_instruction	function	ported	spec/chronicle/prompt_spec.cr	Prompt.build_instruction (creates/output_schema_name)
+llm/prompt.py::function::build_system_prompt	function	ported	spec/chronicle/prompt_spec.cr	Prompt.build_system_prompt (frame goal/constraints -> role -> schema)
+llm/prompt.py::function::build_user_message	function	ported	spec/chronicle/prompt_spec.cr	Prompt.build_user_message (view_block + event + instruction)
+llm/prompt.py::function::example_instance_from_schema	function	ported	spec/chronicle/prompt_spec.cr	Prompt.example_instance_from_schema ($defs/enum/const/anyOf/oneOf/type walker)
+llm/prompt.py::function::schema_to_json	function	ported	spec/chronicle/prompt_spec.cr	Prompt.schema_to_json (Crystal: accepts resolved schema hash; name-only shell overload)
+llm/prompt.py::function::serialize_view	function	ported	spec/chronicle/prompt_spec.cr	Prompt.serialize_view (locked format, CONTRACT v0.6 #13)
+llm/prompt.py::method::AssembledPrompt.canonical_json	method	ported	spec/chronicle/prompt_spec.cr	AssembledPrompt#canonical_json (sorted compact)
+llm/prompt.py::method::AssembledPrompt.hash	method	ported	spec/chronicle/prompt_spec.cr	AssembledPrompt#hash (SHA-256, cache key)
+llm/prompt.py::method::AssembledPrompt.to_hashable	method	ported	spec/chronicle/prompt_spec.cr	AssembledPrompt#to_hashable (prompt identity fields)
 llm/provider.py::class::LLMProvider	class	missing	-	auto-generated
 llm/provider.py::method::LLMProvider.complete	method	missing	-	auto-generated
 llm/provider.py::method::LLMProvider.count_tokens	method	missing	-	auto-generated

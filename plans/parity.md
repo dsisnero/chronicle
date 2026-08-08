@@ -353,6 +353,27 @@ From `parity.tsv` (`missing_contains` on Runtime):
       requested_payload — `spec/chronicle/llm_cache_wiring_spec.cr`.
       `llm/types.py` provider types and `llm/parsing.py` stay deferred.
 - [-] Embedding — deferred — `llm/embedding.py`, `llm/embedding_cache.py`
+- [x] Prompt assembler + view serializer — `Chronicle::Prompt` (CONTRACT
+      v0.6 #6, #13, #20): every prompt is assembled from four locked sources
+      — system (frame goal → frame constraints → behavior description →
+      output-schema reminder), view (Markdown block of objects + relations +
+      recent events, format snapshot-pinned), event (volatile-stripped
+      canonical JSON: `provenance`/`timestamp`/`run_id` dropped recursively),
+      and a one-sentence `instruction` derived from `creates=` /
+      `output_schema=`. `AssembledPrompt` (system, messages, model, tokens,
+      temperature/top_p, deterministic, schema name+json, sections) with a
+      stable SHA-256 `hash` over sorted-key canonical JSON — the replay-cache
+      key. `schema_to_json` accepts an already-resolved JSON Schema hash
+      (Crystal has no Pydantic) plus a name-only shell overload;
+      `example_instance_from_schema` walks `$defs`/`enum`/`const`/`anyOf`/
+      `oneOf`/`type` with bounded recursion. `prompt_template=` (str.format-
+      style `{system}`, `{view}`, `{event}`, `{instruction}`) is the only
+      escape hatch; unknown placeholders raise `PromptTemplateError`. Divergence:
+      `_event_summary` reads Chronicle's flat `object.created` /
+      `relation.created` payloads (`id`/`from_id`/`to_id`/`type`) where
+      upstream nests under `object`/`relation`; schema blocks render compact
+      sorted JSON rather than Python's `indent=2`. Ported from activegraph
+      llm/prompt.py + test_llm_prompt.py — `spec/chronicle/prompt_spec.cr`.
 - [x] Provider-boundary wire helpers — `Chronicle::Wire` (CONTRACT v1.3 #3):
       tool-name sanitization for the providers' `^[a-zA-Z0-9_-]+$` wire
       alphabet (`sanitize_tool_name`: `.` → `__`, other unsafe chars → `_`,
@@ -627,6 +648,14 @@ globally (CONTRACT v0.9 #3).
   network/rate-limit) is identical; the full-runtime "not retried" integration
   tests stay at the platform-edge `ModelExecutor`/`RetryableProviderError`
   boundary, which Chronicle already handles.
+- **Prompt `_event_summary` reads Chronicle's flat payload shapes.** Upstream
+  `object.created`/`relation.created` payloads nest under `object`/`relation`;
+  Chronicle stores them flat (`id`, `from_id`, `to_id`, `type`). The view-block
+  summary line format is preserved; only the field lookup differs.
+  `schema_to_json` diverges by design — Crystal has no Pydantic, so it accepts
+  an already-resolved JSON Schema hash (name-only shell overload) instead of a
+  model class, and schema blocks render compact sorted JSON rather than
+  Python's `indent=2`.
 
 ## Acceptance Gates
 

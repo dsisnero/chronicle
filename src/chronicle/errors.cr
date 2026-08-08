@@ -80,6 +80,12 @@ module Chronicle
   class ToolNameCollisionError < DomainError
   end
 
+  # A `prompt_template=` references a placeholder other than {system},
+  # {view}, {event}, {instruction}. Ported from activegraph llm/prompt.py
+  # assemble_prompt's ValueError.
+  class PromptTemplateError < DomainError
+  end
+
   class PackError < DomainError
   end
 
