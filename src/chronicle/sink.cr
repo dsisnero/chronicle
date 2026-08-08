@@ -145,6 +145,16 @@ module Chronicle
     end
   end
 
+  # A sink whose delivery always raises, used to prove sibling isolation.
+  class RaisingSink < Sink
+    def initialize(@name : String = "raising")
+    end
+
+    def on_event(event : Event, context : DeliveryContext) : Nil
+      raise "delivery failure"
+    end
+  end
+
   # Collects delivered events in memory.
   class TestingSink < Sink
     getter events : Array(Event) = [] of Event
