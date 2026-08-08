@@ -21,3 +21,6 @@ vendor/activegraph/
 chat.db
 chat.db-shm
 chat.db-wal
+
+# Cross-language parity discovery metadata (machine-local paths)
+plans/inventory/*.metadata.json

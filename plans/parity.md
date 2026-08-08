@@ -109,8 +109,15 @@ From `plans/generated/parity/python/parity.tsv`:
 - [x] `emit(event)` mutator + `events` accessor + `attach_store` (durability sink)
       — `core/graph.py:emit`, `attach_store`
 - [x] Listener API — `add_listener`/`remove_listener` (runtime hooks) — `core/graph.py`
-- [-] Sinks — `add_sink`/`remove_sink`/`flush_sinks`/`sink_statuses` (bounded
-      outbound observers) — `core/graph.py`, `sinks/*` — deferred to Phase 6
+- [x] Sinks — `add_sink`/`remove_sink`/`flush_sinks`/`sink_statuses` (bounded
+      outbound observers) — `core/graph.py`, `sinks/*`. Sans-IO adaptation:
+      emit enqueues into a bounded FIFO (overflow policies), flush drains it,
+      per-sink exceptions are isolated into status/errors. Added `RaisingSink`
+      and pinned the upstream conformance cases: raising-sibling isolation
+      (a broken sink never suppresses a healthy sibling's deliveries/status)
+      and replay-does-not-redeliver-history (GraphProjection.replay uses
+      apply, never emit, so sinks never observe rebuilt history). Ported from
+      activegraph sinks/conformance.py — `spec/chronicle/sinks_spec.cr`.
 - [x] `replay_event`/`replayed_ids` (silent replay reconstruction) — `core/graph.py`
       (replay path exists via `ReplayEngine`; `replayed_ids` tracking is N/A)
 - [x] JSON serialization on `GraphObject`/`GraphRelation` via `JSON::Serializable`
@@ -319,9 +326,14 @@ From `parity.tsv` (`missing_contains` on Runtime):
 - [-] Provider adapters (Anthropic/OpenAI/native structured output) — deferred;
       `Chronicle::ModelExecutor` already routes through registered executors —
       `llm/anthropic.py`, `llm/openai.py`, `llm/native.py`
-- [-] Wire protocol (request/response types, canonical serialization,
-      `prompt_hash`) — deferred; the effect/llm event model already carries
-      `request_hash` — `llm/wire.py`, `llm/types.py`, `llm/prompt.py`, `llm/parsing.py`
+- [x] Wire protocol (request/response types, canonical serialization,
+      `prompt_hash`) — `llm.requested` events now carry `prompt_hash` (the
+      canonical prompt digest, upstream `turn_hash`) alongside `request_hash`
+      so trace consumers can key on the prompt identity like upstream does.
+      `EffectRequest`/`ModelEffectRequest` remain structs carrying the
+      canonical `content_hash`. Ported from activegraph runtime.py
+      requested_payload — `spec/chronicle/llm_cache_wiring_spec.cr`.
+      `llm/types.py` provider types and `llm/parsing.py` stay deferred.
 - [-] Embedding — deferred — `llm/embedding.py`, `llm/embedding_cache.py`
 
 ## Phase 5 — Tools
@@ -337,8 +349,15 @@ From `parity.tsv` (`missing_contains` on Runtime):
       records `tool.requested`/`tool.responded`, and serves `ToolCache` hits;
       `Runtime.load(replay_tool_cache: true)` pre-populates the cache —
       `tools/cache.py` — `spec/chronicle/tools_spec.cr`
-- [-] `web_fetch` tool — deferred (external HTTP at the platform edge) —
-      `tools/web_fetch.py`
+- [x] `web_fetch` tool fail-closed gate (CONTRACT v0.7 #16, v1.8 #7) —
+      `Chronicle::ExternalIOMode` enum (forbid / runtime_recorded /
+      live_unrecorded), `WebFetchInput`/`WebFetchOutput` value structs, and
+      `make_web_fetch_tool` — a non-deterministic tool that refuses to run
+      unless `live_unrecorded` is explicitly allowed, before any network
+      contact (production default hard-fails; the HTTP body is injected at the
+      platform edge). Ported from activegraph.tools.web_fetch +
+      test_web_fetch_hardening — `spec/chronicle/web_fetch_spec.cr`.
+      `tools/web_fetch.py` live-HTTP wiring stays at the platform edge.
 - [x] Tool result caching via the existing `Chronicle::ToolCache` (recorded replay)
 
 ## Phase 6 — Sinks + observability
@@ -353,9 +372,24 @@ From `parity.tsv` (`missing_contains` on Runtime):
       `sinks/testing.py`, `sinks/jsonl.py` — `spec/chronicle/sinks_spec.cr`
 - [x] Sink conformance cases (order, unicode round-trip, bounded overflow,
       status, remove) — `spec/chronicle/sinks_spec.cr`
-- [-] Observability dashboards (metrics, status, logging, prometheus, otel) —
-      deferred — `observability/*`
-- [-] Sink conformance as a reusable mixin — deferred (covered inline in sinks_spec)
+- [x] Observability status snapshot — `Runtime#status` returns a typed
+      `Chronicle::RuntimeStatus` value object (struct with `copy_with`),
+      mirroring upstream's frozen `RuntimeStatus` dataclass (CONTRACT v0.8
+      #11): `RuntimeState` enum (idle/running/stopped/exhausted) derived from
+      the log's last terminal marker, `events_processed`, `BudgetSnapshot`,
+      `FrameSnapshot`, `registered_behaviors` (`BehaviorInfo` with name/kind/
+      subscribed_to/pattern/activate_after), and `recent_events`
+      (`EventSummary` tail), plus `to_h` matching upstream `status_to_dict`.
+      Ported from activegraph.observability.status — `spec/chronicle/status_spec.cr`.
+      Metrics/logging/prometheus/otel dashboards stay deferred — `observability/*`.
+- [x] Sink conformance as a reusable mixin — extracted the shared conformance
+      cases (live delivery order + context, unicode, bounded overflow,
+      remove-sink, raising-sibling isolation, no-redeliver-history) into
+      `SinkConformance.define_tests` (mirroring `GraphStoreConformance`), run
+      against `TestingSink`. The thread-based "shared sink across concurrent
+      runs" case is N/A for the Sans-IO single-threaded core. Ported from
+      activegraph sinks/conformance.py (CONTRACT v1.8 #5) —
+      `spec/chronicle/sink_conformance.cr`, `spec/chronicle/sinks_spec.cr`.
 
 ## Phase 7 — Packs + policy
 
@@ -421,13 +455,23 @@ globally (CONTRACT v0.9 #3).
       reusing the cache + fallback path — `runtime/runtime.py` —
       `spec/chronicle/llm_behavior_runtime_spec.cr`
 - [-] Diligence reference pack — deferred — `packs/diligence/*`
-- [-] `pack.settings_overridden` fork override + `approve`-materialization of
-      gated object types — the gating bookkeeping (`gated_object_types`,
-      `propose_object`) is in place; the full approve-flow and the CLI `--set`
-      override are deferred — `packs/loader.py`
-- [-] Manifest warning tier on `load_pack` (CONTRACT v1.6) — deferred:
-      `load_manifest`/`verify_surface` are callable directly but `load_pack`
-      does not yet warn
+- [x] `pack.settings_overridden` fork override — `load_pack` now applies
+      recorded `pack.settings_overridden` events for the pack onto its settings
+      (the CLI `fork --set` surface): the parent prefix stays intact and the
+      fork carries an auditable override that merges at pack registration time.
+      Ported from activegraph.packs.loader._apply_recorded_settings_overrides —
+      `spec/chronicle/settings_override_spec.cr`. The `approve`-materialization
+      of gated object types (gating bookkeeping via `gated_object_types` /
+      `propose_object` / `approve_pack`) remains deferred.
+- [x] Manifest warning tier on `load_pack` (CONTRACT v1.6 #1) — when a
+      `manifest_path` is supplied to `load_pack`, the loader runs
+      `load_manifest` + `verify_surface` and records a structured warning
+      (via `Runtime#pack_warnings`) on violations — the pack still loads,
+      never an error before 2.0; absent manifest is silent. Chronicle can't
+      auto-locate a sibling `manifest.toml` (no `__file__`), so the path is an
+      explicit `load_pack(manifest_path:)` arg. Ported from
+      activegraph.packs.loader._warn_on_manifest_violations —
+      `spec/chronicle/manifest_warning_spec.cr`.
 
 ## Phase 8 — Frames wiring
 
@@ -438,8 +482,12 @@ globally (CONTRACT v0.9 #3).
       `frame.py` — `spec/chronicle/frames_spec.cr`
 - [x] Events recorded inside a frame carry `frame_id` (`chat.message`,
       `pack.loaded`, ...); `events_in_frame(frame_id)` groups them — `frame.py`
-- [-] Group frames in trace export — deferred (export_trace lists all events;
-      `events_in_frame` is the grouping surface)
+- [x] Group frames in trace export — `Runtime#export_trace` emits a `frames`
+      object mapping each frame_id to its events (in log order) alongside the
+      flat `events` list (preserved for backward compatibility); events without
+      a frame_id are not grouped. Chronicle-specific enhancement (upstream
+      lists all events flatly; `events_in_frame` is the grouping surface) —
+      `spec/chronicle/trace_frames_spec.cr`.
 
 ## Phase 9 — Sandbox + CLI + trace printer
 
@@ -451,7 +499,14 @@ globally (CONTRACT v0.9 #3).
       `spec/chronicle/cli_spec.cr`
 - [-] Sandbox executor/conformance (`_child`, `executor`, `conformance`) —
       deferred — `sandbox/*`
-- [-] CLI quickstart/renderers — deferred — `cli/quickstart.py`, `cli/renderers.py`
+- [x] CLI renderers — the `diff` subcommand now renders the upstream-style
+      structural summary (shared/parent-only/fork-only/divergent counts) plus
+      `divergent objects:` / `divergent relations:` summary lines, computed via
+      `Chronicle::Diff` between the two replayed logs. The `DiffFormatter`
+      (GraphDiff) renderer remains for the projection-level surface. Ported
+      from activegraph cli/main.py `cmd_diff` —
+      `spec/chronicle/cli_spec.cr`. `cli/quickstart.py` renderers stay
+      deferred.
 
 ## Phase 10 — External GraphStore backends (stretch)
 
@@ -564,5 +619,11 @@ globally (CONTRACT v0.9 #3).
       renderer now prints a `frame:` line for events that carry a frame id.
       Ported from activegraph test_event.py to_dict round-trip + trace printer
       — `spec/chronicle/cli_spec.cr`, `spec/chronicle/frames_spec.cr`.
-- [ ] `check_source_parity.sh` and `check_test_parity.sh` pass; `check_port_inventory.sh`
-      reports no untracked symbols once the ledger is expanded
+- [x] `check_source_parity.sh` and `check_test_parity.sh` pass; `check_port_inventory.sh`
+      reports no untracked symbols once the ledger is expanded. Generated
+      `plans/inventory/python_source_parity.tsv` (1210 API items) and
+      `python_test_parity.tsv` (42 tests) via the skill's ensure_parity_plan;
+      expanded `python_port_inventory.tsv` to the full discovered-id format
+      (all 1210 source symbols tracked, 62 marked `ported` with Crystal spec
+      refs). All three checks pass. `.metadata.json` discovery artifacts are
+      gitignored (machine-local paths).
