@@ -352,6 +352,17 @@ From `parity.tsv` (`missing_contains` on Runtime):
       canonical `content_hash`. Ported from activegraph runtime.py
       requested_payload — `spec/chronicle/llm_cache_wiring_spec.cr`.
       `llm/types.py` provider types and `llm/parsing.py` stay deferred.
+- [x] LLM data types — `Chronicle::LLMMessage` / `Chronicle::ToolCall` /
+      `Chronicle::LLMResponse` structs (from `llm/types.py`, v0.7 shapes)
+      plus a `Chronicle::Role` enum (`user`/`assistant`/`tool`). These are
+      plain `JSON::Serializable` structs: the wire form comes from `to_json`
+      / `from_json`, nilable fields (`tool_use_id`, `tool_name`,
+      `tool_calls`, `seed`, `parsed`) are omitted when absent so single-turn
+      fixtures keep byte-identical serialization, and the `Role` enum uses
+      Crystal's default underscored-member-name serialization. Upstream's
+      `to_dict` dataclass idiom and `_parsed_to_jsonable` Pydantic adapter
+      are N/A (divergence) — structs serialize themselves —
+      `spec/chronicle/llm_types_spec.cr`.
 - [-] Embedding — deferred — `llm/embedding.py`, `llm/embedding_cache.py`
 - [x] Prompt assembler + view serializer — `Chronicle::Prompt` (CONTRACT
       v0.6 #6, #13, #20): every prompt is assembled from four locked sources
@@ -360,16 +371,18 @@ From `parity.tsv` (`missing_contains` on Runtime):
       recent events, format snapshot-pinned), event (volatile-stripped
       canonical JSON: `provenance`/`timestamp`/`run_id` dropped recursively),
       and a one-sentence `instruction` derived from `creates=` /
-      `output_schema=`. `AssembledPrompt` (system, messages, model, tokens,
-      temperature/top_p, deterministic, schema name+json, sections) with a
-      stable SHA-256 `hash` over sorted-key canonical JSON — the replay-cache
-      key. `schema_to_json` accepts an already-resolved JSON Schema hash
-      (Crystal has no Pydantic) plus a name-only shell overload;
+      `output_schema=`. `AssembledPrompt` (system, `Array(LLMMessage)`,
+      model, tokens, temperature/top_p, deterministic, schema name+json,
+      sections) with a stable SHA-256 `hash` over sorted-key canonical JSON —
+      the replay-cache key. `schema_to_json(schema : T.class)` derives the
+      JSON Schema from a `JSON::Serializable` struct at compile time via the
+      `json-schema` shard (typed fields + enums, replacing Pydantic's
+      `model_json_schema`); `schema_name(T)` derives the name from the type.
       `example_instance_from_schema` walks `$defs`/`enum`/`const`/`anyOf`/
       `oneOf`/`type` with bounded recursion. `prompt_template=` (str.format-
       style `{system}`, `{view}`, `{event}`, `{instruction}`) is the only
-      escape hatch; unknown placeholders raise `PromptTemplateError`. Divergence:
-      `_event_summary` reads Chronicle's flat `object.created` /
+      escape hatch; unknown placeholders raise `PromptTemplateError`.
+      Divergence: `_event_summary` reads Chronicle's flat `object.created` /
       `relation.created` payloads (`id`/`from_id`/`to_id`/`type`) where
       upstream nests under `object`/`relation`; schema blocks render compact
       sorted JSON rather than Python's `indent=2`. Ported from activegraph
@@ -652,10 +665,13 @@ globally (CONTRACT v0.9 #3).
   `object.created`/`relation.created` payloads nest under `object`/`relation`;
   Chronicle stores them flat (`id`, `from_id`, `to_id`, `type`). The view-block
   summary line format is preserved; only the field lookup differs.
-  `schema_to_json` diverges by design — Crystal has no Pydantic, so it accepts
-  an already-resolved JSON Schema hash (name-only shell overload) instead of a
-  model class, and schema blocks render compact sorted JSON rather than
-  Python's `indent=2`.
+  `schema_to_json` diverges by design: Crystal has no Pydantic, so it derives
+  the JSON Schema from a `JSON::Serializable` struct's typed fields + enums at
+  compile time via the `json-schema` shard (upstream calls a Pydantic model
+  class's `model_json_schema()`), and schema blocks render compact sorted JSON
+  rather than Python's `indent=2`. LLM data types are plain
+  `JSON::Serializable` structs; upstream's `to_dict`/`_parsed_to_jsonable`
+  dataclass/dict helpers are replaced by the structs' own `to_json`.
 
 ## Acceptance Gates
 

@@ -1,5 +1,6 @@
 require "json"
 require "digest/sha256"
+require "json-schema"
 
 module Chronicle
   # Prompt assembler + view serializer (CONTRACT v0.6 #6, #13, #20).
@@ -64,7 +65,7 @@ module Chronicle
     # response before deciding to call the provider.
     struct AssembledPrompt
       getter system : String
-      getter messages : Array(Hash(String, JSON::Any))
+      getter messages : Array(LLMMessage)
       getter model : String
       getter max_tokens : Int32
       getter temperature : Float64
@@ -77,7 +78,7 @@ module Chronicle
 
       def initialize(
         @system : String,
-        @messages : Array(Hash(String, JSON::Any)),
+        @messages : Array(LLMMessage),
         @model : String,
         @max_tokens : Int32,
         @temperature : Float64,
@@ -91,12 +92,13 @@ module Chronicle
       end
 
       # Canonical content used for hashing. Recorded-at timestamps,
-      # latencies, and other run-specific data are NOT included.
+      # latencies, and other run-specific data are NOT included. Messages
+      # enter the hash via their own JSON::Serializable wire form.
       def to_hashable : Hash(String, JSON::Any)
         out = {} of String => JSON::Any
         out["model"] = JSON::Any.new(@model)
         out["system"] = JSON::Any.new(@system)
-        out["messages"] = JSON::Any.new(@messages.map { |msg| JSON::Any.new(msg) })
+        out["messages"] = JSON::Any.new(@messages.map { |msg| JSON.parse(msg.to_json) })
         out["output_schema_name"] = JSON::Any.new(@output_schema_name.nil? ? nil : @output_schema_name)
         out["output_schema_json"] = JSON::Any.new(@output_schema_json.nil? ? nil : @output_schema_json)
         out["max_tokens"] = JSON::Any.new(@max_tokens)
@@ -450,15 +452,32 @@ module Chronicle
 
     # ---- schema rendering --------------------------------------------------
 
-    # Divergence from upstream: there is no Pydantic in Crystal, so callers
-    # pass an already-resolved JSON Schema hash; `nil` stays `nil`. The
-    # name-only fallback shell is used when only a schema name is known.
-    def schema_to_json(schema : Hash(String, JSON::Any)?) : Hash(String, JSON::Any)?
-      schema
+    # Serialize a JSON::Serializable type to its JSON Schema dict (nil for
+    # no schema). Ported from activegraph.llm.prompt.schema_to_json; Crystal
+    # derives the schema from the struct's typed fields + enums at compile
+    # time via the json-schema shard, replacing Pydantic's model_json_schema.
+    # When `output_schema` is omitted the default `Nil.class` resolves the
+    # generic to `Object`, which we treat as "no schema".
+    def schema_to_json(schema : T.class) : Hash(String, JSON::Any)? forall T
+      {% if T.name == "Nil" || T.name == "Object" %}
+        nil
+      {% else %}
+        JSON.parse({{ T }}.json_schema.to_json).as_h
+      {% end %}
     end
 
+    # Name-only shell when only a schema name is known (no typed struct).
     def schema_to_json(schema_name : String) : Hash(String, JSON::Any)
       {"type" => JSON::Any.new("object"), "title" => JSON::Any.new(schema_name)}
+    end
+
+    # The output-schema name derived from a type (nil when absent).
+    def schema_name(schema : T.class) : String? forall T
+      {% if T.name == "Nil" || T.name == "Object" %}
+        nil
+      {% else %}
+        {{ T }}.name.split("::").last
+      {% end %}
     end
 
     # ---- top-level assembly -----------------------------------------------
@@ -468,7 +487,7 @@ module Chronicle
       behavior_name : String,
       description : String,
       model : String,
-      output_schema : Hash(String, JSON::Any)?,
+      output_schema : T.class = Nil.class,
       creates : Array(String),
       view : View,
       event : Event,
@@ -481,20 +500,21 @@ module Chronicle
       deterministic : Bool,
       prompt_template : String? = nil,
       structured_output_mode : String = "prompt",
-    ) : AssembledPrompt
-      schema_json = output_schema
+    ) : AssembledPrompt forall T
+      schema_json = schema_to_json(output_schema)
+      schema_name = schema_name(output_schema)
 
       system = build_system_prompt(
         behavior_name: behavior_name,
         description: description,
         frame: frame,
-        output_schema_name: nil,
+        output_schema_name: schema_name,
         output_schema_json: schema_json,
         structured_output_mode: structured_output_mode,
       )
 
       view_block = serialize_view(view, around: around, depth: depth)
-      instruction = build_instruction(creates: creates, output_schema_name: nil)
+      instruction = build_instruction(creates: creates, output_schema_name: schema_name)
 
       user_text = if template = prompt_template
                     apply_prompt_template(template, system: system, view: view_block, event: serialize_event(event), instruction: instruction)
@@ -507,12 +527,12 @@ module Chronicle
 
       AssembledPrompt.new(
         system: system,
-        messages: [{"role" => JSON::Any.new("user"), "content" => JSON::Any.new(user_text)}],
+        messages: [LLMMessage.new(role: Role::User, content: user_text)],
         model: model,
         max_tokens: max_tokens,
         temperature: eff_temperature,
         top_p: eff_top_p,
-        output_schema_name: nil,
+        output_schema_name: schema_name,
         output_schema_json: schema_json,
         deterministic: deterministic,
         structured_output_mode: structured_output_mode,

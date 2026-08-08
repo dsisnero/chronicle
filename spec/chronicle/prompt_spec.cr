@@ -1,5 +1,21 @@
 require "../spec_helper"
 
+# Typed output-schema struct used to exercise schema generation from
+# JSON::Serializable types + enums (the Pydantic-replacement surface).
+struct PromptOut
+  include JSON::Serializable
+
+  getter n : Int32
+  getter label : String?
+end
+
+struct PromptClaim
+  include JSON::Serializable
+
+  getter text : String
+  getter confidence : Float64 = 0.0
+end
+
 private def prompt_event(
   id : String = "evt_000001",
   type : String = "object.created",
@@ -33,7 +49,7 @@ private def assemble_prompt_kwargs(
   model : String = "claude-sonnet-4-5",
   behavior_name : String = "x",
   description : String = "d",
-  output_schema : Hash(String, JSON::Any)? = nil,
+  output_schema : T.class = Nil.class,
   creates : Array(String) = [] of String,
   frame : Chronicle::Frame? = nil,
   around : String? = nil,
@@ -43,7 +59,7 @@ private def assemble_prompt_kwargs(
   top_p : Float64 = 1.0,
   deterministic : Bool = false,
   prompt_template : String? = nil,
-) : Chronicle::Prompt::AssembledPrompt
+) : Chronicle::Prompt::AssembledPrompt forall T
   Chronicle::Prompt.assemble_prompt(
     behavior_name: behavior_name,
     description: description,
@@ -166,10 +182,7 @@ describe Chronicle::Prompt do
       event = graph.events.find { |e| e.type == "object.created" }.not_nil!
       view = Chronicle::View.new(objects: graph.all_objects, relations: [] of Chronicle::GraphRelation, events: graph.events)
       p = assemble_prompt_kwargs(
-        output_schema: {
-          "type"       => JSON::Any.new("object"),
-          "properties" => JSON::Any.new({"n" => JSON::Any.new({"type" => JSON::Any.new("integer")})}),
-        },
+        output_schema: PromptOut,
         creates: ["x"],
         view: view, event: event,
         around: "document#1", depth: 1,
@@ -248,7 +261,7 @@ describe Chronicle::Prompt do
         max_tokens: 64, deterministic: true,
         prompt_template: ">>> {instruction} ||| view={view} ||| event={event}",
       )
-      user = p.messages[0]["content"].as_s
+      user = p.messages[0].content
       user.should start_with(">>>")
       user.should contain("||| view=## Graph context")
       user.should contain("||| event=")
@@ -278,7 +291,7 @@ describe Chronicle::Prompt do
       p = assemble_prompt_kwargs(
         view: view, event: ev, model: "m", max_tokens: 64, deterministic: true,
       )
-      user = p.messages[0]["content"].as_s
+      user = p.messages[0].content
       user.should_not contain("run_id")
       user.should_not contain("provenance")
       user.should_not contain("timestamp")
@@ -294,16 +307,23 @@ describe Chronicle::Prompt do
 
   describe ".schema_to_json" do
     it "handles nil (test_schema_to_json_handles_none)" do
-      Chronicle::Prompt.schema_to_json(nil).should be_nil
+      Chronicle::Prompt.schema_to_json(Nil).should be_nil
     end
 
-    it "passes a resolved JSON schema through" do
-      schema = {
-        "type"       => JSON::Any.new("object"),
-        "properties" => JSON::Any.new({"n" => JSON::Any.new({"type" => JSON::Any.new("integer")})}),
-      }
-      out = Chronicle::Prompt.schema_to_json(schema).not_nil!
-      out["properties"].should be_a(JSON::Any)
+    it "generates a schema from a JSON::Serializable struct type" do
+      out = Chronicle::Prompt.schema_to_json(PromptOut).not_nil!
+      out["type"].as_s.should eq("object")
+      props = out["properties"].as_h
+      props.has_key?("n").should be_true
+      props.has_key?("label").should be_true
+      out["required"].as_a.map(&.as_s).should eq(["n"])
+    end
+
+    it "generates enum-typed fields for Role" do
+      schema = Chronicle::Prompt.schema_to_json(PromptClaim).not_nil!
+      props = schema["properties"].as_h
+      props["text"].as_h["type"].as_s.should eq("string")
+      props["confidence"].as_h["type"].as_s.should eq("number")
     end
   end
 

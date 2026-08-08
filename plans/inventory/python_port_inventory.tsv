@@ -320,13 +320,13 @@ llm/recorded.py::method::RecordingLLMProvider.default_model	method	missing	-	aut
 llm/recorded.py::method::RecordingLLMProvider.estimate_cost	method	missing	-	auto-generated
 llm/recorded.py::method::RecordingLLMProvider.recognizes_model	method	missing	-	auto-generated
 llm/recorded.py::method::RecordingLLMProvider.supports_native_structured_output	method	missing	-	auto-generated
-llm/types.py::class::LLMMessage	class	missing	-	auto-generated
-llm/types.py::class::LLMResponse	class	missing	-	auto-generated
-llm/types.py::class::ToolCall	class	missing	-	auto-generated
-llm/types.py::function::_parsed_to_jsonable	function	missing	-	auto-generated
-llm/types.py::method::LLMMessage.to_dict	method	missing	-	auto-generated
-llm/types.py::method::LLMResponse.to_dict	method	missing	-	auto-generated
-llm/types.py::method::ToolCall.to_dict	method	missing	-	auto-generated
+llm/types.py::class::LLMMessage	class	ported	spec/chronicle/llm_types_spec.cr	LLMMessage struct (Role enum, JSON::Serializable wire form; nil fields omitted)
+llm/types.py::class::LLMResponse	class	ported	spec/chronicle/llm_types_spec.cr	LLMResponse struct (parsed/tokens/cost/cache_hit/provider_meta/tool_calls)
+llm/types.py::class::ToolCall	class	ported	spec/chronicle/llm_types_spec.cr	ToolCall struct (id/name/args)
+llm/types.py::function::_parsed_to_jsonable	function	intentional_divergence	-	Python Pydantic model_dump adapter; N/A in Crystal — parsed is JSON::Any, serializable by construction
+llm/types.py::method::LLMMessage.to_dict	method	intentional_divergence	-	Python dataclass->dict idiom; replaced by JSON::Serializable to_json (structs, not dicts)
+llm/types.py::method::LLMResponse.to_dict	method	intentional_divergence	-	Python dataclass->dict idiom; replaced by JSON::Serializable to_json
+llm/types.py::method::ToolCall.to_dict	method	intentional_divergence	-	Python dataclass->dict idiom; replaced by JSON::Serializable to_json
 llm/wire.py::function::_definition_name	function	ported	spec/chronicle/wire_spec.cr	Wire.definition_name (framework + OpenAI function-nested shapes)
 llm/wire.py::function::build_tool_name_map	function	ported	spec/chronicle/wire_spec.cr	Wire.build_tool_name_map; ToolNameCollisionError on ambiguous reverse mapping
 llm/wire.py::function::classify_provider_exception	function	ported	spec/chronicle/wire_spec.cr	Wire.classify_provider_exception (status_code via responds_to? + class-name heuristics)
