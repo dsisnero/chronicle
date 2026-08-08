@@ -7,6 +7,19 @@ def with_temp_log(content : String, &)
   File.delete(path)
 end
 
+private def cli_log(header : String, events : Array(String)) : String
+  "#{header}\n#{events.join("\n")}\n"
+end
+
+private def cli_obj_event(seq : UInt64, id : String, type : String = "object.created") : String
+  Chronicle::Event.new(
+    schema_version: 1_u16, sequence: seq, id: id,
+    type: type, actor: "test", caused_by: nil,
+    timestamp: Time.utc(2026, 7, 24, 12, 0, 0),
+    payload: %({"id":"#{id}","type":"doc","data":{"text":"#{id}"}}),
+  ).canonical_json
+end
+
 describe Chronicle::CLI do
   it "prints a route preview for a given text and intent" do
     config_path = File.join(__DIR__, "..", "..", "examples", "routing_config.yml")
@@ -71,6 +84,25 @@ describe Chronicle::CLI do
       output = Chronicle::CLI.run(["replay", "--file", path])
       output.should contain("Replay complete")
       output.should_not contain("ERROR")
+    end
+  end
+
+  it "diffs two logs with the structural summary and divergent objects" do
+    header = %({"format":"chronicle.event-log","version":1})
+    before_path = "/tmp/_clarity_cli_diff_before.log"
+    after_path = "/tmp/_clarity_cli_diff_after.log"
+    File.write(before_path, cli_log(header, [cli_obj_event(1_u64, "doc#1")]))
+    File.write(after_path, cli_log(header, [cli_obj_event(1_u64, "doc#1"), cli_obj_event(2_u64, "doc#2")]))
+
+    begin
+      output = Chronicle::CLI.run(["diff", "-a", before_path, "-b", after_path])
+      output.should contain("divergent objects:")
+      output.should contain("doc#2 only in")
+      output.should contain("shared_events")
+      output.should_not contain("ERROR")
+    ensure
+      File.delete(before_path) if File.exists?(before_path)
+      File.delete(after_path) if File.exists?(after_path)
     end
   end
 end

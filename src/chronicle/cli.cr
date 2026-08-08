@@ -415,8 +415,25 @@ module Chronicle
       before_proj = GraphProjection.replay(before_log.events)
       after_proj = GraphProjection.replay(after_log.events)
 
-      diff = after_proj.diff(before_proj)
-      DiffFormatter.format(diff, io)
+      diff = Diff.compute(
+        after_proj, before_proj,
+        parent_events: after_log.events, fork_events: before_log.events,
+        parent_run_id: "after", fork_run_id: "before",
+      )
+      io.puts "diff after vs before:"
+      io.puts "  shared_events            #{diff.shared_events.size}"
+      io.puts "  parent_only_events       #{diff.parent_only_events.size}"
+      io.puts "  fork_only_events         #{diff.fork_only_events.size}"
+      io.puts "  divergent_objects        #{diff.divergent_objects.size}"
+      io.puts "  divergent_relations      #{diff.divergent_relations.size}"
+      unless diff.divergent_objects.empty?
+        io.puts "divergent objects:"
+        diff.divergent_objects.each { |obj| io.puts "  - #{obj.summary}" }
+      end
+      unless diff.divergent_relations.empty?
+        io.puts "divergent relations:"
+        diff.divergent_relations.each { |rel| io.puts "  - #{rel.summary}" }
+      end
     rescue ex : File::NotFoundError
       io.puts "ERROR: file not found: #{ex.message}"
     rescue ex : InvalidLogEncodingError

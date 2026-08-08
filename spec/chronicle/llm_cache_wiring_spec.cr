@@ -110,6 +110,22 @@ describe Chronicle::Runtime do
     JSON.parse(served.not_nil!.payload)["cache_hit"].as_bool.should be_true
   end
 
+  it "records a prompt_hash on llm.requested events (wire protocol)" do
+    store = Chronicle::MemoryEventStore.new
+    agent = Crig::Agent(CacheMockModel).new(model: CacheMockModel.new)
+    runtime = Chronicle::Runtime(CacheMockModel).new(store: store, log_agent: Chronicle::LogAgent(CacheMockModel).new(agent, store: store))
+    runtime.run("Hash me")
+
+    requested = store.iter_events.find { |e| e.type == "llm.requested" }
+    requested.should_not be_nil
+    payload = JSON.parse(requested.not_nil!.payload).as_h
+    prompt_hash = payload["prompt_hash"]?.try(&.as_s)
+    prompt_hash.should_not be_nil
+    prompt_hash.not_nil!.should_not be_empty
+    # prompt_hash is a canonical prompt digest; it also serves as the cache key.
+    payload["request_hash"].as_s.should eq(prompt_hash)
+  end
+
   it "populates the cache on Runtime.load with replay_llm_cache" do
     store = Chronicle::MemoryEventStore.new
     agent = Crig::Agent(CacheMockModel).new(model: CacheMockModel.new)
