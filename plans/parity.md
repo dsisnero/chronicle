@@ -328,6 +328,20 @@ From `parity.tsv` (`missing_contains` on Runtime):
       behaviors work. Removed the pre-port `PackBehavior#matches?` predicate
       the vendor does not have. Ported from activegraph.runtime.registry —
       `spec/chronicle/registry_spec.cr`.
+- [x] Context-read tracing core — `Chronicle::ContextRead` (CONTRACT v1.10
+      #1): `ReadRecorder` (ordered, deduplicated object-id read set for one
+      behavior execution — first read wins the position, later reads are
+      no-ops, replay-stable by construction), `TracedView` (wraps a
+      `Chronicle::View`; `objects(type:)` records exactly the ids each call
+      returns post-filter, while `relations`/`events` stay untraced), and
+      `context_read_payload` (the batched `context.read` payload:
+      `behavior`, `event_id`, `execution_event_id` — the `behavior.started`
+      id — `object_ids` capped at `CONTEXT_READ_ID_CAP = 200`, `count` always
+      exact, `truncated: true` only when ids were dropped). Ported from
+      activegraph.runtime.context_reads (the runtime wiring that threads the
+      recorder through `ctx.view` and emits one `context.read` at frame
+      commit is a separate integration — Chronicle behaviors currently receive
+      the graph directly, not a traced view) — `spec/chronicle/context_read_spec.cr`.
 
 ## Phase 4 — LLM layer + replay cache
 

@@ -592,18 +592,18 @@ runtime/config_errors.py::class::InvalidRuntimeConfiguration	class	missing	-	aut
 runtime/config_errors.py::method::IncompatibleRuntimeState.__init__	method	missing	-	auto-generated
 runtime/config_errors.py::method::InvalidArgumentType.__init__	method	missing	-	auto-generated
 runtime/config_errors.py::method::InvalidRuntimeConfiguration.__init__	method	missing	-	auto-generated
-runtime/context_reads.py::class::ReadRecorder	class	missing	-	auto-generated
-runtime/context_reads.py::class::TracedView	class	missing	-	auto-generated
-runtime/context_reads.py::const::CONTEXT_READ_ID_CAP	const	missing	-	auto-generated
-runtime/context_reads.py::function::context_read_payload	function	missing	-	auto-generated
-runtime/context_reads.py::method::ReadRecorder.__bool__	method	missing	-	auto-generated
-runtime/context_reads.py::method::ReadRecorder.__init__	method	missing	-	auto-generated
-runtime/context_reads.py::method::ReadRecorder.__len__	method	missing	-	auto-generated
-runtime/context_reads.py::method::ReadRecorder.object_ids	method	missing	-	auto-generated
-runtime/context_reads.py::method::ReadRecorder.record	method	missing	-	auto-generated
-runtime/context_reads.py::method::ReadRecorder.record_objects	method	missing	-	auto-generated
-runtime/context_reads.py::method::TracedView.__init__	method	missing	-	auto-generated
-runtime/context_reads.py::method::TracedView.objects	method	missing	-	auto-generated
+runtime/context_reads.py::class::ReadRecorder	class	ported	spec/chronicle/context_read_spec.cr	ContextRead::ReadRecorder (ordered dedup read set)
+runtime/context_reads.py::class::TracedView	class	ported	spec/chronicle/context_read_spec.cr	ContextRead::TracedView (records objects() reads, not relations/events)
+runtime/context_reads.py::const::CONTEXT_READ_ID_CAP	const	ported	spec/chronicle/context_read_spec.cr	CONTEXT_READ_ID_CAP = 200
+runtime/context_reads.py::function::context_read_payload	function	ported	spec/chronicle/context_read_spec.cr	ContextRead.context_read_payload (cap + exact count + truncated)
+runtime/context_reads.py::method::ReadRecorder.__bool__	method	ported	spec/chronicle/context_read_spec.cr	ReadRecorder#empty?
+runtime/context_reads.py::method::ReadRecorder.__init__	method	ported	spec/chronicle/context_read_spec.cr	ReadRecorder.new
+runtime/context_reads.py::method::ReadRecorder.__len__	method	ported	spec/chronicle/context_read_spec.cr	ReadRecorder#size
+runtime/context_reads.py::method::ReadRecorder.object_ids	method	ported	spec/chronicle/context_read_spec.cr	ReadRecorder#object_ids (copy)
+runtime/context_reads.py::method::ReadRecorder.record	method	ported	spec/chronicle/context_read_spec.cr	ReadRecorder#record (idempotent per id)
+runtime/context_reads.py::method::ReadRecorder.record_objects	method	ported	spec/chronicle/context_read_spec.cr	ReadRecorder#record_objects (batch in order)
+runtime/context_reads.py::method::TracedView.__init__	method	ported	spec/chronicle/context_read_spec.cr	TracedView.new(view, recorder)
+runtime/context_reads.py::method::TracedView.objects	method	ported	spec/chronicle/context_read_spec.cr	TracedView#objects(type:) records returned ids post-filter
 runtime/dev_override.py::class::DevOverride	class	missing	-	auto-generated
 runtime/dev_override.py::const::DEV_AUTHORITIES	const	missing	-	auto-generated
 runtime/dev_override.py::function::authority_allows	function	missing	-	auto-generated
