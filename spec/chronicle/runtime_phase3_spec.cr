@@ -113,7 +113,7 @@ describe Chronicle::Runtime do
     trace["events"].as_a.size.should be >= 1
 
     status = runtime.status
-    status["events"].as_i.should be >= 1
-    status["run_id"].as_s.should eq("default")
+    status.events_processed.should be >= 1
+    status.run_id.should eq("default")
   end
 end

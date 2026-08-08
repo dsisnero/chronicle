@@ -14,6 +14,7 @@ module Chronicle
     @pack_state : Packs::PackRuntimeState = Packs::PackRuntimeState.new
     @pack_behaviors : Array(Packs::PackBehavior) = [] of Packs::PackBehavior
     @pack_tools : Array(Tool) = [] of Tool
+    @pack_warnings : Array(String) = [] of String
     @graph : GraphProjection?
     @dispatch_cursor : Int32 = 0
     @tool_approval_policies : Array(Policy) = [] of Policy
@@ -121,8 +122,8 @@ module Chronicle
     # Load a pack into this runtime. Idempotent on (name, version); raises
     # PackVersionConflictError / PackConflictError pre-mutation; records a
     # `pack.loaded` event. Returns true if newly loaded, false if a no-op.
-    def load_pack(pack : Pack, settings : Hash(String, JSON::Any)? = nil) : Bool
-      Packs::Loader.load_pack_into_runtime(self, pack, settings)
+    def load_pack(pack : Pack, settings : Hash(String, JSON::Any)? = nil, *, manifest_path : String? = nil) : Bool
+      Packs::Loader.load_pack_into_runtime(self, pack, settings, manifest_path: manifest_path)
     end
 
     # Canonical settings for any loaded pack by name (Form 3 cross-pack lookup,
@@ -130,6 +131,16 @@ module Chronicle
     # activegraph.runtime.runtime.Runtime#pack_settings.
     def pack_settings(pack_name : String) : Hash(String, JSON::Any)?
       @pack_state.pack_settings[pack_name]?
+    end
+
+    # Structured warnings accumulated while loading packs (CONTRACT v1.6 #1 —
+    # the manifest warning tier). Ported from upstream's manifest warning log.
+    def pack_warnings : Array(String)
+      @pack_warnings
+    end
+
+    protected def record_pack_warning(message : String) : Nil
+      @pack_warnings << message
     end
 
     # Deregister a loaded pack: its behaviors stop firing NOW, tools stop
@@ -828,14 +839,36 @@ module Chronicle
       recorded == receipt
     end
 
+    # JSON trace export: the flat `events` list (in log order) plus a `frames`
+    # object mapping each frame_id to its events, for grouped audit. The flat
+    # list is preserved for backward compatibility; events without a frame_id
+    # are not grouped.
     def export_trace : String
+      events = @store.iter_events
+      frames = {} of String => Array(Event)
+      events.each do |event|
+        if frame_id = event.frame_id
+          (frames[frame_id] ||= [] of Event) << event
+        end
+      end
       JSON.build do |json|
         json.object do
           json.field "run_id", @run_id
           json.field "events" do
             json.array do
-              @store.iter_events.each do |event|
+              events.each do |event|
                 json.raw(event.canonical_json)
+              end
+            end
+          end
+          json.field "frames" do
+            json.object do
+              frames.each do |frame_id, frame_events|
+                json.field frame_id do
+                  json.array do
+                    frame_events.each { |event| json.raw(event.canonical_json) }
+                  end
+                end
               end
             end
           end
@@ -843,13 +876,55 @@ module Chronicle
       end
     end
 
-    def status : Hash(String, JSON::Any)
-      {
-        "run_id"           => JSON::Any.new(@run_id),
-        "events"           => JSON::Any.new(@store.count),
-        "budget_remaining" => JSON::Any.new(budget_remaining),
-        "response"         => JSON::Any.new(@response_text),
-      }
+    # Frozen snapshot of the runtime (CONTRACT v0.8 #11). `state` is derived
+    # from the log's most recent terminal marker (runtime.idle → idle,
+    # runtime.budget_exhausted → exhausted, none → stopped), so a freshly
+    # loaded runtime and the runtime that saved the log agree. `recent_events`
+    # is the tail of id/type/actor/timestamp summaries; `registered_behaviors`
+    # lists the loaded pack behaviors with their subscription surface. Ported
+    # from activegraph.runtime.runtime.Runtime#status.
+    def status : RuntimeStatus
+      events = @store.iter_events
+      state = RuntimeState::Stopped
+      events.reverse_each do |event|
+        if event.type == "runtime.budget_exhausted"
+          state = RuntimeState::Exhausted
+          break
+        elsif event.type == "runtime.idle"
+          state = RuntimeState::Idle
+          break
+        end
+      end
+
+      recent_events = events.last(20).map do |event|
+        EventSummary.new(
+          id: event.id, type: event.type,
+          actor: event.actor, timestamp: event.timestamp.to_rfc3339,
+        )
+      end
+
+      behaviors = @pack_behaviors.map do |behavior|
+        BehaviorInfo.new(
+          name: behavior.name,
+          kind: behavior.kind.to_s.downcase,
+          subscribed_to: behavior.event_types.dup,
+          pattern: behavior.pattern,
+          activate_after: behavior.activate_after,
+        )
+      end
+
+      RuntimeStatus.new(
+        run_id: @run_id, state: state, queue_depth: 0,
+        events_processed: events.size.to_i64,
+        budget: BudgetSnapshot.new(
+          used: {} of String => Float64,
+          limits: {"max_events" => @budget.max_events.to_f64.as(Float64?)},
+          cost_used_usd: "0", cost_limit_usd: nil, exhausted_by: nil,
+        ),
+        frame: current_frame_id.try { |frame_id| FrameSnapshot.new(frame_id, nil) },
+        registered_behaviors: behaviors,
+        recent_events: recent_events,
+      )
     end
 
     private def resolve_pack_short_tool(name : String) : Tool?
@@ -1607,6 +1682,7 @@ module Chronicle
         payload: JSON.build do |json|
           json.object do
             json.field "request_hash", effect.content_hash
+            json.field "prompt_hash", effect.content_hash
             json.field "provider", target.try(&.provider)
             json.field "model", target.try(&.model)
             json.field "cache_hit", cache_hit
