@@ -4,6 +4,43 @@ require "json"
 # activegraph/tools/base.py, tools/decorators.py, tools/graph_query.py
 # (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
 module Chronicle
+  # The external-I/O permission mode for a tool invocation. Ported from
+  # activegraph ToolContext.external_io_mode: forbid (default, fail closed),
+  # runtime_recorded (runtime dispatch), or live_unrecorded (explicit replay
+  # bypass for unrecorded external I/O).
+  enum ExternalIOMode
+    Forbid
+    RuntimeRecorded
+    LiveUnrecorded
+
+    def to_s : String
+      case self
+      in .forbid?           then "forbid"
+      in .runtime_recorded? then "runtime_recorded"
+      in .live_unrecorded?  then "live_unrecorded"
+      end
+    end
+  end
+
+  # Input schema for web_fetch.
+  struct WebFetchInput
+    getter url : String
+    getter timeout_seconds : Float64
+
+    def initialize(@url : String, @timeout_seconds : Float64 = 10.0)
+    end
+  end
+
+  # Output schema for web_fetch.
+  struct WebFetchOutput
+    getter text : String
+    getter status : Int32
+    getter final_url : String
+
+    def initialize(@text : String, @status : Int32, @final_url : String)
+    end
+  end
+
   # A runtime-invokable tool: metadata plus a callable body. The body runs
   # `fn(args_json) -> output_json`; the runtime owns invocation and the
   # tool.requested / tool.responded event pair.
@@ -14,6 +51,7 @@ module Chronicle
     getter? pack_local : Bool
     getter? export_globally : Bool
     @fn : String -> String
+    @mode_fn : Proc(String, ExternalIOMode, String)?
 
     def initialize(
       @name : String,
@@ -21,12 +59,23 @@ module Chronicle
       @deterministic : Bool = false,
       @pack_local : Bool = false,
       @export_globally : Bool = false,
+      @mode_fn : Proc(String, ExternalIOMode, String)? = nil,
       &@fn : String -> String
     )
     end
 
     def call(args : String) : String
       @fn.call(args)
+    end
+
+    # Invoke with an explicit external-I/O permission mode. Tools that
+    # perform external I/O gate their body on this (web_fetch fails closed).
+    def call(args : String, mode : ExternalIOMode) : String
+      if mode_fn = @mode_fn
+        mode_fn.call(args, mode)
+      else
+        @fn.call(args)
+      end
     end
 
     # A canonical (prefixed) copy stamped with pack ownership.
@@ -37,7 +86,12 @@ module Chronicle
         @deterministic,
         @pack_local,
         @export_globally,
-      ) { |args| call(args) }
+      ) { |args| call(args) }.with_mode_fn(@mode_fn)
+    end
+
+    protected def with_mode_fn(mode_fn : Proc(String, ExternalIOMode, String)?) : Tool
+      @mode_fn = mode_fn
+      self
     end
 
     # Provider-facing tool definition (sent in the `tools=` parameter).
@@ -78,6 +132,37 @@ module Chronicle
       "Returns object id, type, and data for matching objects.",
       true,
     ) { |args| run_graph_query(graph, args) }
+  end
+
+  # Reference tool: web_fetch (CONTRACT v0.7 #16, v1.8 #7). Non-deterministic
+  # external-IO tool that fails closed: it refuses to run unless the caller
+  # explicitly allows `live_unrecorded` external I/O, before any network
+  # contact. The body is injected so the platform edge supplies the actual
+  # HTTP fetch; production defaults to a hard fail (no network in the core).
+  def self.make_web_fetch_tool(fetcher : Proc(String, WebFetchOutput)? = nil) : Tool
+    fn = fetcher || ->(_url : String) {
+      raise ToolError.new("tool.unrecorded_external_io: direct web_fetch is unrecorded; use runtime tool dispatch or set external_io_mode='live_unrecorded' explicitly")
+    }
+    Tool.new(
+      "web_fetch",
+      "Fetch the body text of a URL via HTTP GET. Follows redirects. " \
+      "Requires explicit live_unrecorded external-IO permission.",
+      false,
+    ) { |_args| "" }.with_mode_fn(->(args : String, mode : ExternalIOMode) {
+      input = JSON.parse(args).as_h
+      url = input["url"].as_s
+      unless mode.live_unrecorded?
+        raise ToolError.new("tool.unrecorded_external_io: direct web_fetch is unrecorded; use runtime tool dispatch or set external_io_mode='live_unrecorded' explicitly")
+      end
+      output = fn.call(url)
+      JSON.build do |json|
+        json.object do
+          json.field "text", output.text
+          json.field "status", output.status
+          json.field "final_url", output.final_url
+        end
+      end
+    })
   end
 
   def self.run_graph_query(graph : GraphProjection, args : String) : String

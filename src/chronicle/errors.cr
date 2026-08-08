@@ -58,6 +58,11 @@ module Chronicle
   class PackError < DomainError
   end
 
+  # A tool call failed: unpermitted external I/O, network error, or timeout.
+  # Ported from activegraph's ToolError.
+  class ToolError < DomainError
+  end
+
   # A dev.override request or receipt that violates run-local, log-backed
   # governance rules. Ported from activegraph's ValueError on
   # validate_override_request / gate_is_forbidden.
