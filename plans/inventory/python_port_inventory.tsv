@@ -725,9 +725,9 @@ runtime/registry.py::method::Registry.index_of	method	missing	-	auto-generated
 runtime/registry.py::method::Registry.match	method	missing	-	auto-generated
 runtime/runtime.py::class::BehaviorFailure	class	ported	spec/chronicle/behavior_failure_spec.cr	BehaviorFailure value struct (behavior/event_id/reason/exception_type/message/failed_event_id)
 runtime/runtime.py::class::Context	class	missing	-	auto-generated
-runtime/runtime.py::class::RunQuantumResult	class	missing	-	auto-generated
+runtime/runtime.py::class::RunQuantumResult	class	ported	spec/chronicle/run_quantum_spec.cr	RunQuantumResult value struct (process observations; elapsed never logged)
 runtime/runtime.py::class::Runtime	class	missing	-	auto-generated
-runtime/runtime.py::function::_budget_reason	function	missing	-	auto-generated
+runtime/runtime.py::function::_budget_reason	function	intentional_divergence	-	private budget-reason prose helper; N/A — Chronicle's budget marker payload is a snapshot
 runtime/runtime.py::function::_direct_embedding_event_ids	function	missing	-	auto-generated
 runtime/runtime.py::function::_doc_url_for_reason	function	missing	-	auto-generated
 runtime/runtime.py::function::_first_goal	function	missing	-	auto-generated
@@ -812,7 +812,7 @@ runtime/runtime.py::method::Runtime.promote	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.remove_sink	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.run_goal	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.run_id	method	missing	-	auto-generated
-runtime/runtime.py::method::Runtime.run_quantum	method	missing	-	auto-generated
+runtime/runtime.py::method::Runtime.run_quantum	method	ported	spec/chronicle/run_quantum_spec.cr	Runtime#run_quantum(max_queue_events, max_seconds) bounded cooperative drain (CONTRACT v1.10 #3); overload alongside the prompt-driven run_quantum(prompt, steps)
 runtime/runtime.py::method::Runtime.run_until	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.run_until_idle	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.save_state	method	missing	-	auto-generated

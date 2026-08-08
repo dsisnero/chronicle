@@ -100,6 +100,90 @@ module Chronicle
       run(prompt, caused_by: caused_by, max_steps: steps)
     end
 
+    # Drain a bounded cooperative quantum without claiming false idle
+    # (CONTRACT v1.10 #3). Hosts with a single graph-writer thread can
+    # interleave reads and commands between quanta. Bounds are checked
+    # between queue events; one behavior invocation remains atomic. When
+    # work remains, no `runtime.idle` marker is emitted. The normal
+    # idle/budget marker is emitted exactly when this quantum actually
+    # reaches that state. Ported from
+    # activegraph.runtime.runtime.Runtime#run_quantum.
+    def run_quantum(
+      *,
+      max_queue_events : Int32 = 25,
+      max_seconds : Float64 = 0.25,
+    ) : RunQuantumResult
+      raise ArgumentError.new("max_queue_events must be >= 1") if max_queue_events < 1
+      raise ArgumentError.new("max_seconds must be finite and > 0") unless max_seconds.finite? && max_seconds > 0
+
+      if @pack_behaviors.empty?
+        # Nothing to drain; report an idle quiescent quantum.
+        return RunQuantumResult.new(
+          queue_events_processed: 0, elapsed_seconds: 0.0,
+          queue_depth: 0, max_queue_depth: 0, delayed_depth: 0,
+          idle: true, budget_exhausted: budget_exhausted?,
+        )
+      end
+
+      started = Time.instant
+      deadline = started + max_seconds.seconds
+      start_cursor = @dispatch_cursor
+      max_queue_depth = 0
+      dispatch_quantum(max_queue_events, deadline)
+      depth = queue_depth
+      max_queue_depth = {max_queue_depth, depth}.max
+
+      exhausted = budget_exhausted?
+      idle = !depth.positive? && @delayed.entries.empty?
+      if exhausted || idle
+        emit_idle_or_exhausted
+      end
+
+      RunQuantumResult.new(
+        queue_events_processed: @dispatch_cursor - start_cursor,
+        elapsed_seconds: (Time.instant - started).total_seconds,
+        queue_depth: depth,
+        max_queue_depth: max_queue_depth,
+        delayed_depth: @delayed.entries.size,
+        idle: idle,
+        budget_exhausted: exhausted,
+      )
+    end
+
+    # Number of undrained events (the dispatch cursor lags the store).
+    private def queue_depth : Int32
+      (@store.count - @dispatch_cursor).to_i32
+    end
+
+    # Drain up to `max_queue_events` pending events, stopping at the
+    # deadline, without emitting an idle marker. One behavior invocation
+    # remains atomic; the bound is checked between queue events.
+    private def dispatch_quantum(max_queue_events : Int32, deadline : Time::Instant) : Nil
+      graph = @graph
+      return if graph.nil?
+
+      processed = 0
+      loop do
+        break if budget_exhausted?
+        break if Time.instant >= deadline
+        break if processed >= max_queue_events
+
+        events = @store.iter_events
+        break if @dispatch_cursor >= events.size
+
+        remaining = max_queue_events - processed
+        end_index = Math.min(@dispatch_cursor + remaining, events.size)
+        new_events = events[@dispatch_cursor...end_index]
+        @dispatch_cursor = end_index
+        break if new_events.empty?
+
+        dispatch_new_events(new_events, graph)
+        processed += new_events.size
+
+        fire_due_delayed(events.last?.try(&.sequence) || 0u64)
+      end
+    end
+
     # Run the loop until the agent reaches a done step.
     def run_until_idle(prompt : String, caused_by : String? = nil) : String
       run(prompt, caused_by: caused_by)

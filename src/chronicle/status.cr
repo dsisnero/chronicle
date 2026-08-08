@@ -99,6 +99,34 @@ module Chronicle
     end
   end
 
+  # Operational result of one cooperative runtime drain quantum (CONTRACT
+  # v1.10 #3). The values are process observations, not graph facts — in
+  # particular `elapsed_seconds` is intentionally never written to the event
+  # log, so hosts can schedule fairly without weakening replay determinism.
+  # Ported from activegraph.runtime.runtime.RunQuantumResult.
+  struct RunQuantumResult
+    getter queue_events_processed : Int32
+    getter elapsed_seconds : Float64
+    getter queue_depth : Int32
+    getter max_queue_depth : Int32
+    getter delayed_depth : Int32
+    # ameba:disable Naming/QueryBoolMethods
+    getter idle : Bool
+    # ameba:disable Naming/QueryBoolMethods
+    getter budget_exhausted : Bool
+
+    def initialize(
+      @queue_events_processed : Int32,
+      @elapsed_seconds : Float64,
+      @queue_depth : Int32,
+      @max_queue_depth : Int32,
+      @delayed_depth : Int32,
+      @idle : Bool,
+      @budget_exhausted : Bool,
+    )
+    end
+  end
+
   # Point-in-time snapshot of a runtime for inspection surfaces. A read-only
   # value object produced by `Runtime#status`. Ported from upstream's frozen
   # `RuntimeStatus` dataclass.

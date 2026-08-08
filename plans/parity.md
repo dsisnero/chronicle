@@ -356,6 +356,26 @@ From `parity.tsv` (`missing_contains` on Runtime):
       for back-compat). The `reason` field is populated for `LLMBehaviorError`.
       Ported from activegraph.runtime.runtime `errors`/`BehaviorFailure` +
       test_v1_0_3_behavior_failed_ux.py — `spec/chronicle/behavior_failure_spec.cr`.
+- [x] Cooperative quantum drain — `Runtime#run_quantum(max_queue_events,
+      max_seconds)` returning `Chronicle::RunQuantumResult` (CONTRACT v1.10
+      #3): single-writer hosts can interleave reads/commands between quanta.
+      Bounds are checked between queue events (one behavior invocation stays
+      atomic); the dispatch cursor advances only `max_queue_events` pending
+      events per quantum and the loop stops at the deadline. When work
+      remains, no `runtime.idle` marker is emitted (no false idle); the
+      idle/budget marker is emitted exactly when the quantum actually
+      reaches that state. `RunQuantumResult` carries process observations —
+      `queue_events_processed`, `elapsed_seconds` (never written to the log,
+      so scheduling stays replay-deterministic), `queue_depth`,
+      `max_queue_depth`, `delayed_depth`, `idle`, `budget_exhausted`.
+      Invalid bounds (`max_queue_events < 1`, non-finite/`<= 0`
+      `max_seconds`) raise `ArgumentError`. Ported from
+      activegraph.runtime.runtime `run_quantum`/`RunQuantumResult` +
+      test_run_quantum.py (CONTRACT v1.10 #3) — `spec/chronicle/run_quantum_spec.cr`.
+      Divergence: this is a keyword-only overload alongside Chronicle's
+      prompt-driven `run_quantum(prompt, steps)`; the `pack.loaded` seed
+      event occupies one queue slot, so the exact quantum-count pin differs
+      from upstream (asserted via `> 1` + full chain completion instead).
 
 ## Phase 4 — LLM layer + replay cache
 
