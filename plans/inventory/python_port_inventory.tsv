@@ -194,7 +194,7 @@ errors.py::class::PackError	class	missing	-	auto-generated
 errors.py::class::PatternError	class	missing	-	auto-generated
 errors.py::class::RegistrationError	class	missing	-	auto-generated
 errors.py::class::ReplayError	class	missing	-	auto-generated
-errors.py::class::StorageError	class	missing	-	auto-generated
+errors.py::class::StorageError	class	ported	spec/chronicle/serde_spec.cr	Storage-layer error base (StorageError < DomainError)
 errors.py::const::DOCS_BASE_URL	const	missing	-	auto-generated
 errors.py::const::GITHUB_NEW_ISSUE_URL	const	missing	-	auto-generated
 errors.py::function::_indent_continuation	function	missing	-	auto-generated
@@ -982,7 +982,7 @@ store/conformance.py::class::EventStoreConformance	class	missing	-	auto-generate
 store/conformance.py::method::EventStoreConformance._ev	method	missing	-	auto-generated
 store/conformance.py::method::EventStoreConformance.cleanup	method	missing	-	auto-generated
 store/conformance.py::method::EventStoreConformance.make_store	method	missing	-	auto-generated
-store/errors.py::class::CorruptedEventPayloadError	class	missing	-	auto-generated
+store/errors.py::class::CorruptedEventPayloadError	class	ported	spec/chronicle/serde_spec.cr	decode-side corrupt JSON payload error (CONTRACT v0.5 #4)
 store/errors.py::class::DuplicateEventError	class	missing	-	auto-generated
 store/errors.py::class::EventNotFoundError	class	missing	-	auto-generated
 store/errors.py::class::SchemaVersionMismatch	class	missing	-	auto-generated
@@ -1072,14 +1072,14 @@ store/retention.py::function::state_hash_of	function	missing	-	auto-generated
 store/retention.py::function::verify_snapshot	function	missing	-	auto-generated
 store/retention.py::method::RetentionPinnedError.__init__	method	missing	-	auto-generated
 store/retention.py::method::SnapshotIntegrityError.__init__	method	missing	-	auto-generated
-store/serde.py::class::NonSerializableEventError	class	missing	-	auto-generated
-store/serde.py::function::_default	function	missing	-	auto-generated
-store/serde.py::function::_find_non_serializable	function	missing	-	auto-generated
-store/serde.py::function::decode_event	function	missing	-	auto-generated
-store/serde.py::function::decode_payload	function	missing	-	auto-generated
-store/serde.py::function::encode_event	function	missing	-	auto-generated
-store/serde.py::function::encode_payload	function	missing	-	auto-generated
-store/serde.py::function::validate_event	function	missing	-	auto-generated
+store/serde.py::class::NonSerializableEventError	class	ported	spec/chronicle/serde_spec.cr	encode-side strict-serialization error; compile-time guaranteed for JSON::Any/String payloads
+store/serde.py::function::_default	function	intentional_divergence	-	Python value->JSON adapter (Decimal/datetime/set). N/A in Crystal: JSON::Any/String payloads are JSON by construction.
+store/serde.py::function::_find_non_serializable	function	intentional_divergence	-	Python walker to locate a non-JSON value. N/A in Crystal: compile-time type safety replaces the runtime walk.
+store/serde.py::function::decode_event	function	ported	spec/chronicle/serde_spec.cr	Serde.decode_event(row) -> Event via StoredEvent
+store/serde.py::function::decode_payload	function	ported	spec/chronicle/serde_spec.cr	Serde.decode_payload(encoded) raises CorruptedEventPayloadError with preview
+store/serde.py::function::encode_event	function	ported	spec/chronicle/serde_spec.cr	Serde.encode_event(event) -> StoredEvent row
+store/serde.py::function::encode_payload	function	ported	spec/chronicle/serde_spec.cr	Serde.encode_payload(JSON::Any) -> canonical JSON string
+store/serde.py::function::validate_event	function	ported	spec/chronicle/serde_spec.cr	Serde.validate_event fail-fast emit gate (core/graph.py:emit)
 store/sqlite.py::class::SQLiteEventStore	class	missing	-	auto-generated
 store/sqlite.py::const::SCHEMA_VERSION	const	missing	-	auto-generated
 store/sqlite.py::function::_ensure_schema	function	missing	-	auto-generated

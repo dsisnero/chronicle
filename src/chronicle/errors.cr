@@ -55,6 +55,25 @@ module Chronicle
   class InvalidLogEncodingError < DomainError
   end
 
+  # Base class for storage-layer failures. Ported from activegraph's
+  # StorageError category.
+  class StorageError < DomainError
+  end
+
+  # A payload value could not be JSON-encoded (encode-side failure).
+  # Ported from activegraph.store.serde.NonSerializableEventError. In Crystal
+  # this is a compile-time guarantee for well-typed payloads (JSON::Any /
+  # String can't hold non-JSON values), so the error is the fail-fast gate
+  # surface rather than a commonly-reached runtime error.
+  class NonSerializableEventError < StorageError
+  end
+
+  # A stored event payload could not be decoded as JSON (decode-side failure).
+  # Ported from activegraph.store.errors.CorruptedEventPayloadError. Distinct
+  # from NonSerializableEventError: corruption-on-load, not encode failure.
+  class CorruptedEventPayloadError < StorageError
+  end
+
   class PackError < DomainError
   end
 

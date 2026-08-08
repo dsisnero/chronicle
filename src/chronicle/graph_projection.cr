@@ -331,6 +331,11 @@ module Chronicle
 
     # Append, project, persist, then notify listeners. The only live mutator.
     def emit(event : Event) : Event
+      # Fail-fast serialization check at emit time so bad payloads never land
+      # in the in-memory log either (CONTRACT v0.5 #4, upstream core/graph.py).
+      if @event_store
+        Serde.validate_event(event)
+      end
       apply(event)
       @event_store.try(&.append(event))
       @sinks.each_value(&.offer(event))

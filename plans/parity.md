@@ -145,6 +145,24 @@ From `plans/generated/parity/python/parity.tsv`:
       in-memory append-only log. `truncate_after` drops every event after the
       given id and rewinds the sequence/causality bookkeeping.
       `spec/chronicle/event_log_spec.cr`.
+- [x] Strict payload serde — `Chronicle::Serde` (CONTRACT v0.5 #4): JSON-only,
+      human-inspectable, byte-stable. `encode_payload(JSON::Any)` /
+      `decode_payload(String)` (decode-side corruption raises
+      `CorruptedEventPayloadError` with a preview; long inputs truncated),
+      `validate_event` as the fail-fast emit-time gate wired into
+      `GraphProjection#emit` (only when a store is attached, mirroring upstream
+      `core/graph.py:emit`), and `encode_event`/`decode_event` row marshalling
+      through a `JSON::Serializable` `StoredEvent` record (payload embedded as
+      a raw canonical JSON string via the `RawJSON` converter so the row never
+      re-parses it — byte-exact round-trip). Error taxonomy:
+      `StorageError` base with `NonSerializableEventError` (encode-side) and
+      `CorruptedEventPayloadError` (decode-side) leaves. Divergence: upstream's
+      encode-side strictness (Decimal/datetime/set coercion + runtime
+      `_find_non_serializable` walker) is a compile-time guarantee in Crystal —
+      `JSON::Any`/`String` payloads are JSON by construction, so
+      `NonSerializableEventError` is the gate surface, not a commonly-reached
+      runtime error. Ported from activegraph store/serde.py + store/errors.py +
+      test_serde.py — `spec/chronicle/serde_spec.cr`.
 
 ## Phase 3 — Runtime execution surface
 
@@ -569,6 +587,18 @@ globally (CONTRACT v0.9 #3).
 - **Dev-override validation raises `Chronicle::DevOverrideError`**
   (a `DomainError`) instead of upstream's bare `ValueError`; gate/authority
   semantics are identical.
+- **Serde encode-side strictness is compile-time in Crystal.** Upstream
+  `store/serde.py` coerces Python values to JSON at emit-time (Decimal →
+  string, datetime → ISO 8601, set → sorted list) and raises
+  `NonSerializableEventError` with a walked offender path
+  (`_find_non_serializable`). Chronicle's `Event.payload` is already a
+  canonical JSON `String` and `JSON::Any`/`String` cannot hold non-JSON
+  values, so `Serde.encode_payload` never fails at runtime;
+  `NonSerializableEventError` remains the fail-fast gate surface (wired into
+  `GraphProjection#emit` when a store is attached) and the decode-side
+  `CorruptedEventPayloadError` is the reachable runtime error. The upstream
+  `_default`/`_find_non_serializable` walkers are N/A and skipped in the
+  ledger.
 
 ## Acceptance Gates
 
