@@ -929,6 +929,29 @@ module Chronicle
       )
     end
 
+    # Accumulated `behavior.failed` events as structured values (CONTRACT
+    # v1.0.3 #3). Reads the store on each access — the events are the source
+    # of truth and this is a projection. No caching, no listener
+    # registration, no new state. Ported from
+    # activegraph.runtime.runtime.Runtime#errors.
+    def errors : Array(BehaviorFailure)
+      @store.iter_events.compact_map do |event|
+        next unless event.type == "behavior.failed"
+
+        payload = JSON.parse(event.payload).as_h
+        BehaviorFailure.new(
+          behavior: payload["behavior"]?.try(&.as_s?) || "",
+          event_id: payload["event_id"]?.try(&.as_s?) || "",
+          reason: payload["reason"]?.try(&.as_s?),
+          exception_type: payload["exception_type"]?.try(&.as_s?) || "",
+          message: payload["message"]?.try(&.as_s?) || "",
+          failed_event_id: event.id,
+        )
+      end
+    rescue JSON::ParseException
+      [] of BehaviorFailure
+    end
+
     private def resolve_pack_short_tool(name : String) : Tool?
       canonical = @pack_state.tool_short_to_canonical[name]?
       return nil if canonical.nil? || canonical == Packs::AMBIGUOUS
@@ -1111,7 +1134,10 @@ module Chronicle
         end
       rescue error : Exception
         @metrics.counter("activegraph_behaviors_failed_total", {"behavior" => behavior.name, "reason" => error.class.to_s})
-        raise error
+        # v1.0.3 #3: a failed behavior emits a durable behavior.failed event
+        # (the Runtime#errors projection reads it) instead of propagating
+        # out of dispatch — the run continues (upstream _invoke).
+        record_behavior_failed(behavior, event, error)
       ensure
         @metrics.histogram("activegraph_behaviors_duration_seconds", {"behavior" => behavior.name}, (Time.instant - t0).total_seconds)
       end
@@ -1307,9 +1333,12 @@ module Chronicle
       append_event("behavior.failed", JSON.build do |json|
         json.object do
           json.field "behavior", behavior.name
+          json.field "event_id", event.id
           json.field "trigger_event_id", event.id
+          json.field "exception_type", error.class.to_s
           json.field "error_class", error.class.to_s
-          json.field "reason", error.message || error.class.to_s
+          json.field "message", error.message || error.class.to_s
+          json.field "reason", error.is_a?(LLMBehaviorError) ? error.as(LLMBehaviorError).reason : nil
         end
       end)
     end

@@ -73,6 +73,32 @@ module Chronicle
     end
   end
 
+  # Structured view of a `behavior.failed` event for `Runtime#errors`
+  # (CONTRACT v1.0.3 #3). Five fields capture the operationally important
+  # parts of a failure: which behavior, which event triggered it, the v0.6
+  # #11 reason code (when present), the exception class name, and the
+  # message. `failed_event_id` ties the view back to the underlying
+  # `behavior.failed` event for callers that want the full payload. Ported
+  # from activegraph.runtime.runtime.BehaviorFailure.
+  struct BehaviorFailure
+    getter behavior : String
+    getter event_id : String
+    getter reason : String?
+    getter exception_type : String
+    getter message : String
+    getter failed_event_id : String
+
+    def initialize(
+      @behavior : String,
+      @event_id : String,
+      @reason : String?,
+      @exception_type : String,
+      @message : String,
+      @failed_event_id : String,
+    )
+    end
+  end
+
   # Point-in-time snapshot of a runtime for inspection surfaces. A read-only
   # value object produced by `Runtime#status`. Ported from upstream's frozen
   # `RuntimeStatus` dataclass.

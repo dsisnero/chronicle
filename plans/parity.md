@@ -337,11 +337,25 @@ From `parity.tsv` (`missing_contains` on Runtime):
       `context_read_payload` (the batched `context.read` payload:
       `behavior`, `event_id`, `execution_event_id` — the `behavior.started`
       id — `object_ids` capped at `CONTEXT_READ_ID_CAP = 200`, `count` always
-      exact, `truncated: true` only when ids were dropped). Ported from
+      exact,       `truncated: true` only when ids were dropped). Ported from
       activegraph.runtime.context_reads (the runtime wiring that threads the
       recorder through `ctx.view` and emits one `context.read` at frame
       commit is a separate integration — Chronicle behaviors currently receive
       the graph directly, not a traced view) — `spec/chronicle/context_read_spec.cr`.
+- [x] `Runtime#errors` — `Chronicle::BehaviorFailure` value struct +
+      `Runtime#errors` projection (CONTRACT v1.0.3 #3): the store is the
+      source of truth and `errors` is a read-on-access projection of every
+      `behavior.failed` event into a `BehaviorFailure` (behavior, event_id,
+      reason — the v0.6 #11 code when present, exception_type, message,
+      failed_event_id tying back to the underlying event). `invoke_pack_behavior`
+      now records a durable `behavior.failed` event on a failing behavior
+      (instead of re-raising out of dispatch, matching upstream `_invoke` —
+      the run continues) and `record_behavior_failed` writes the
+      upstream-compatible payload fields (`behavior`, `event_id`, `reason`,
+      `exception_type`, `message`; `trigger_event_id`/`error_class` retained
+      for back-compat). The `reason` field is populated for `LLMBehaviorError`.
+      Ported from activegraph.runtime.runtime `errors`/`BehaviorFailure` +
+      test_v1_0_3_behavior_failed_ux.py — `spec/chronicle/behavior_failure_spec.cr`.
 
 ## Phase 4 — LLM layer + replay cache
 

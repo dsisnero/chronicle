@@ -723,7 +723,7 @@ runtime/registry.py::method::Registry.__init__	method	missing	-	auto-generated
 runtime/registry.py::method::Registry.all	method	missing	-	auto-generated
 runtime/registry.py::method::Registry.index_of	method	missing	-	auto-generated
 runtime/registry.py::method::Registry.match	method	missing	-	auto-generated
-runtime/runtime.py::class::BehaviorFailure	class	missing	-	auto-generated
+runtime/runtime.py::class::BehaviorFailure	class	ported	spec/chronicle/behavior_failure_spec.cr	BehaviorFailure value struct (behavior/event_id/reason/exception_type/message/failed_event_id)
 runtime/runtime.py::class::Context	class	missing	-	auto-generated
 runtime/runtime.py::class::RunQuantumResult	class	missing	-	auto-generated
 runtime/runtime.py::class::Runtime	class	missing	-	auto-generated
@@ -795,7 +795,7 @@ runtime/runtime.py::method::Runtime.dev_overrides	method	missing	-	auto-generate
 runtime/runtime.py::method::Runtime.diff	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.disable_pack	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.embed	method	missing	-	auto-generated
-runtime/runtime.py::method::Runtime.errors	method	missing	-	auto-generated
+runtime/runtime.py::method::Runtime.errors	method	ported	spec/chronicle/behavior_failure_spec.cr	Runtime#errors projection over behavior.failed events (CONTRACT v1.0.3 #3)
 runtime/runtime.py::method::Runtime.evaluate_capability_authority	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.export_trace	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.flush_sinks	method	missing	-	auto-generated
