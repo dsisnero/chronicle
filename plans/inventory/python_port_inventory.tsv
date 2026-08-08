@@ -332,18 +332,18 @@ llm/wire.py::function::build_tool_name_map	function	ported	spec/chronicle/wire_s
 llm/wire.py::function::classify_provider_exception	function	ported	spec/chronicle/wire_spec.cr	Wire.classify_provider_exception (status_code via responds_to? + class-name heuristics)
 llm/wire.py::function::restore_tool_name	function	ported	spec/chronicle/wire_spec.cr	Wire.restore_tool_name (unknown passes through)
 llm/wire.py::function::sanitize_tool_name	function	ported	spec/chronicle/wire_spec.cr	Wire.sanitize_tool_name (. -> __, others -> _; identity for wire-safe)
-observability/logging.py::class::JsonLineFormatter	class	missing	-	auto-generated
-observability/logging.py::class::_MISSING_T	class	missing	-	auto-generated
-observability/logging.py::const::LOGGER_ROOT	const	missing	-	auto-generated
-observability/logging.py::const::LOG_FIELDS	const	missing	-	auto-generated
-observability/logging.py::function::_iso_utc	function	missing	-	auto-generated
-observability/logging.py::function::configure_logging	function	missing	-	auto-generated
-observability/logging.py::function::get_logger	function	missing	-	auto-generated
-observability/logging.py::function::redact_payload	function	missing	-	auto-generated
-observability/logging.py::function::runtime_log_extra	function	missing	-	auto-generated
-observability/logging.py::function::set_payload_redactor	function	missing	-	auto-generated
-observability/logging.py::method::JsonLineFormatter.__init__	method	missing	-	auto-generated
-observability/logging.py::method::JsonLineFormatter.format	method	missing	-	auto-generated
+observability/logging.py::class::JsonLineFormatter	class	ported	spec/chronicle/logging_spec.cr	Logging.format_line (single-line JSON with documented schema)
+observability/logging.py::class::_MISSING_T	class	intentional_divergence	-	Python sentinel for record-attribute absence; N/A — extras is a Hash with []?
+observability/logging.py::const::LOGGER_ROOT	const	intentional_divergence	-	Python logging.getLogger root; N/A — Sans-IO core has no global logger namespace (platform edge)
+observability/logging.py::const::LOG_FIELDS	const	ported	spec/chronicle/logging_spec.cr	Logging::LOG_FIELDS (documented schema snapshot)
+observability/logging.py::function::_iso_utc	function	ported	spec/chronicle/logging_spec.cr	timestamp passed by caller; Logging keeps it as a field
+observability/logging.py::function::configure_logging	function	intentional_divergence	-	Python stdlib logging handler setup; N/A — I/O at platform edge (Sans-IO core)
+observability/logging.py::function::get_logger	function	intentional_divergence	-	Python stdlib logging.getLogger; N/A — Sans-IO core has no global logger namespace
+observability/logging.py::function::redact_payload	function	ported	spec/chronicle/logging_spec.cr	Logging.redact_payload (configured redactor or identity)
+observability/logging.py::function::runtime_log_extra	function	ported	spec/chronicle/logging_spec.cr	Logging.runtime_log_extra (drops nil; renames reserved attrs with ag_ prefix)
+observability/logging.py::function::set_payload_redactor	function	ported	spec/chronicle/logging_spec.cr	Logging.set_payload_redactor (idempotent; nil removes)
+observability/logging.py::method::JsonLineFormatter.__init__	method	ported	spec/chronicle/logging_spec.cr	Logging.format_line keyword args
+observability/logging.py::method::JsonLineFormatter.format	method	ported	spec/chronicle/logging_spec.cr	Logging.format_line (required fields + documented extras, undocumented dropped)
 observability/metrics.py::class::MetricSpec	class	ported	spec/chronicle/metrics_spec.cr	MetricSpec struct (name/kind/tags/description)
 observability/metrics.py::class::Metrics	class	ported	spec/chronicle/metrics_spec.cr	Metrics abstract protocol (counter/histogram/gauge, non-throwing)
 observability/metrics.py::class::NoOpMetrics	class	ported	spec/chronicle/metrics_spec.cr	NoOpMetrics default (no-op bodies)

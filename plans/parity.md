@@ -530,6 +530,22 @@ From `parity.tsv` (`missing_contains` on Runtime):
       observability/metrics.py + test_observability_metrics.py (the
       prometheus/otel adapters and remaining runtime emission points stay
       deferred) — `spec/chronicle/metrics_spec.cr`.
+- [x] Structured logging — `Chronicle::Logging` (CONTRACT v0.8 #6–#7, #16):
+      the documented operator-facing log schema is the contract —
+      `LOG_FIELDS` (timestamp, level, logger, message, run_id, event_id,
+      behavior, tool, model, cache_hit, cost_usd, latency_seconds, reason,
+      error_type, error_message, doc_url; fields omitted when absent, never
+      nulled). `format_line` renders one compact JSON object per record:
+      required fields always present, documented extras passed through,
+      undocumented fields dropped. `runtime_log_extra` builds the extras dict
+      (nil values dropped; stdlib log-record attribute collisions renamed
+      with an `ag_` prefix), and `set_payload_redactor`/`redact_payload`
+      install/apply an idempotent payload redactor. Divergence: upstream's
+      `configure_logging`/`get_logger` (stdlib logging handler setup) are
+      platform-edge — the Sans-IO core owns only the pure formatter/extras/
+      redaction logic, and the timestamp is supplied by the caller. Ported
+      from activegraph observability/logging.py +
+      test_observability_logging.py — `spec/chronicle/logging_spec.cr`.
 - [x] Sink conformance as a reusable mixin — extracted the shared conformance
       cases (live delivery order + context, unicode, bounded overflow,
       remove-sink, raising-sibling isolation, no-redeliver-history) into
