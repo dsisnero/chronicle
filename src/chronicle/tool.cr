@@ -141,7 +141,7 @@ module Chronicle
   # HTTP fetch; production defaults to a hard fail (no network in the core).
   def self.make_web_fetch_tool(fetcher : Proc(String, WebFetchOutput)? = nil) : Tool
     fn = fetcher || ->(_url : String) {
-      raise ToolError.new("tool.unrecorded_external_io: direct web_fetch is unrecorded; use runtime tool dispatch or set external_io_mode='live_unrecorded' explicitly")
+      raise ToolError.new("tool.unrecorded_external_io", "direct web_fetch is unrecorded; use runtime tool dispatch or set external_io_mode='live_unrecorded' explicitly")
     }
     Tool.new(
       "web_fetch",
@@ -152,7 +152,7 @@ module Chronicle
       input = JSON.parse(args).as_h
       url = input["url"].as_s
       unless mode.live_unrecorded?
-        raise ToolError.new("tool.unrecorded_external_io: direct web_fetch is unrecorded; use runtime tool dispatch or set external_io_mode='live_unrecorded' explicitly")
+        raise ToolError.new("tool.unrecorded_external_io", "direct web_fetch is unrecorded; use runtime tool dispatch or set external_io_mode='live_unrecorded' explicitly")
       end
       output = fn.call(url)
       JSON.build do |json|

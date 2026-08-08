@@ -20,11 +20,12 @@ describe "core I/O safety" do
     # prompt loading, manifest parsing/hashing, and scaffolding touch disk.
     # Fixture-backed LLM providers (llm_recorded.cr) read/write fixture files
     # on the provider boundary; the pure hash/payload logic stays in
-    # prompt.cr.
+    # prompt.cr. Fixture-backed tool invokers (tool_recorded.cr) read/write
+    # tool fixtures on the same boundary.
     io_boundary_paths = {
       "platform_edge.cr", "routing_config.cr", "cli.cr", "session_store.cr",
       "config.cr", "packs/prompt.cr", "packs/manifest.cr", "packs/scaffold.cr",
-      "llm_recorded.cr",
+      "llm_recorded.cr", "tool_recorded.cr",
     }
 
     core_paths = Dir.glob("src/chronicle/**/*.cr").reject do |path|

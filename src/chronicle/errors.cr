@@ -107,8 +107,22 @@ module Chronicle
   end
 
   # A tool call failed: unpermitted external I/O, network error, or timeout.
-  # Ported from activegraph's ToolError.
+  # Ported from activegraph's ToolError. Carries a `reason` code from the
+  # CONTRACT v0.7 #6 taxonomy (tool.timeout, tool.network_error,
+  # tool.invalid_input, tool.invalid_output, tool.execution_error,
+  # tool.unknown_tool, tool.fixture_missing, ...) plus free-form message and
+  # payload extras the runtime folds into the tool.responded error payload.
   class ToolError < DomainError
+    getter reason : String
+    getter payload_extras : Hash(String, JSON::Any)
+
+    def initialize(
+      @reason : String,
+      message : String,
+      @payload_extras : Hash(String, JSON::Any) = {} of String => JSON::Any,
+    )
+      super(message)
+    end
   end
 
   # A dev.override request or receipt that violates run-local, log-backed

@@ -466,6 +466,27 @@ From `parity.tsv` (`missing_contains` on Runtime):
       test_web_fetch_hardening — `spec/chronicle/web_fetch_spec.cr`.
       `tools/web_fetch.py` live-HTTP wiring stays at the platform edge.
 - [x] Tool result caching via the existing `Chronicle::ToolCache` (recorded replay)
+- [x] Fixture-based tool invokers — `Chronicle::DirectToolInvoker` /
+      `RecordedToolProvider` / `RecordingToolProvider` + `CachedToolResponse`
+      (CONTRACT v0.7 #15, mirroring `llm/recorded.py`). Fixtures live at
+      `<dir>/<tool_name>/<args_hash>.json` with `recorded_at` OUTSIDE the
+      hashed args. `DirectToolInvoker` is the production invoker: calls the
+      tool body with timing and exception trapping (explicit `ToolError`
+      propagates unchanged; other exceptions become
+      `tool.execution_error`). `RecordingToolProvider` wraps an inner
+      invoker and persists each response; `RecordedToolProvider` reads the
+      fixture and raises `ToolError` (`tool.fixture_missing` with
+      `tool`/`args_hash`/`fixtures_dir` extras) on a miss. The hash key is
+      `ToolCache.hash_tool_call` — SHA-256 over
+      `{tool, canonicalize_args(args)}` where `canonicalize_args` re-encodes
+      JSON args with sorted keys so dict order never changes the hash.
+      `ToolError` upgraded to carry `reason`/`payload_extras` (the
+      `web_fetch` raise sites updated to the two-arg form). Ported from
+      activegraph tools/recorded.py + tools/cache.py + test_tools.py —
+      `spec/chronicle/tool_recorded_spec.cr`. Divergence: `cost_usd` is a
+      String (upstream Decimal); `_normalize_args`/`_decimal` Pydantic/
+      Decimal helpers are N/A (args are JSON strings); fixture file I/O lives
+      at the platform edge (`tool_recorded.cr` is an I/O-boundary path).
 
 ## Phase 6 — Sinks + observability
 

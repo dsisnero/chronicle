@@ -1113,17 +1113,17 @@ store/url.py::function::open_store	function	missing	-	auto-generated
 store/url.py::function::parse_store_url	function	missing	-	auto-generated
 tools/base.py::class::Tool	class	missing	-	auto-generated
 tools/base.py::method::Tool.to_definition	method	missing	-	auto-generated
-tools/cache.py::class::CachedToolResponse	class	missing	-	auto-generated
-tools/cache.py::class::ToolCache	class	missing	-	auto-generated
-tools/cache.py::function::_decimal	function	missing	-	auto-generated
-tools/cache.py::function::canonicalize_args	function	missing	-	auto-generated
-tools/cache.py::function::hash_tool_call	function	missing	-	auto-generated
-tools/cache.py::method::ToolCache.__init__	method	missing	-	auto-generated
-tools/cache.py::method::ToolCache.__len__	method	missing	-	auto-generated
-tools/cache.py::method::ToolCache.from_events	method	missing	-	auto-generated
-tools/cache.py::method::ToolCache.get	method	missing	-	auto-generated
-tools/cache.py::method::ToolCache.has	method	missing	-	auto-generated
-tools/cache.py::method::ToolCache.record	method	missing	-	auto-generated
+tools/cache.py::class::CachedToolResponse	class	ported	spec/chronicle/tool_recorded_spec.cr	CachedToolResponse struct (output/error/latency/cost_usd/cache_hit)
+tools/cache.py::class::ToolCache	class	ported	spec/chronicle/tool_recorded_spec.cr	ToolCache (prior Phase 5 port; key/canonicalize_args/hash_tool_call added here)
+tools/cache.py::function::_decimal	function	intentional_divergence	-	Python Decimal coercion; N/A — cost_usd is a String
+tools/cache.py::function::canonicalize_args	function	ported	spec/chronicle/tool_recorded_spec.cr	ToolCache.canonicalize_args (sorted-key canonical JSON)
+tools/cache.py::function::hash_tool_call	function	ported	spec/chronicle/tool_recorded_spec.cr	ToolCache.hash_tool_call (SHA-256 over {tool, canonical args})
+tools/cache.py::method::ToolCache.__init__	method	ported	spec/chronicle/tool_recorded_spec.cr	ToolCache.new
+tools/cache.py::method::ToolCache.__len__	method	ported	spec/chronicle/tool_recorded_spec.cr	ToolCache#size
+tools/cache.py::method::ToolCache.from_events	method	ported	spec/chronicle/tool_recorded_spec.cr	ToolCache.from_events
+tools/cache.py::method::ToolCache.get	method	ported	spec/chronicle/tool_recorded_spec.cr	ToolCache#get
+tools/cache.py::method::ToolCache.has	method	ported	spec/chronicle/tool_recorded_spec.cr	ToolCache#has_key? via get
+tools/cache.py::method::ToolCache.record	method	ported	spec/chronicle/tool_recorded_spec.cr	ToolCache#record
 tools/context.py::class::ToolContext	class	missing	-	auto-generated
 tools/decorators.py::function::clear_tool_registry	function	missing	-	auto-generated
 tools/decorators.py::function::get_tool_registry	function	missing	-	auto-generated
@@ -1147,17 +1147,17 @@ tools/graph_query.py::class::GraphQueryOutput	class	missing	-	auto-generated
 tools/graph_query.py::class::ObjectRef	class	missing	-	auto-generated
 tools/graph_query.py::function::fn	function	missing	-	auto-generated
 tools/graph_query.py::function::make_graph_query_tool	function	missing	-	auto-generated
-tools/recorded.py::class::DirectToolInvoker	class	missing	-	auto-generated
-tools/recorded.py::class::RecordedToolProvider	class	missing	-	auto-generated
-tools/recorded.py::class::RecordingToolProvider	class	missing	-	auto-generated
-tools/recorded.py::function::_decimal	function	missing	-	auto-generated
-tools/recorded.py::function::_normalize_args	function	missing	-	auto-generated
-tools/recorded.py::function::_now_iso	function	missing	-	auto-generated
-tools/recorded.py::method::DirectToolInvoker.invoke	method	missing	-	auto-generated
-tools/recorded.py::method::RecordedToolProvider.__init__	method	missing	-	auto-generated
-tools/recorded.py::method::RecordedToolProvider.invoke	method	missing	-	auto-generated
-tools/recorded.py::method::RecordingToolProvider.__init__	method	missing	-	auto-generated
-tools/recorded.py::method::RecordingToolProvider.invoke	method	missing	-	auto-generated
+tools/recorded.py::class::DirectToolInvoker	class	ported	spec/chronicle/tool_recorded_spec.cr	DirectToolInvoker (calls tool body; traps exceptions as tool.execution_error)
+tools/recorded.py::class::RecordedToolProvider	class	ported	spec/chronicle/tool_recorded_spec.cr	RecordedToolProvider (fixture read; ToolError tool.fixture_missing)
+tools/recorded.py::class::RecordingToolProvider	class	ported	spec/chronicle/tool_recorded_spec.cr	RecordingToolProvider (inner invoker + fixture write)
+tools/recorded.py::function::_decimal	function	intentional_divergence	-	Python Decimal coercion; N/A — cost_usd is a String
+tools/recorded.py::function::_normalize_args	function	intentional_divergence	-	Pydantic model_dump branch; N/A — args are JSON strings in Chronicle
+tools/recorded.py::function::_now_iso	function	ported	spec/chronicle/tool_recorded_spec.cr	ToolRecorded.now_iso (Time.utc.to_rfc3339)
+tools/recorded.py::method::DirectToolInvoker.invoke	method	ported	spec/chronicle/tool_recorded_spec.cr	DirectToolInvoker#invoke
+tools/recorded.py::method::RecordedToolProvider.__init__	method	ported	spec/chronicle/tool_recorded_spec.cr	RecordedToolProvider.new(fixtures_dir)
+tools/recorded.py::method::RecordedToolProvider.invoke	method	ported	spec/chronicle/tool_recorded_spec.cr	RecordedToolProvider#invoke
+tools/recorded.py::method::RecordingToolProvider.__init__	method	ported	spec/chronicle/tool_recorded_spec.cr	RecordingToolProvider.new(inner, fixtures_dir)
+tools/recorded.py::method::RecordingToolProvider.invoke	method	ported	spec/chronicle/tool_recorded_spec.cr	RecordingToolProvider#invoke (inner call + fixture write)
 tools/web_fetch.py::class::WebFetchInput	class	ported	spec/chronicle/web_fetch_spec.cr	WebFetchInput value struct
 tools/web_fetch.py::class::WebFetchOutput	class	ported	spec/chronicle/web_fetch_spec.cr	WebFetchOutput value struct
 tools/web_fetch.py::function::_decode	function	missing	-	auto-generated
