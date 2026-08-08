@@ -18,9 +18,13 @@ describe "core I/O safety" do
     # I/O boundary modules: these read/write filesystem or environment state
     # at the platform edge. The pack *loader* (packs/loader.cr) stays pure;
     # prompt loading, manifest parsing/hashing, and scaffolding touch disk.
+    # Fixture-backed LLM providers (llm_recorded.cr) read/write fixture files
+    # on the provider boundary; the pure hash/payload logic stays in
+    # prompt.cr.
     io_boundary_paths = {
       "platform_edge.cr", "routing_config.cr", "cli.cr", "session_store.cr",
       "config.cr", "packs/prompt.cr", "packs/manifest.cr", "packs/scaffold.cr",
+      "llm_recorded.cr",
     }
 
     core_paths = Dir.glob("src/chronicle/**/*.cr").reject do |path|

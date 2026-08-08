@@ -364,6 +364,27 @@ From `parity.tsv` (`missing_contains` on Runtime):
       are N/A (divergence) — structs serialize themselves —
       `spec/chronicle/llm_types_spec.cr`.
 - [-] Embedding — deferred — `llm/embedding.py`, `llm/embedding_cache.py`
+- [x] LLM provider protocol + fixture providers — `Chronicle::LLMProvider`
+      abstract class (CONTRACT v0.6 #3 + v1.0.2 #1): `complete(output_schema :
+      T.class)` generic, `estimate_cost`, `count_tokens`, `recognizes_model`,
+      `supports_native_structured_output` (v1.3 #1), `default_model`.
+      `Chronicle::RecordedLLMProvider` reads fixtures keyed by prompt hash
+      (`llm.fixture_missing` → `LLMBehaviorError` with `prompt_hash`/
+      `fixtures_dir` payload extras, no silent live fallthrough);
+      `Chronicle::RecordingLLMProvider` wraps an inner provider and mirrors
+      each call to a fixture file with `recorded_at` OUTSIDE the hashed
+      `prompt` payload (CONTRACT v0.6 #12 + decision-3 adjustment), so the
+      same prompt always overwrites one file. The hash key is
+      `Prompt.hash_payload(Prompt.canonical_prompt_payload(...))` — SHA-256
+      of sorted-key canonical JSON over {model, system, messages,
+      output_schema_name/json, max_tokens, temperature, top_p, deterministic,
+      tools, + mode when native}. Ported from activegraph llm/provider.py +
+      llm/recorded.py + test_llm_provider_fixtures.py —
+      `spec/chronicle/llm_recorded_spec.cr`. Divergence: `cost_usd` is a
+      String (upstream Decimal); `parsed` stays `JSON::Any` (no runtime
+      Pydantic re-validation); fixture file I/O lives at the platform edge
+      (`llm_recorded.cr` is an I/O-boundary path), the pure hash logic in
+      `prompt.cr` stays Sans-IO.
 - [x] Prompt assembler + view serializer — `Chronicle::Prompt` (CONTRACT
       v0.6 #6, #13, #20): every prompt is assembled from four locked sources
       — system (frame goal → frame constraints → behavior description →

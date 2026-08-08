@@ -86,6 +86,23 @@ module Chronicle
   class PromptTemplateError < DomainError
   end
 
+  # Structured failure from inside an LLM behavior / provider. Carries a
+  # reason code from the CONTRACT v0.6 #11 taxonomy plus a free-form message
+  # and payload extras the runtime folds into the emitted behavior.failed
+  # event. Ported from activegraph.llm.errors.LLMBehaviorError.
+  class LLMBehaviorError < DomainError
+    getter reason : String
+    getter payload_extras : Hash(String, JSON::Any)
+
+    def initialize(
+      @reason : String,
+      message : String,
+      @payload_extras : Hash(String, JSON::Any) = {} of String => JSON::Any,
+    )
+      super(message)
+    end
+  end
+
   class PackError < DomainError
   end
 

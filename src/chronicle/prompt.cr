@@ -480,6 +480,46 @@ module Chronicle
       {% end %}
     end
 
+    # Canonical prompt payload used as the fixture/replay hash key (upstream
+    # `_canonical_prompt_payload`). Tools contribute to the hash so a
+    # behavior gaining or losing a tool produces a different key.
+    def canonical_prompt_payload(
+      *,
+      model : String,
+      system : String,
+      messages : Array(LLMMessage),
+      output_schema_json : Hash(String, JSON::Any)?,
+      max_tokens : Int32,
+      temperature : Float64,
+      top_p : Float64,
+      deterministic : Bool,
+      tools : Array(Hash(String, JSON::Any))? = nil,
+      structured_output_mode : String = "prompt",
+    ) : Hash(String, JSON::Any)
+      payload = {
+        "model"              => JSON::Any.new(model),
+        "system"             => JSON::Any.new(system),
+        "messages"           => JSON::Any.new(messages.map { |msg| JSON.parse(msg.to_json) }),
+        "output_schema_name" => JSON::Any.new(nil),
+        "output_schema_json" => JSON::Any.new(output_schema_json.nil? ? nil : output_schema_json),
+        "max_tokens"         => JSON::Any.new(max_tokens),
+        "temperature"        => JSON::Any.new(temperature),
+        "top_p"              => JSON::Any.new(top_p),
+        "deterministic"      => JSON::Any.new(deterministic),
+        "tools"              => JSON::Any.new(tools.nil? ? nil : tools.map { |tool| JSON::Any.new(tool) }),
+      }
+      if structured_output_mode == "native"
+        payload["structured_output_mode"] = JSON::Any.new("native")
+      end
+      payload
+    end
+
+    # SHA-256 of the sorted-key canonical JSON of a prompt payload (upstream
+    # `_hash_payload`). The fixture filename and replay-cache key.
+    def hash_payload(payload : Hash(String, JSON::Any)) : String
+      ContentHash.digest(canonical_json(JSON::Any.new(payload)))
+    end
+
     # ---- top-level assembly -----------------------------------------------
 
     def assemble_prompt(

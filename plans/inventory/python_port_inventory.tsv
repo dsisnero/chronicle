@@ -295,31 +295,31 @@ llm/prompt.py::function::serialize_view	function	ported	spec/chronicle/prompt_sp
 llm/prompt.py::method::AssembledPrompt.canonical_json	method	ported	spec/chronicle/prompt_spec.cr	AssembledPrompt#canonical_json (sorted compact)
 llm/prompt.py::method::AssembledPrompt.hash	method	ported	spec/chronicle/prompt_spec.cr	AssembledPrompt#hash (SHA-256, cache key)
 llm/prompt.py::method::AssembledPrompt.to_hashable	method	ported	spec/chronicle/prompt_spec.cr	AssembledPrompt#to_hashable (prompt identity fields)
-llm/provider.py::class::LLMProvider	class	missing	-	auto-generated
-llm/provider.py::method::LLMProvider.complete	method	missing	-	auto-generated
-llm/provider.py::method::LLMProvider.count_tokens	method	missing	-	auto-generated
-llm/provider.py::method::LLMProvider.estimate_cost	method	missing	-	auto-generated
-llm/provider.py::method::LLMProvider.recognizes_model	method	missing	-	auto-generated
-llm/provider.py::method::LLMProvider.supports_native_structured_output	method	missing	-	auto-generated
-llm/recorded.py::class::RecordedLLMProvider	class	missing	-	auto-generated
-llm/recorded.py::class::RecordingLLMProvider	class	missing	-	auto-generated
-llm/recorded.py::function::_canonical_prompt_payload	function	missing	-	auto-generated
-llm/recorded.py::function::_hash_payload	function	missing	-	auto-generated
-llm/recorded.py::function::_now_iso	function	missing	-	auto-generated
-llm/recorded.py::function::_response_from_fixture	function	missing	-	auto-generated
-llm/recorded.py::method::RecordedLLMProvider.__init__	method	missing	-	auto-generated
-llm/recorded.py::method::RecordedLLMProvider.complete	method	missing	-	auto-generated
-llm/recorded.py::method::RecordedLLMProvider.count_tokens	method	missing	-	auto-generated
-llm/recorded.py::method::RecordedLLMProvider.estimate_cost	method	missing	-	auto-generated
-llm/recorded.py::method::RecordedLLMProvider.recognizes_model	method	missing	-	auto-generated
-llm/recorded.py::method::RecordedLLMProvider.supports_native_structured_output	method	missing	-	auto-generated
-llm/recorded.py::method::RecordingLLMProvider.__init__	method	missing	-	auto-generated
-llm/recorded.py::method::RecordingLLMProvider.complete	method	missing	-	auto-generated
-llm/recorded.py::method::RecordingLLMProvider.count_tokens	method	missing	-	auto-generated
-llm/recorded.py::method::RecordingLLMProvider.default_model	method	missing	-	auto-generated
-llm/recorded.py::method::RecordingLLMProvider.estimate_cost	method	missing	-	auto-generated
-llm/recorded.py::method::RecordingLLMProvider.recognizes_model	method	missing	-	auto-generated
-llm/recorded.py::method::RecordingLLMProvider.supports_native_structured_output	method	missing	-	auto-generated
+llm/provider.py::class::LLMProvider	class	ported	spec/chronicle/llm_recorded_spec.cr	LLMProvider abstract class (complete/estimate_cost/count_tokens/recognizes_model/supports_native_structured_output/default_model)
+llm/provider.py::method::LLMProvider.complete	method	ported	spec/chronicle/llm_recorded_spec.cr	abstract complete(output_schema : T.class) generic
+llm/provider.py::method::LLMProvider.count_tokens	method	ported	spec/chronicle/llm_recorded_spec.cr	abstract count_tokens
+llm/provider.py::method::LLMProvider.estimate_cost	method	ported	spec/chronicle/llm_recorded_spec.cr	abstract estimate_cost (String USD; upstream Decimal)
+llm/provider.py::method::LLMProvider.recognizes_model	method	ported	spec/chronicle/llm_recorded_spec.cr	default false
+llm/provider.py::method::LLMProvider.supports_native_structured_output	method	ported	spec/chronicle/llm_recorded_spec.cr	default false (CONTRACT v1.3 #1)
+llm/recorded.py::class::RecordedLLMProvider	class	ported	spec/chronicle/llm_recorded_spec.cr	RecordedLLMProvider reads fixtures by prompt hash; raises LLMBehaviorError llm.fixture_missing
+llm/recorded.py::class::RecordingLLMProvider	class	ported	spec/chronicle/llm_recorded_spec.cr	RecordingLLMProvider wraps inner provider, writes fixtures
+llm/recorded.py::function::_canonical_prompt_payload	function	ported	spec/chronicle/llm_recorded_spec.cr	Prompt.canonical_prompt_payload (tools + mode contribute to hash)
+llm/recorded.py::function::_hash_payload	function	ported	spec/chronicle/llm_recorded_spec.cr	Prompt.hash_payload (SHA-256 of sorted-key canonical JSON)
+llm/recorded.py::function::_now_iso	function	ported	spec/chronicle/llm_recorded_spec.cr	RecordingLLMProvider#now_iso (Time.utc.to_rfc3339)
+llm/recorded.py::function::_response_from_fixture	function	ported	spec/chronicle/llm_recorded_spec.cr	RecordedLLMProvider#response_from_fixture (parsed stays JSON::Any; tool_calls round-trip)
+llm/recorded.py::method::RecordedLLMProvider.__init__	method	ported	spec/chronicle/llm_recorded_spec.cr	initialize(fixtures_dir, structured_output_mode)
+llm/recorded.py::method::RecordedLLMProvider.complete	method	ported	spec/chronicle/llm_recorded_spec.cr	hash -> fixture lookup -> response_from_fixture
+llm/recorded.py::method::RecordedLLMProvider.count_tokens	method	ported	spec/chronicle/llm_recorded_spec.cr	max(1, chars // 4)
+llm/recorded.py::method::RecordedLLMProvider.estimate_cost	method	ported	spec/chronicle/llm_recorded_spec.cr	returns "0" (tests don't price fixtures)
+llm/recorded.py::method::RecordedLLMProvider.recognizes_model	method	ported	spec/chronicle/llm_recorded_spec.cr	always true (fixture-backed)
+llm/recorded.py::method::RecordedLLMProvider.supports_native_structured_output	method	ported	spec/chronicle/llm_recorded_spec.cr	mode == native
+llm/recorded.py::method::RecordingLLMProvider.__init__	method	ported	spec/chronicle/llm_recorded_spec.cr	initialize(inner, fixtures_dir) creates dir
+llm/recorded.py::method::RecordingLLMProvider.complete	method	ported	spec/chronicle/llm_recorded_spec.cr	inner complete + fixture write
+llm/recorded.py::method::RecordingLLMProvider.count_tokens	method	ported	spec/chronicle/llm_recorded_spec.cr	delegates to inner
+llm/recorded.py::method::RecordingLLMProvider.default_model	method	ported	spec/chronicle/llm_recorded_spec.cr	delegates to inner
+llm/recorded.py::method::RecordingLLMProvider.estimate_cost	method	ported	spec/chronicle/llm_recorded_spec.cr	delegates to inner
+llm/recorded.py::method::RecordingLLMProvider.recognizes_model	method	ported	spec/chronicle/llm_recorded_spec.cr	delegates to inner
+llm/recorded.py::method::RecordingLLMProvider.supports_native_structured_output	method	ported	spec/chronicle/llm_recorded_spec.cr	delegates to inner
 llm/types.py::class::LLMMessage	class	ported	spec/chronicle/llm_types_spec.cr	LLMMessage struct (Role enum, JSON::Serializable wire form; nil fields omitted)
 llm/types.py::class::LLMResponse	class	ported	spec/chronicle/llm_types_spec.cr	LLMResponse struct (parsed/tokens/cost/cache_hit/provider_meta/tool_calls)
 llm/types.py::class::ToolCall	class	ported	spec/chronicle/llm_types_spec.cr	ToolCall struct (id/name/args)
