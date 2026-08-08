@@ -510,6 +510,26 @@ From `parity.tsv` (`missing_contains` on Runtime):
       (`EventSummary` tail), plus `to_h` matching upstream `status_to_dict`.
       Ported from activegraph.observability.status — `spec/chronicle/status_spec.cr`.
       Metrics/logging/prometheus/otel dashboards stay deferred — `observability/*`.
+- [x] Metrics protocol + standard table — `Chronicle::Metrics` abstract
+      protocol (CONTRACT v0.8 #8–#10): three non-throwing methods
+      (`counter`/`histogram`/`gauge`), `NoOpMetrics` default, `MetricSpec`
+      (name/kind/tags/description), and `MetricsTable` with the full 24-entry
+      standard metric list (`METRIC_NAMES`/`by_name` — events emitted,
+      behaviors invoked/failed/duration, LLM calls/cache/failed/tokens/cost,
+      tools calls/cache/failed/duration, queue/sink/budget gauges, pattern
+      counters, replay-divergence) and `validate_cardinality_rule`
+      (CONTRACT v0.8 #C4: `run_id` is gauge-only — a counter/histogram
+      declaring it raises `MetricsError`; validated at load). Runtime wiring:
+      `Runtime` accepts a `metrics` instance (default `NoOpMetrics`),
+      `append_event` fires `activegraph_events_emitted_total` with an
+      `event_type` tag, and `invoke_pack_behavior` fires
+      `activegraph_behaviors_invoked_total` /
+      `activegraph_behaviors_duration_seconds` /
+      `activegraph_behaviors_failed_total` (reason = exception class) around
+      every behavior invocation. Ported from activegraph
+      observability/metrics.py + test_observability_metrics.py (the
+      prometheus/otel adapters and remaining runtime emission points stay
+      deferred) — `spec/chronicle/metrics_spec.cr`.
 - [x] Sink conformance as a reusable mixin — extracted the shared conformance
       cases (live delivery order + context, unicode, bounded overflow,
       remove-sink, raising-sibling isolation, no-redeliver-history) into

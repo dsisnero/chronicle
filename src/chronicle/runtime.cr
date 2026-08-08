@@ -19,6 +19,7 @@ module Chronicle
     @dispatch_cursor : Int32 = 0
     @tool_approval_policies : Array(Policy) = [] of Policy
     @delayed : Packs::DelayedQueue = Packs::DelayedQueue.new
+    @metrics : Metrics = NoOpMetrics.new
 
     # Action-class authority scale, lowest to highest.
     AUTHORITY_RANKS = {"read" => 0, "write" => 1, "admin" => 2, "root" => 3}
@@ -45,6 +46,7 @@ module Chronicle
       @tool_cache : ToolCache? = nil,
       @graph : GraphProjection? = nil,
       @tool_approval_policies : Array(Policy) = [] of Policy,
+      @metrics : Metrics = NoOpMetrics.new,
     )
     end
 
@@ -1092,17 +1094,26 @@ module Chronicle
       provider = ->(name : String) : Hash(String, JSON::Any)? { @pack_state.pack_settings[name]? }
       ctx = Packs::BehaviorContext.new(owner, settings, provider)
 
-      case behavior.kind
-      in Packs::PackBehaviorKind::Behavior
-        behavior.handler.try(&.call(event, graph, ctx))
-      in Packs::PackBehaviorKind::Relation
-        # Registry.match already selected the candidate relations referenced by
-        # this event (upstream `_matching_relations`); invoke once per match.
-        relations.each do |relation|
-          behavior.relation_handler.try(&.call(relation, event, graph, ctx))
+      @metrics.counter("activegraph_behaviors_invoked_total", {"behavior" => behavior.name})
+      t0 = Time.instant
+      begin
+        case behavior.kind
+        in Packs::PackBehaviorKind::Behavior
+          behavior.handler.try(&.call(event, graph, ctx))
+        in Packs::PackBehaviorKind::Relation
+          # Registry.match already selected the candidate relations referenced by
+          # this event (upstream `_matching_relations`); invoke once per match.
+          relations.each do |relation|
+            behavior.relation_handler.try(&.call(relation, event, graph, ctx))
+          end
+        in Packs::PackBehaviorKind::LLM
+          invoke_llm_behavior(behavior, event, ctx)
         end
-      in Packs::PackBehaviorKind::LLM
-        invoke_llm_behavior(behavior, event, ctx)
+      rescue error : Exception
+        @metrics.counter("activegraph_behaviors_failed_total", {"behavior" => behavior.name, "reason" => error.class.to_s})
+        raise error
+      ensure
+        @metrics.histogram("activegraph_behaviors_duration_seconds", {"behavior" => behavior.name}, (Time.instant - t0).total_seconds)
       end
     end
 
@@ -1801,6 +1812,7 @@ module Chronicle
         timestamp: Time.utc, payload: payload,
       )
       @store.append(event)
+      @metrics.counter("activegraph_events_emitted_total", {"event_type" => event.type})
       event
     end
 

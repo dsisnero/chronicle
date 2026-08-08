@@ -344,18 +344,18 @@ observability/logging.py::function::runtime_log_extra	function	missing	-	auto-ge
 observability/logging.py::function::set_payload_redactor	function	missing	-	auto-generated
 observability/logging.py::method::JsonLineFormatter.__init__	method	missing	-	auto-generated
 observability/logging.py::method::JsonLineFormatter.format	method	missing	-	auto-generated
-observability/metrics.py::class::MetricSpec	class	missing	-	auto-generated
-observability/metrics.py::class::Metrics	class	missing	-	auto-generated
-observability/metrics.py::class::NoOpMetrics	class	missing	-	auto-generated
-observability/metrics.py::const::METRIC_BY_NAME	const	missing	-	auto-generated
-observability/metrics.py::const::METRIC_NAMES	const	missing	-	auto-generated
-observability/metrics.py::function::validate_cardinality_rule	function	missing	-	auto-generated
-observability/metrics.py::method::Metrics.counter	method	missing	-	auto-generated
-observability/metrics.py::method::Metrics.gauge	method	missing	-	auto-generated
-observability/metrics.py::method::Metrics.histogram	method	missing	-	auto-generated
-observability/metrics.py::method::NoOpMetrics.counter	method	missing	-	auto-generated
-observability/metrics.py::method::NoOpMetrics.gauge	method	missing	-	auto-generated
-observability/metrics.py::method::NoOpMetrics.histogram	method	missing	-	auto-generated
+observability/metrics.py::class::MetricSpec	class	ported	spec/chronicle/metrics_spec.cr	MetricSpec struct (name/kind/tags/description)
+observability/metrics.py::class::Metrics	class	ported	spec/chronicle/metrics_spec.cr	Metrics abstract protocol (counter/histogram/gauge, non-throwing)
+observability/metrics.py::class::NoOpMetrics	class	ported	spec/chronicle/metrics_spec.cr	NoOpMetrics default (no-op bodies)
+observability/metrics.py::const::METRIC_BY_NAME	const	ported	spec/chronicle/metrics_spec.cr	MetricsTable.by_name
+observability/metrics.py::const::METRIC_NAMES	const	ported	spec/chronicle/metrics_spec.cr	MetricsTable::METRIC_NAMES (24 standard metrics)
+observability/metrics.py::function::validate_cardinality_rule	function	ported	spec/chronicle/metrics_spec.cr	MetricsTable.validate_cardinality_rule (run_id gauge-only; MetricsError)
+observability/metrics.py::method::Metrics.counter	method	ported	spec/chronicle/metrics_spec.cr	Metrics#counter
+observability/metrics.py::method::Metrics.gauge	method	ported	spec/chronicle/metrics_spec.cr	Metrics#gauge
+observability/metrics.py::method::Metrics.histogram	method	ported	spec/chronicle/metrics_spec.cr	Metrics#histogram
+observability/metrics.py::method::NoOpMetrics.counter	method	ported	spec/chronicle/metrics_spec.cr	NoOpMetrics#counter
+observability/metrics.py::method::NoOpMetrics.gauge	method	ported	spec/chronicle/metrics_spec.cr	NoOpMetrics#gauge
+observability/metrics.py::method::NoOpMetrics.histogram	method	ported	spec/chronicle/metrics_spec.cr	NoOpMetrics#histogram
 observability/migration.py::class::MigrationReport	class	missing	-	auto-generated
 observability/migration.py::class::MigrationRunReport	class	missing	-	auto-generated
 observability/migration.py::class::_StoreFacade	class	missing	-	auto-generated
