@@ -24,10 +24,11 @@ require "json"
 #   subqueries beyond NOT EXISTS, OR in WHERE, UNION/UNWIND/CREATE/MERGE/
 #   SET/DELETE/DETACH.
 module Chronicle
-  DOCS_BASE_URL = "https://docs.activegraph.ai"
-
   # Base class for pattern parse/match failures rejected by the deterministic core.
   class PatternError < DomainError
+    def self.doc_slug : String
+      "pattern-error"
+    end
   end
 
   # A WHERE ordered comparison (`<`, `>`, `<=`, `>=`) applied to two

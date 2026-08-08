@@ -1,7 +1,178 @@
 module Chronicle
-  # Base class for invalid inputs rejected by the deterministic core.
-  class DomainError < ArgumentError
+  # Base URL for error doc pages (CONTRACT v1.0 #C6). Single swap point.
+  DOCS_BASE_URL = "https://docs.activegraph.ai"
+
+  # Base URL for filing framework-bug reports.
+  GITHUB_NEW_ISSUE_URL = "https://github.com/yoheinakajima/activegraph/issues/new"
+
+  # Root of every framework error (CONTRACT v1.0 #4). Subclasses construct
+  # with a one-line summary plus the three structured fields
+  # (what_failed/why/how_to_fix) and any error-specific context. `#to_s`
+  # produces the locked format:
+  #
+  #     <ErrorClass>: <one-line summary>
+  #
+  #     What failed:
+  #       <specific thing that went wrong, with names>
+  #
+  #     Why:
+  #       <root cause, not the symptom>
+  #
+  #     How to fix:
+  #       <concrete action>
+  #
+  #     More:
+  #       https://docs.activegraph.ai/errors/<slug>
+  #
+  # Legacy single-argument construction renders the message verbatim until
+  # every leaf is migrated to the structured form.
+  class ActiveGraphError < ArgumentError
+    DOC_SLUG = "active-graph-error"
+
+    getter what_failed : String
+    getter why : String
+    getter how_to_fix : String
+    getter context : Hash(String, JSON::Any)
+
+    def initialize(
+      summary_or_message : String,
+      *,
+      what_failed : String? = nil,
+      why : String? = nil,
+      how_to_fix : String? = nil,
+      context : Hash(String, JSON::Any)? = nil,
+    )
+      @what_failed = what_failed || ""
+      @why = why || ""
+      @how_to_fix = how_to_fix || ""
+      @context = context || {} of String => JSON::Any
+      @summary = summary_or_message
+      if structured?
+        super(format_message)
+      else
+        super(summary_or_message)
+      end
+    end
+
+    # True when the three structured fields are populated.
+    def structured? : Bool
+      !@what_failed.empty? && !@why.empty? && !@how_to_fix.empty?
+    end
+
+    # Per-subclass doc slug; each category sets its own.
+    def self.doc_slug : String
+      DOC_SLUG
+    end
+
+    def doc_url : String
+      "#{DOCS_BASE_URL}/errors/#{self.class.doc_slug}"
+    end
+
+    private def format_message : String
+      "#{self.class.name.split("::").last}: #{@summary}\n\n" \
+      "What failed:\n  #{indent_continuation(@what_failed)}\n\n" \
+      "Why:\n  #{indent_continuation(@why)}\n\n" \
+      "How to fix:\n  #{indent_continuation(@how_to_fix)}\n\n" \
+      "More:\n  #{doc_url}"
+    end
+
+    # Re-indent a multi-line block so every line after the first sits under
+    # the same column as the first (two-space lock-in column).
+    private def indent_continuation(text : String) : String
+      lines = text.split("\n")
+      return text if lines.size == 1
+
+      lines[0] + "\n" + lines[1..].map { |line| line.empty? ? line : "  #{line}" }.join("\n")
+    end
+
+    # Produce uniform structured fields for an internal-bug exception
+    # (PR-G normalization). Used by the three framework-bug raise sites.
+    # Returns the kwargs dict that a structured ActiveGraphError
+    # initializer consumes.
+    def self.internal_bug_fields(
+      *,
+      summary : String,
+      what_happened : String,
+      why_invariant : String,
+      location : String,
+      extra_context : Hash(String, JSON::Any)? = nil,
+    ) : Hash(String, JSON::Any)
+      ctx = {
+        "internal"                => JSON::Any.new(true),
+        "internal_error_location" => JSON::Any.new(location),
+        "report_url"              => JSON::Any.new(GITHUB_NEW_ISSUE_URL),
+      }
+      if extra_context
+        extra_context.each { |key, value| ctx[key] = value }
+      end
+      {
+        "summary"     => JSON::Any.new(summary),
+        "what_failed" => JSON::Any.new(what_happened),
+        "why"         => JSON::Any.new(why_invariant),
+        "how_to_fix"  => JSON::Any.new(
+          "This is a framework bug, not a problem with your code.\n" \
+          "Please file an issue and include the framework version, the\n" \
+          "internal error location, and the full message above:\n" \
+          "    #{GITHUB_NEW_ISSUE_URL}\n" \
+          "\n" \
+          "  internal location:   #{location}"
+        ),
+        "context" => JSON::Any.new(ctx),
+      }
+    end
   end
+
+  # Base class for invalid inputs rejected by the deterministic core.
+  # All framework errors inherit from ActiveGraphError; DomainError keeps
+  # the ArgumentError ancestry for existing rescue sites.
+  class DomainError < ActiveGraphError
+  end
+
+  # Runtime construction problems: invalid budget, malformed store URL,
+  # missing required configuration (CONTRACT v1.0 #4b). Fires before any
+  # work runs — never as a behavior.failed event.
+  class ConfigurationError < ActiveGraphError
+    DOC_SLUG = "configuration-error"
+
+    def self.doc_slug : String
+      DOC_SLUG
+    end
+  end
+
+  # Behavior, tool, or pack registration problems: conflicts at
+  # registration time, version mismatches, missing providers.
+  class RegistrationError < ActiveGraphError
+    DOC_SLUG = "registration-error"
+
+    def self.doc_slug : String
+      DOC_SLUG
+    end
+  end
+
+  # Runtime execution problems: behavior failures, budget exhausted, tool
+  # failures during a goal run.
+  class ExecutionError < ActiveGraphError
+    DOC_SLUG = "execution-error"
+
+    def self.doc_slug : String
+      DOC_SLUG
+    end
+  end
+
+  # Replay and fork problems: cache hash mismatches, type-stream divergence
+  # between recorded and re-run event logs. Fires only during replay/fork.
+  class ReplayError < ActiveGraphError
+    DOC_SLUG = "replay-error"
+
+    def self.doc_slug : String
+      DOC_SLUG
+    end
+  end
+
+  # Pattern subscription problems: invalid Cypher syntax, unsupported
+  # features, malformed WHERE clauses (CONTRACT v0.7 #8). Defined in
+  # patterns.cr as a DomainError subclass; `PatternError < DomainError <
+  # ActiveGraphError` so it is transitively a category base.
 
   class InvalidEventError < DomainError
   end
@@ -46,7 +217,27 @@ module Chronicle
   class ReservedFieldError < DomainError
   end
 
-  class ReplayDivergenceError < DomainError
+  # Raised when a replay (replay_strict) or a fork produces an event stream
+  # that does not match the recorded log. event_id pins the first divergence
+  # point; expected/actual describe recorded vs re-run. Ported from
+  # activegraph.runtime.errors.ReplayDivergenceError (under ReplayError).
+  class ReplayDivergenceError < ReplayError
+    DOC_SLUG = "replay-divergence-error"
+
+    getter event_id : String
+    getter expected : String
+    getter actual : String
+
+    def initialize(message : String, *, event_id : String = "", expected : String = "", actual : String = "")
+      @event_id = event_id
+      @expected = expected
+      @actual = actual
+      super(message)
+    end
+
+    def self.doc_slug : String
+      DOC_SLUG
+    end
   end
 
   class ApprovalError < DomainError
@@ -58,6 +249,11 @@ module Chronicle
   # Base class for storage-layer failures. Ported from activegraph's
   # StorageError category.
   class StorageError < DomainError
+    DOC_SLUG = "storage-error"
+
+    def self.doc_slug : String
+      DOC_SLUG
+    end
   end
 
   # A payload value could not be JSON-encoded (encode-side failure).
@@ -104,6 +300,11 @@ module Chronicle
   end
 
   class PackError < DomainError
+    DOC_SLUG = "pack-error"
+
+    def self.doc_slug : String
+      DOC_SLUG
+    end
   end
 
   # A tool call failed: unpermitted external I/O, network error, or timeout.

@@ -765,6 +765,28 @@ globally (CONTRACT v0.9 #3).
   `JSON::Serializable` structs; upstream's `to_dict`/`_parsed_to_jsonable`
   dataclass/dict helpers are replaced by the structs' own `to_json`.
 
+- [x] Error hierarchy + structured format — `Chronicle::ActiveGraphError`
+      root with the locked message format (CONTRACT v1.0 #3/#4: the error
+      format and the class tree are public contract):
+      `<Class>: <summary>` then `What failed:` / `Why:` / `How to fix:`
+      (each a two-space-indented continuation block) / `More: <doc_url>`.
+      Structured construction takes `what_failed`/`why`/`how_to_fix`/
+      `context` and exposes them plus `doc_url` and `structured?`;
+      legacy single-argument construction renders the message verbatim.
+      The seven category bases (`ConfigurationError`, `RegistrationError`,
+      `ExecutionError`, `ReplayError`, `StorageError`, `PatternError`,
+      `PackError`) each carry a unique `doc_slug`; `DomainError` keeps the
+      `ArgumentError` ancestry so existing rescue sites still work while
+      every framework error is transitively an `ActiveGraphError`.
+      `ReplayDivergenceError` re-parented under `ReplayError` (reference
+      leaf, preserving its legacy message + event_id/expected/actual
+      attrs). `internal_bug_fields` produces the uniform context-dict +
+      report-URL prose for framework-bug raise sites.
+      `MissingOptionalDependency` (Python optional-package helper) is N/A —
+      Crystal has no import-time optional dependency surface. Ported from
+      activegraph errors.py + test_errors_format.py —
+      `spec/chronicle/errors_format_spec.cr`.
+
 ## Acceptance Gates
 
 - [x] Same event log → same projection and routing decisions on replay —

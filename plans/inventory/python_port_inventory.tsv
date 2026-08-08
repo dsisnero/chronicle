@@ -186,19 +186,19 @@ core/view.py::method::View.__init__	method	missing	-	auto-generated
 core/view.py::method::View.events	method	missing	-	auto-generated
 core/view.py::method::View.objects	method	missing	-	auto-generated
 core/view.py::method::View.relations	method	missing	-	auto-generated
-errors.py::class::ActiveGraphError	class	missing	-	auto-generated
-errors.py::class::ConfigurationError	class	missing	-	auto-generated
-errors.py::class::ExecutionError	class	missing	-	auto-generated
-errors.py::class::MissingOptionalDependency	class	missing	-	auto-generated
-errors.py::class::PackError	class	missing	-	auto-generated
-errors.py::class::PatternError	class	missing	-	auto-generated
-errors.py::class::RegistrationError	class	missing	-	auto-generated
-errors.py::class::ReplayError	class	missing	-	auto-generated
-errors.py::class::StorageError	class	ported	spec/chronicle/serde_spec.cr	Storage-layer error base (StorageError < DomainError)
-errors.py::const::DOCS_BASE_URL	const	missing	-	auto-generated
-errors.py::const::GITHUB_NEW_ISSUE_URL	const	missing	-	auto-generated
-errors.py::function::_indent_continuation	function	missing	-	auto-generated
-errors.py::function::internal_bug_fields	function	missing	-	auto-generated
+errors.py::class::ActiveGraphError	class	ported	spec/chronicle/errors_format_spec.cr	ActiveGraphError root (structured format CONTRACT v1.0 #3/#4; doc_url; legacy single-arg mode)
+errors.py::class::ConfigurationError	class	ported	spec/chronicle/errors_format_spec.cr	ConfigurationError category base (doc_slug)
+errors.py::class::ExecutionError	class	ported	spec/chronicle/errors_format_spec.cr	ExecutionError category base (doc_slug)
+errors.py::class::MissingOptionalDependency	class	intentional_divergence	-	Python optional-package import helper; N/A — Crystal has no ImportError / optional-dep install line
+errors.py::class::PackError	class	ported	spec/chronicle/errors_format_spec.cr	PackError < DomainError < ActiveGraphError (doc_slug pack-error)
+errors.py::class::PatternError	class	ported	spec/chronicle/errors_format_spec.cr	PatternError defined in patterns.cr < DomainError < ActiveGraphError (doc_slug pattern-error)
+errors.py::class::RegistrationError	class	ported	spec/chronicle/errors_format_spec.cr	RegistrationError category base (doc_slug)
+errors.py::class::ReplayError	class	ported	spec/chronicle/errors_format_spec.cr	ReplayError category base (doc_slug)
+errors.py::class::StorageError	class	ported	spec/chronicle/errors_format_spec.cr	StorageError < DomainError < ActiveGraphError (doc_slug storage-error)
+errors.py::const::DOCS_BASE_URL	const	ported	spec/chronicle/errors_format_spec.cr	DOCS_BASE_URL constant
+errors.py::const::GITHUB_NEW_ISSUE_URL	const	ported	spec/chronicle/errors_format_spec.cr	GITHUB_NEW_ISSUE_URL constant
+errors.py::function::_indent_continuation	function	ported	spec/chronicle/errors_format_spec.cr	ActiveGraphError private indent_continuation
+errors.py::function::internal_bug_fields	function	ported	spec/chronicle/errors_format_spec.cr	ActiveGraphError.internal_bug_fields (uniform context + report URL)
 errors.py::method::ActiveGraphError.__init__	method	missing	-	auto-generated
 errors.py::method::ActiveGraphError.__str__	method	missing	-	auto-generated
 errors.py::method::ActiveGraphError._format	method	missing	-	auto-generated
