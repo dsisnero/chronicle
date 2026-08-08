@@ -74,6 +74,12 @@ module Chronicle
   class CorruptedEventPayloadError < StorageError
   end
 
+  # Two canonical tool names sanitize to the same wire-safe name, so an
+  # ambiguous reverse mapping would dispatch the wrong tool. Ported from
+  # activegraph.llm.wire.build_tool_name_map's ValueError (CONTRACT v1.3 #3).
+  class ToolNameCollisionError < DomainError
+  end
+
   class PackError < DomainError
   end
 

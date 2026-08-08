@@ -353,6 +353,26 @@ From `parity.tsv` (`missing_contains` on Runtime):
       requested_payload — `spec/chronicle/llm_cache_wiring_spec.cr`.
       `llm/types.py` provider types and `llm/parsing.py` stay deferred.
 - [-] Embedding — deferred — `llm/embedding.py`, `llm/embedding_cache.py`
+- [x] Provider-boundary wire helpers — `Chronicle::Wire` (CONTRACT v1.3 #3):
+      tool-name sanitization for the providers' `^[a-zA-Z0-9_-]+$` wire
+      alphabet (`sanitize_tool_name`: `.` → `__`, other unsafe chars → `_`,
+      wire-safe names byte-identical) with an explicit per-request reverse
+      map (`build_tool_name_map`/`restore_tool_name`) that raises
+      `ToolNameCollisionError` when two canonical names collide — never a
+      blind string replace, so a tool legitimately named `pack__tool` cannot
+      be mangled. Plus the v1.3 #3 exception taxonomy:
+      `classify_provider_exception`/`classify_provider_failure` map provider
+      SDK failures to `llm.rate_limited` (429/name), `llm.auth_error`
+      (401/403/auth/permission-denied), `llm.request_error` (other 4xx +
+      bad-request/unprocessable/not-found name heuristics), and
+      `llm.network_error` (fallback, transient) — matching upstream's
+      ordering and the `terminal_reason?` retry-set split (auth/request
+      terminal, network/rate-limit transient). Ported from activegraph
+      llm/wire.py + test_llm_wire.py unit cases (the full-runtime
+      auth/request-not-retried integration tests map to
+      `Chronicle::RetryableProviderError` handling in the platform-edge
+      `ModelExecutor` path, already covered) —
+      `spec/chronicle/wire_spec.cr`.
 
 ## Phase 5 — Tools
 
@@ -599,6 +619,14 @@ globally (CONTRACT v0.9 #3).
   `CorruptedEventPayloadError` is the reachable runtime error. The upstream
   `_default`/`_find_non_serializable` walkers are N/A and skipped in the
   ledger.
+- **Provider exception classification reads `status_code` structurally.** The
+  upstream `classify_provider_exception` reads the SDK exception's
+  `status_code` attribute via `getattr`; Crystal uses
+  `exc.responds_to?(:status_code)` and class-name heuristics on
+  `Exception#class`. The taxonomy (terminal auth/request vs transient
+  network/rate-limit) is identical; the full-runtime "not retried" integration
+  tests stay at the platform-edge `ModelExecutor`/`RetryableProviderError`
+  boundary, which Chronicle already handles.
 
 ## Acceptance Gates
 
