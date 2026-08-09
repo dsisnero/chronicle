@@ -42,6 +42,20 @@ module Chronicle
       event.type == "promote.applied" || event.actor.to_s.starts_with?("promote:")
     end
 
+    # The object id referenced by an event's payload, for lifecycle tags
+    # (upstream `_maybe_object_id` reads the nested `object.id`; Chronicle's
+    # object.created / relation.created / patch.applied payloads carry `id`
+    # at the top level). Nil for events without one (e.g. goal.created) or
+    # malformed payloads.
+    def maybe_object_id(event : Event) : String?
+      payload = JSON.parse(event.payload).as_h?
+      return nil unless payload
+
+      payload["id"]?.try(&.as_s)
+    rescue JSON::ParseException
+      nil
+    end
+
     # Retry delay for an LLM attempt: exponential backoff
     # `initial * 2**attempt_index` capped at `maximum`, unless the provider
     # supplied a `retry_after_seconds` (then that value is used, clamped to
@@ -1615,12 +1629,14 @@ module Chronicle
     end
 
     private def record_behavior_started(behavior : Packs::PackBehavior, event : Event) : Nil
+      object_id = RuntimeReason.maybe_object_id(event)
       append_event("behavior.started", JSON.build do |json|
         json.object do
           json.field "behavior", behavior.name
           json.field "kind", behavior.kind.to_s
           json.field "event_id", event.id
           json.field "trigger_event_id", event.id
+          json.field "triggering_object_id", object_id
         end
       end)
     end

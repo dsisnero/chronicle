@@ -398,6 +398,14 @@ From `parity.tsv` (`missing_contains` on Runtime):
       Implemented as `hash_payload(canonical_prompt_payload(...))` with the
       running turn's messages. Ported from activegraph runtime/runtime.py —
       `spec/chronicle/hash_turn_prompt_spec.cr`.
+- [x] `maybe_object_id` — `Chronicle::RuntimeReason.maybe_object_id(event)`
+      extracts the object id referenced by an event payload for lifecycle
+      tags (`behavior.started` now carries `triggering_object_id`).
+      Divergence: upstream reads the nested `object.id` (its payloads nest
+      under `object`); Chronicle's flat payloads carry `id` at the top level,
+      so the helper reads `payload["id"]`. Returns nil for events without
+      one (goal.created) or non-object payloads. Ported from activegraph
+      runtime/runtime.py `_maybe_object_id` — `spec/chronicle/maybe_object_id_spec.cr`.
 - [x] Runtime sink surface — `Runtime#add_sink` / `remove_sink` /
       `sink_statuses` / `flush_sinks` / `close_sinks` (CONTRACT v1.8)
       delegate to the attached graph (raising `IncompatibleRuntimeState`
