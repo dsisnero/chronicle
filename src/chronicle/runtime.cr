@@ -139,8 +139,10 @@ module Chronicle
         emit_idle_or_exhausted
       end
 
+      processed = @store.iter_events[start_cursor...@dispatch_cursor].count { |event| !lifecycle?(event) }
+
       RunQuantumResult.new(
-        queue_events_processed: @dispatch_cursor - start_cursor,
+        queue_events_processed: processed.to_i32,
         elapsed_seconds: (Time.instant - started).total_seconds,
         queue_depth: depth,
         max_queue_depth: max_queue_depth,
@@ -150,14 +152,36 @@ module Chronicle
       )
     end
 
-    # Number of undrained events (the dispatch cursor lags the store).
+    # Number of undrained non-lifecycle events (the dispatch cursor lags the
+    # store). Lifecycle bookkeeping (behavior.*, runtime.*, ...) never fires
+    # behaviors and is excluded, matching upstream's queue which suppresses
+    # those events.
     private def queue_depth : Int32
-      (@store.count - @dispatch_cursor).to_i32
+      @store.iter_events
+        .skip(@dispatch_cursor)
+        .count { |event| !lifecycle?(event) }
+        .to_i32
+    end
+
+    # Lifecycle events that never fire behaviors (upstream `_is_lifecycle`).
+    private def lifecycle?(event : Event) : Bool
+      event.type.starts_with?("behavior.") ||
+        event.type.starts_with?("relation_behavior.") ||
+        event.type.starts_with?("runtime.") ||
+        event.type.starts_with?("llm.") ||
+        event.type.starts_with?("tool.") ||
+        event.type.starts_with?("pattern.") ||
+        event.type.starts_with?("approval.") ||
+        event.type.starts_with?("dev.") ||
+        event.type.starts_with?("authority.") ||
+        event.type == "context.read"
     end
 
     # Drain up to `max_queue_events` pending events, stopping at the
     # deadline, without emitting an idle marker. One behavior invocation
-    # remains atomic; the bound is checked between queue events.
+    # remains atomic; the bound is checked between queue events. Lifecycle
+    # bookkeeping events are consumed without counting toward the bound
+    # (upstream suppresses them from the queue).
     private def dispatch_quantum(max_queue_events : Int32, deadline : Time::Instant) : Nil
       graph = @graph
       return if graph.nil?
@@ -171,16 +195,23 @@ module Chronicle
         events = @store.iter_events
         break if @dispatch_cursor >= events.size
 
+        # Scan forward up to the bound, consuming lifecycle events free.
         remaining = max_queue_events - processed
-        end_index = Math.min(@dispatch_cursor + remaining, events.size)
-        new_events = events[@dispatch_cursor...end_index]
+        index = @dispatch_cursor
+        end_index = index
+        scanned = 0
+        while end_index < events.size && scanned < remaining
+          end_index += 1
+          scanned += 1 unless lifecycle?(events[end_index - 1])
+        end
+        new_events = events[index...end_index]
         @dispatch_cursor = end_index
         break if new_events.empty?
 
         dispatch_new_events(new_events, graph)
-        processed += new_events.size
+        processed += scanned
 
-        fire_due_delayed(events.last?.try(&.sequence) || 0u64)
+        fire_due_delayed(events[end_index - 1].try(&.sequence) || 0u64)
       end
     end
 
@@ -502,17 +533,51 @@ module Chronicle
     end
 
     # Seed the dispatch cursor past every event already drained by the last
-    # `runtime.idle` marker (CONTRACT v0.5 diff #8). A fork/load must not
-    # re-dispatch behaviors whose work already completed; only events emitted
-    # after the last idle are candidates. Ported from activegraph's
-    # `_requeue_unfired` high-water-mark rule.
+    # `runtime.idle` marker, plus any suffix events whose behaviors already
+    # fired (CONTRACT v0.5 diff #8, upstream `_requeue_unfired`). A
+    # fork/load must not re-dispatch behaviors whose work already completed;
+    # only events emitted after the last idle that no behavior.started
+    # references are candidates for re-dispatch. `runtime.budget_exhausted`
+    # is NOT a drain marker — it fires while the queue may still hold events
+    # (budget-bounded pause-and-resume stays recoverable).
     protected def resume_from_idle(events : Array(Event)) : self
-      cursor = 0
+      drain_idx = -1
       events.each_with_index do |event, index|
-        cursor = index + 1 if event.type == "runtime.idle"
+        drain_idx = index if event.type == "runtime.idle"
+      end
+
+      # Events at or before the last idle were necessarily processed.
+      cursor = drain_idx + 1
+
+      # In the suffix, skip events whose behavior.started already references
+      # them (they were popped and dispatched before the stop). The
+      # high-water mark means lifecycle events don't re-fire, so the cursor
+      # advances only past already-fired non-lifecycle events.
+      fired_on = Set(String).new
+      events.each_with_index do |event, index|
+        next if index <= drain_idx
+
+        if event.type.starts_with?("behavior.") || event.type.starts_with?("relation_behavior.")
+          payload = JSON.parse(event.payload).as_h?
+          if event_id = payload.try(&.["event_id"]?.try(&.as_s?))
+            fired_on << event_id
+          end
+        end
+      end
+      events.each_with_index do |event, index|
+        break if index <= drain_idx
+        next unless fired_on.includes?(event.id)
+
+        cursor = index + 1
       end
       @dispatch_cursor = cursor
       self
+    end
+
+    # Public resume seam: seed the dispatch cursor past drained events.
+    # Mirrors upstream Runtime.load's _requeue_unfired.
+    def resume_from_store(events : Array(Event)) : self
+      resume_from_idle(events)
     end
 
     # Raise when a fork cutoff would slice a promote block in half (CONTRACT
@@ -1206,11 +1271,13 @@ module Chronicle
       begin
         case behavior.kind
         in Packs::PackBehaviorKind::Behavior
+          record_behavior_started(behavior, event)
           behavior.handler.try(&.call(event, graph, ctx))
         in Packs::PackBehaviorKind::Relation
           # Registry.match already selected the candidate relations referenced by
           # this event (upstream `_matching_relations`); invoke once per match.
           relations.each do |relation|
+            record_behavior_started(behavior, event)
             behavior.relation_handler.try(&.call(relation, event, graph, ctx))
           end
         in Packs::PackBehaviorKind::LLM
@@ -1389,6 +1456,7 @@ module Chronicle
         json.object do
           json.field "behavior", behavior.name
           json.field "kind", behavior.kind.to_s
+          json.field "event_id", event.id
           json.field "trigger_event_id", event.id
         end
       end)

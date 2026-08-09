@@ -277,10 +277,10 @@ From `parity.tsv` (`missing_contains` on Runtime):
       holds only graph-emitted events). `fork`/`load` now seed the dispatch
       cursor via `resume_from_idle` past the last `runtime.idle` (upstream
       `_requeue_unfired` high-water mark), so already-drained behaviors are not
-      re-dispatched on reload. Known divergence: Chronicle doesn't emit
-      `behavior.started` for plain (non-LLM) behaviors, so a fork at a
-      mid-run point can still re-fire recorded behaviors on `run_until_idle`;
-      upstream's `fired_on` set built from `behavior.started` prevents that.
+      re-dispatched on reload. `behavior.started` is emitted for plain
+      (non-LLM) behaviors too, so the `fired_on` set (event ids referenced by
+      `behavior.started`) prevents a fork at a mid-run point from re-firing
+      recorded behaviors.
       Ported from activegraph.test_diff — `spec/chronicle/diff_spec.cr`.
 - [x] Promote — `rebuild_shorts` — folded into `Runtime#disable_pack`: the
       short-name maps are recomputed from the surviving canonical owners, so
@@ -369,13 +369,25 @@ From `parity.tsv` (`missing_contains` on Runtime):
       so scheduling stays replay-deterministic), `queue_depth`,
       `max_queue_depth`, `delayed_depth`, `idle`, `budget_exhausted`.
       Invalid bounds (`max_queue_events < 1`, non-finite/`<= 0`
-      `max_seconds`) raise `ArgumentError`. Ported from
-      activegraph.runtime.runtime `run_quantum`/`RunQuantumResult` +
-      test_run_quantum.py (CONTRACT v1.10 #3) — `spec/chronicle/run_quantum_spec.cr`.
-      Divergence: this is a keyword-only overload alongside Chronicle's
-      prompt-driven `run_quantum(prompt, steps)`; the `pack.loaded` seed
-      event occupies one queue slot, so the exact quantum-count pin differs
-      from upstream (asserted via `> 1` + full chain completion instead).
+      `max_seconds`) raise `ArgumentError`. The queue excludes lifecycle
+      events (`behavior.*`, `runtime.*`, `llm.*`, `tool.*`, ...) — they are
+      consumed without counting toward the bound or `queue_depth`, matching
+      upstream's `_on_event` suppression. The exact 6-quanta pin is restored:
+      the harness registers the chain behavior directly (no `pack.loaded`
+      event, mirroring upstream's global `@behavior` decorators — pack.loaded
+      is queue-visible per CONTRACT v0.9 #13, so loading a pack would occupy
+      one slot). Restart recovery is faithful: `resume_from_store` rebuilds
+      the cursor from the last `runtime.idle` plus the `fired_on` set of
+      event ids referenced by `behavior.started`, so a FRESH runtime over a
+      partially-drained store skips already-fired events and the chain
+      completes exactly once (upstream `Runtime.load` +
+      `_requeue_unfired`). `behavior.started` is now emitted for plain and
+      relation behaviors too (upstream `_invoke`), carrying `event_id` for
+      the fired_on mechanism. Ported from activegraph.runtime.runtime
+      `run_quantum`/`RunQuantumResult` + test_run_quantum.py (CONTRACT v1.10
+      #3) — `spec/chronicle/run_quantum_spec.cr`. Note: this is a
+      keyword-only overload alongside Chronicle's prompt-driven
+      `run_quantum(prompt, steps)`.
 
 ## Phase 4 — LLM layer + replay cache
 
