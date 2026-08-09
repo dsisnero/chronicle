@@ -390,6 +390,12 @@ module Chronicle
       @sinks.to_h { |name, handle| {name, handle.status} }
     end
 
+    # Detach and close all sinks. Ported from activegraph Graph.close_sinks.
+    def close_sinks : Nil
+      @sinks.each_value(&.close)
+      @sinks.clear
+    end
+
     def events : Array(Event)
       @applied_events
     end

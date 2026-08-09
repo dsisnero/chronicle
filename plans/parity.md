@@ -376,6 +376,15 @@ From `parity.tsv` (`missing_contains` on Runtime):
       `doc_url` field (v1.0.3 #3 — the WARNING log line's More: URL).
       Ported from activegraph.runtime.runtime._doc_url_for_reason +
       test_v1_0_3_behavior_failed_ux.py — `spec/chronicle/doc_url_for_reason_spec.cr`.
+- [x] Runtime sink surface — `Runtime#add_sink` / `remove_sink` /
+      `sink_statuses` / `flush_sinks` / `close_sinks` (CONTRACT v1.8)
+      delegate to the attached graph (raising `IncompatibleRuntimeState`
+      when no graph is attached for add). Historical events reconstructed
+      by load/fork are never offered; lifecycle events ARE delivered to
+      sinks. Added `GraphProjection#close_sinks` (detach + close all).
+      Ported from activegraph.runtime.runtime Runtime.add_sink/remove_sink/
+      sink_statuses/flush_sinks/close_sinks + test_event_sinks.py —
+      `spec/chronicle/runtime_sinks_spec.cr`.
 - [x] Cooperative quantum drain — `Runtime#run_quantum(max_queue_events,
       max_seconds)` returning `Chronicle::RunQuantumResult` (CONTRACT v1.10
       #3): single-writer hosts can interleave reads/commands between quanta.

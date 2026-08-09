@@ -398,6 +398,50 @@ module Chronicle
       @graph
     end
 
+    # Attach a bounded, isolated observer for future accepted events
+    # (CONTRACT v1.8). Historical events already reconstructed by load/fork
+    # are never offered. Ported from activegraph Runtime.add_sink.
+    def add_sink(
+      sink : Sink,
+      *,
+      name : String? = nil,
+      queue_capacity : Int32 = 1024,
+      overflow_policy : OverflowPolicy = OverflowPolicy::DropNewest,
+    ) : String
+      g = @graph
+      raise IncompatibleRuntimeState.new("add_sink requires an attached graph") unless g
+
+      g.add_sink(sink, name, queue_capacity, overflow_policy)
+    end
+
+    # Detach, drain, and close one sink. Ported from activegraph
+    # Runtime.remove_sink.
+    def remove_sink(sink : String) : Bool
+      g = @graph
+      return false unless g
+
+      before = g.sink_statuses.has_key?(sink)
+      g.remove_sink(sink)
+      before
+    end
+
+    # Exact local status snapshots for attached sinks. Ported from activegraph
+    # Runtime.sink_statuses.
+    def sink_statuses : Hash(String, SinkStatus)
+      g = @graph
+      g ? g.sink_statuses : {} of String => SinkStatus
+    end
+
+    # Flush all attached sinks. Ported from activegraph Runtime.flush_sinks.
+    def flush_sinks : Nil
+      @graph.try(&.flush_sinks)
+    end
+
+    # Detach and close all sinks. Ported from activegraph Runtime.close_sinks.
+    def close_sinks : Nil
+      @graph.try(&.close_sinks)
+    end
+
     def llm_cache : LLMCache?
       @llm_cache
     end
