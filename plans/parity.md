@@ -293,7 +293,9 @@ From `parity.tsv` (`missing_contains` on Runtime):
       new graph, reseeds id counters (CONTRACT v0.5 #12), supports
       forks-of-forks, and refuses non-SQLite / unknown-event forks (raises
       `IncompatibleRuntimeState` / `EventNotFoundError`); the cut may not slice
-      a promote block (CONTRACT v1.3 #4 — `reject_mid_promote_block_fork`).
+      a promote block (CONTRACT v1.3 #4 — `reject_mid_promote_block_fork`;
+      the underlying predicate is `RuntimeReason.promote_block?`, ported from
+      `_is_promote_block`).
       WAL + synchronous=NORMAL on every connection; copied rows materialized
       before insert to dodge
       `database is locked`. Ported from test_fork / `SQLiteEventStore.fork_run` —

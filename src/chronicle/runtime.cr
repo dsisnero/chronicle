@@ -34,6 +34,14 @@ module Chronicle
       TRANSIENT_LLM_REASONS.includes?(reason)
     end
 
+    # True for the promote.applied marker and its quiescent delta events
+    # (CONTRACT v1.3 #4) — recorded runtime actions that strict replay
+    # projects verbatim rather than expecting behaviors to re-derive.
+    # Ported from activegraph.runtime.runtime._is_promote_block.
+    def promote_block?(event : Event) : Bool
+      event.type == "promote.applied" || event.actor.to_s.starts_with?("promote:")
+    end
+
     # Retry delay for an LLM attempt: exponential backoff
     # `initial * 2**attempt_index` capped at `maximum`, unless the provider
     # supplied a `retry_after_seconds` (then that value is used, clamped to
@@ -710,7 +718,8 @@ module Chronicle
         markers_before << event.id if event.type == "promote.applied"
       end
       events[(cut_index + 1)..].each do |event|
-        next unless event.actor.to_s.starts_with?("promote:")
+        next unless RuntimeReason.promote_block?(event)
+        next if event.type == "promote.applied"
         marker_id = event.caused_by
         next unless marker_id && markers_before.includes?(marker_id)
         raise IncompatibleRuntimeState.new(
