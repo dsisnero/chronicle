@@ -520,6 +520,39 @@ module Chronicle
       ContentHash.digest(canonical_json(JSON::Any.new(payload)))
     end
 
+    # Hash the prompt+messages+tools for a single turn — the per-turn LLM
+    # cache key (CONTRACT v0.7 per-turn cache decision, upstream
+    # `_hash_turn_prompt`). Includes the running messages list so each turn
+    # in a tool loop produces a distinct hash; otherwise the same shape as
+    # `hash_payload(canonical_prompt_payload(...))`.
+    def hash_turn_prompt(
+      *,
+      model : String,
+      system : String,
+      messages : Array(LLMMessage),
+      output_schema_json : Hash(String, JSON::Any)?,
+      max_tokens : Int32,
+      temperature : Float64,
+      top_p : Float64,
+      deterministic : Bool,
+      tools : Array(Hash(String, JSON::Any))? = nil,
+      structured_output_mode : String = "prompt",
+    ) : String
+      payload = canonical_prompt_payload(
+        model: model,
+        system: system,
+        messages: messages,
+        output_schema_json: output_schema_json,
+        max_tokens: max_tokens,
+        temperature: temperature,
+        top_p: top_p,
+        deterministic: deterministic,
+        tools: tools,
+        structured_output_mode: structured_output_mode,
+      )
+      hash_payload(payload)
+    end
+
     # ---- top-level assembly -----------------------------------------------
 
     def assemble_prompt(

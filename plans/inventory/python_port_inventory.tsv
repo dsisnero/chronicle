@@ -731,7 +731,7 @@ runtime/runtime.py::function::_budget_reason	function	intentional_divergence	-	p
 runtime/runtime.py::function::_direct_embedding_event_ids	function	missing	-	auto-generated
 runtime/runtime.py::function::_doc_url_for_reason	function	ported	spec/chronicle/doc_url_for_reason_spec.cr	RuntimeReason.doc_url_for_reason (llm./tool./budget. prefix -> doc slug; execution-error fallback); behavior.failed payload carries doc_url
 runtime/runtime.py::function::_first_goal	function	missing	-	auto-generated
-runtime/runtime.py::function::_hash_turn_prompt	function	missing	-	auto-generated
+runtime/runtime.py::function::_hash_turn_prompt	function	ported	spec/chronicle/hash_turn_prompt_spec.cr	Prompt.hash_turn_prompt (per-turn cache key over running messages + tools; CONTRACT v0.7 per-turn cache)
 runtime/runtime.py::function::_is_lifecycle	function	missing	-	auto-generated
 runtime/runtime.py::function::_is_promote_block	function	ported	spec/chronicle/promote_block_spec.cr	RuntimeReason.promote_block? (promote.applied marker + promote:-actor deltas; CONTRACT v1.3 #4)
 runtime/runtime.py::function::_is_transient_llm_reason	function	ported	spec/chronicle/llm_retry_spec.cr	RuntimeReason.transient_llm_reason? (llm.network_error/rate_limited transient; CONTRACT v1.3 #3)

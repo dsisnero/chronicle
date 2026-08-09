@@ -384,10 +384,20 @@ From `parity.tsv` (`missing_contains` on Runtime):
       `llm_retry_delay_seconds` (a provider-supplied `retry_after_seconds`
       is honored and clamped to the maximum when positive; otherwise
       exponential backoff `initial * 2**attempt_index` capped at the
-      maximum; `initial <= 0` yields 0). Ported from activegraph
+      maximum; `initial <= 0` yields 0).       Ported from activegraph
       runtime/runtime.py `_is_transient_llm_reason` / `_llm_retry_delay_seconds`
       (unit-tested directly; the full flaky-provider retry loop is a
       platform-edge integration) — `spec/chronicle/llm_retry_spec.cr`.
+- [x] Per-turn prompt hash — `Chronicle::Prompt.hash_turn_prompt` builds the
+      per-turn LLM cache key (CONTRACT v0.7 per-turn cache decision,
+      upstream `_hash_turn_prompt`): SHA-256 of the sorted-key canonical
+      JSON over {model, system, running messages list, output schema,
+      tokens, temperature, top_p, deterministic, tools, + mode when native}.
+      The running messages list makes each turn in a tool loop hash
+      distinctly; tools contribute so a gained/lost tool changes the key.
+      Implemented as `hash_payload(canonical_prompt_payload(...))` with the
+      running turn's messages. Ported from activegraph runtime/runtime.py —
+      `spec/chronicle/hash_turn_prompt_spec.cr`.
 - [x] Runtime sink surface — `Runtime#add_sink` / `remove_sink` /
       `sink_statuses` / `flush_sinks` / `close_sinks` (CONTRACT v1.8)
       delegate to the attached graph (raising `IncompatibleRuntimeState`
