@@ -446,6 +446,13 @@ module Chronicle
       @llm_cache
     end
 
+    # Read-only trace facade over this run's event log (v1.3). `trace.events`
+    # returns events with ids usable as fork points; `trace.failures` returns
+    # behavior.failed events. Ported from activegraph Runtime.trace.
+    def trace : Chronicle::TraceFacade
+      Chronicle::TraceFacade.new(@store)
+    end
+
     def loaded_packs : Array(String)
       @pack_state.loaded_packs.keys.sort!
     end
@@ -1597,6 +1604,7 @@ module Chronicle
 
     private def record_behavior_failed(behavior : Packs::PackBehavior, event : Event, error : Exception) : Nil
       reason = error.is_a?(LLMBehaviorError) ? error.as(LLMBehaviorError).reason : nil
+      traceback = error.backtrace.try(&.join("\n")) || ""
       append_event("behavior.failed", JSON.build do |json|
         json.object do
           json.field "behavior", behavior.name
@@ -1606,6 +1614,8 @@ module Chronicle
           json.field "error_class", error.class.to_s
           json.field "message", error.message || error.class.to_s
           json.field "reason", reason
+          # v1.0.3 #3: the full traceback so trace.failures can surface it.
+          json.field "traceback", traceback
           # v1.0.3 #3: the More: doc-page URL for the failure reason (falls
           # back to the generic execution-error page for exception.* catches).
           json.field "doc_url", RuntimeReason.doc_url_for_reason(reason || "exception.#{error.class}")

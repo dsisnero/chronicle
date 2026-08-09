@@ -807,7 +807,7 @@ runtime/runtime.py::method::Runtime.load_pack	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.loaded_packs	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.pending_approvals	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.print_graph	method	missing	-	auto-generated
-runtime/runtime.py::method::Runtime.print_trace	method	missing	-	auto-generated
+runtime/runtime.py::method::Runtime.print_trace	method	intentional_divergence	-	CLI text printer; the structured Trace facade + causal_chain are ported, line-rendering stays in the CLI
 runtime/runtime.py::method::Runtime.promote	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.remove_sink	method	ported	spec/chronicle/runtime_sinks_spec.cr	Runtime#remove_sink (detach + close one)
 runtime/runtime.py::method::Runtime.run_goal	method	missing	-	auto-generated
@@ -819,7 +819,7 @@ runtime/runtime.py::method::Runtime.save_state	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.set_authority_ceiling	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.sink_statuses	method	ported	spec/chronicle/runtime_sinks_spec.cr	Runtime#sink_statuses (delegates to graph)
 runtime/runtime.py::method::Runtime.status	method	missing	-	auto-generated
-runtime/runtime.py::method::Runtime.trace	method	missing	-	auto-generated
+runtime/runtime.py::method::Runtime.trace	method	ported	spec/chronicle/trace_accessors_spec.cr	Runtime#trace returns Chronicle::TraceFacade (events/failures)
 runtime/runtime.py::method::Runtime.validate_dev_override	method	missing	-	auto-generated
 runtime/scheduler.py::class::DelayedQueue	class	missing	-	auto-generated
 runtime/scheduler.py::class::InvalidActivateAfter	class	missing	-	auto-generated
@@ -1165,7 +1165,7 @@ tools/web_fetch.py::function::web_fetch	function	ported	spec/chronicle/web_fetch
 trace/causal.py::function::_find_response_for	function	missing	-	auto-generated
 trace/causal.py::function::_fmt_money	function	missing	-	auto-generated
 trace/causal.py::function::causal_chain	function	missing	-	auto-generated
-trace/printer.py::class::Trace	class	missing	-	auto-generated
+trace/printer.py::class::Trace	class	ported	spec/chronicle/trace_accessors_spec.cr	Chronicle::TraceFacade (named to avoid clashing with the Chronicle::Trace module): events() copy, failures() behavior.failed events
 trace/printer.py::const::TAG_COL	const	missing	-	auto-generated
 trace/printer.py::function::_compute_prompt_normalized_rollup	function	missing	-	auto-generated
 trace/printer.py::function::_fmt_behavior_completed	function	missing	-	auto-generated

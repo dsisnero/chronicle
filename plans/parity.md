@@ -751,6 +751,17 @@ globally (CONTRACT v0.9 #3).
 - [x] CLI trace command — `chronicle-cli trace --file <log> --object <id>` renders
       the causal chain from a recorded log — `trace/printer.py` —
       `spec/chronicle/cli_spec.cr`
+- [x] Trace structured accessors — `Runtime#trace` returns a
+      `Chronicle::TraceFacade` (v1.3; named to avoid clashing with the
+      `Chronicle::Trace` module that owns `causal_chain`): `trace.events`
+      returns the run's events in log order as a copy (each carries the id
+      `Runtime#fork`'s `at_event=` expects), and `trace.failures` returns
+      the `behavior.failed` events. `record_behavior_failed` now captures
+      the full exception `traceback` string in the event payload (v1.0.3),
+      so `trace.failures` can surface it. Divergence: Crystal backtraces
+      name the failing method frame rather than embedding the source line.
+      Ported from activegraph Runtime.trace + trace/printer.py Trace +
+      test_trace_accessors.py — `spec/chronicle/trace_accessors_spec.cr`.
 - [-] Sandbox executor/conformance (`_child`, `executor`, `conformance`) —
       deferred — `sandbox/*`
 - [x] CLI renderers — the `diff` subcommand now renders the upstream-style

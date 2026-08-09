@@ -44,4 +44,30 @@ module Chronicle
       false
     end
   end
+
+  # Read-only facade over a run's event log, exposed as `runtime.trace`
+  # (v1.3 structured accessors). `events` returns the run's events in log
+  # order (a copy — each carries the id `Runtime#fork`'s `at_event=` expects);
+  # `failures` returns the `behavior.failed` events whose payloads carry
+  # behavior/event_id/exception_type/message/traceback. Ported from
+  # activegraph.trace.printer.Trace (named TraceFacade because Chronicle's
+  # `Trace` module already owns causal_chain).
+  class TraceFacade
+    @store : EventStore
+
+    def initialize(@store : EventStore)
+    end
+
+    # The run's events, in log order, as Event objects. A copy — mutating
+    # the returned list changes nothing.
+    def events : Array(Event)
+      @store.iter_events.dup
+    end
+
+    # The run's `behavior.failed` events, in log order. Each payload carries
+    # behavior, event_id, exception_type, message, and the full traceback.
+    def failures : Array(Event)
+      @store.iter_events.select { |event| event.type == "behavior.failed" }
+    end
+  end
 end
