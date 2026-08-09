@@ -1264,7 +1264,10 @@ module Chronicle
       owner = behavior.pack_owner || ""
       settings = @pack_state.pack_settings[owner]? || {} of String => JSON::Any
       provider = ->(name : String) : Hash(String, JSON::Any)? { @pack_state.pack_settings[name]? }
-      ctx = Packs::BehaviorContext.new(owner, settings, provider)
+      propose = ->(object_type : String, data : String, reason : String) : String {
+        propose_object(object_type, data, reason: reason)
+      }
+      ctx = Packs::BehaviorContext.new(owner, settings, provider, propose)
 
       @metrics.counter("activegraph_behaviors_invoked_total", {"behavior" => behavior.name})
       t0 = Time.instant

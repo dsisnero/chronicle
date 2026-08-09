@@ -13,16 +13,38 @@ module Chronicle
       getter pack_name : String
       getter settings : Hash(String, JSON::Any)
       @settings_provider : Proc(String, Hash(String, JSON::Any)?)
+      # Optional runtime backref so ctx methods that defer work to the
+      # runtime (propose_object) can reach it. Nil when the context was
+      # constructed outside a Runtime (e.g. a direct handler-call test).
+      @propose_object_proc : Proc(String, String, String, String)?
 
       def initialize(
         @pack_name : String,
         @settings : Hash(String, JSON::Any),
         @settings_provider : Proc(String, Hash(String, JSON::Any)?),
+        @propose_object_proc : Proc(String, String, String, String)? = nil,
       )
       end
 
       def pack_settings(pack_name : String) : Hash(String, JSON::Any)?
         @settings_provider.call(pack_name)
+      end
+
+      # Defer creation of an object behind a policy approval. Returns the
+      # approval id; the object materializes when `Runtime#approve_pack(id)`
+      # is called. Intended for behaviors whose pack policy gates
+      # `object_type` writes. Ported from activegraph Context.propose_object.
+      def propose_object(
+        object_type : String,
+        data : String,
+        *,
+        reason : String = "",
+      ) : String
+        if proc = @propose_object_proc
+          proc.call(object_type, data, reason)
+        else
+          raise RuntimeContextRequiredError.new(method: "ctx.propose_object")
+        end
       end
     end
 

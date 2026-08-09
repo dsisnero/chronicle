@@ -633,7 +633,7 @@ runtime/exec_errors.py::class::InvalidPatchLifecycleState	class	missing	-	auto-g
 runtime/exec_errors.py::class::PromoteConflictError	class	missing	-	auto-generated
 runtime/exec_errors.py::class::PromoteLineageError	class	missing	-	auto-generated
 runtime/exec_errors.py::class::ReservedFieldError	class	missing	-	auto-generated
-runtime/exec_errors.py::class::RuntimeContextRequiredError	class	missing	-	auto-generated
+runtime/exec_errors.py::class::RuntimeContextRequiredError	class	ported	spec/chronicle/context_methods_spec.cr	RuntimeContextRequiredError < ExecutionError (structured format + doc slug)
 runtime/exec_errors.py::method::ApprovalNotFoundError.__init__	method	missing	-	auto-generated
 runtime/exec_errors.py::method::InternalEvaluatorError.__init__	method	missing	-	auto-generated
 runtime/exec_errors.py::method::InvalidPatchLifecycleState.__init__	method	missing	-	auto-generated
@@ -752,9 +752,9 @@ runtime/runtime.py::function::_requeue_unfired	function	missing	-	auto-generated
 runtime/runtime.py::function::_resolve_and_validate_llm_models	function	missing	-	auto-generated
 runtime/runtime.py::function::_validate_embedding_vectors	function	missing	-	auto-generated
 runtime/runtime.py::function::_verify_replay	function	missing	-	auto-generated
-runtime/runtime.py::method::Context.embed	method	missing	-	auto-generated
-runtime/runtime.py::method::Context.pack_settings	method	missing	-	auto-generated
-runtime/runtime.py::method::Context.propose_object	method	missing	-	auto-generated
+runtime/runtime.py::method::Context.embed	method	intentional_divergence	-	embedding provider path is deferred (llm/embedding.py); RuntimeContextRequiredError pattern is ported via propose_object
+runtime/runtime.py::method::Context.pack_settings	method	ported	spec/chronicle/context_methods_spec.cr	BehaviorContext#pack_settings (already ported; Form 3 cross-pack lookup)
+runtime/runtime.py::method::Context.propose_object	method	ported	spec/chronicle/context_methods_spec.cr	BehaviorContext#propose_object defers object behind policy approval (RuntimeContextRequiredError when no runtime)
 runtime/runtime.py::method::Runtime.__init__	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._add_pending_approval	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._attach_sink_configs	method	missing	-	auto-generated

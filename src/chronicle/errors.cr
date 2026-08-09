@@ -169,6 +169,46 @@ module Chronicle
     end
   end
 
+  # A ctx method (e.g. ctx.propose_object) was called from a behavior whose
+  # context isn't bound to a runtime. Fires at execution time, inside a
+  # running behavior. Ported from
+  # activegraph.runtime.exec_errors.RuntimeContextRequiredError.
+  class RuntimeContextRequiredError < ExecutionError
+    DOC_SLUG = "runtime-context-required-error"
+
+    getter method : String
+
+    def initialize(@method : String = "ctx.propose_object")
+      super(
+        "#{@method} requires a runtime-bound context",
+        what_failed: (
+          "A behavior called #{@method} on a behavior context that " \
+          "was constructed without a Runtime — likely a test fixture " \
+          "that invokes the handler directly instead of through " \
+          "Runtime.run_goal / run_until_idle."
+        ),
+        why: (
+          "ctx.propose_object (and other ctx methods) defer work to the " \
+          "runtime: approval routing, durable event emission, and pack " \
+          "state all live on the Runtime. A context without one cannot " \
+          "perform those actions, so the framework raises rather than " \
+          "silently no-op'ing."
+        ),
+        how_to_fix: (
+          "Invoke the behavior through a Runtime (run_goal / run_until_idle) " \
+          "so the context is runtime-bound. In a test, construct the " \
+          "Runtime, load the pack, and run it rather than calling the " \
+          "handler closure directly."
+        ),
+        context: {"method" => JSON::Any.new(@method)},
+      )
+    end
+
+    def self.doc_slug : String
+      DOC_SLUG
+    end
+  end
+
   # Pattern subscription problems: invalid Cypher syntax, unsupported
   # features, malformed WHERE clauses (CONTRACT v0.7 #8). Defined in
   # patterns.cr as a DomainError subclass; `PatternError < DomainError <

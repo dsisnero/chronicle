@@ -670,9 +670,24 @@ globally (CONTRACT v0.9 #3).
       (the CLI `fork --set` surface): the parent prefix stays intact and the
       fork carries an auditable override that merges at pack registration time.
       Ported from activegraph.packs.loader._apply_recorded_settings_overrides —
-      `spec/chronicle/settings_override_spec.cr`. The `approve`-materialization
-      of gated object types (gating bookkeeping via `gated_object_types` /
-      `propose_object` / `approve_pack`) remains deferred.
+      `spec/chronicle/settings_override_spec.cr`.
+- [x] `ctx.propose_object` — behavior-context deferred object creation behind
+      policy approval (upstream `Context.propose_object`): `BehaviorContext`
+      carries an optional runtime backref (a `propose_object` Proc wired by
+      `invoke_pack_behavior` — Crystal can't hold the generic `Runtime(M)` in
+      a union), so a pack-owned behavior can route a gated `object_type`
+      write through `propose_object(type, data, reason:)` → `Runtime#propose_object`
+      (approval.proposed event + pending approval) and `approve_pack(id)`
+      materializes it. Calling `ctx.propose_object` on a context built
+      outside a runtime raises `RuntimeContextRequiredError` (an
+      `ExecutionError` with the structured format + doc slug
+      `runtime-context-required-error`). This completes the
+      approve-materialization of gated object types. Divergence: upstream's
+      `ctx.embed` stays deferred (embedding provider not ported); the
+      runtime-required error pattern is shared via `propose_object`. Ported
+      from activegraph.runtime Context.propose_object +
+      exec_errors.RuntimeContextRequiredError + test_errors_format.py /
+      _legacy_approval_scenario.py — `spec/chronicle/context_methods_spec.cr`.
 - [x] Manifest warning tier on `load_pack` (CONTRACT v1.6 #1) — when a
       `manifest_path` is supplied to `load_pack`, the loader runs
       `load_manifest` + `verify_surface` and records a structured warning
