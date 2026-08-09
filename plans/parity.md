@@ -338,8 +338,7 @@ From `parity.tsv` (`missing_contains` on Runtime):
       `behavior`, `event_id`, `execution_event_id` — the `behavior.started`
       id — `object_ids` capped at `CONTEXT_READ_ID_CAP = 200`, `count` always
       exact,       `truncated: true` only when ids were dropped). Runtime wiring
-      (CONTRACT v1.10 #1) is complete: `Runtime(trace_context_reads: true)`
-      threads a `ReadRecorder` through each behavior execution — `ctx.view`
+      (CONTRACT v1.10 #1) is complete: `Runtime(trace_context_reads: true)`      threads a `ReadRecorder` through each behavior execution — `ctx.view`
       is a `TracedView` (records `objects(type:)` reads), `graph.get_object`
       point reads are recorded via a per-execution recorder seam on the
       projection (`context_read_recorder=`; internal writes like
@@ -368,6 +367,15 @@ From `parity.tsv` (`missing_contains` on Runtime):
       for back-compat). The `reason` field is populated for `LLMBehaviorError`.
       Ported from activegraph.runtime.runtime `errors`/`BehaviorFailure` +
       test_v1_0_3_behavior_failed_ux.py — `spec/chronicle/behavior_failure_spec.cr`.
+- [x] `doc_url_for_reason` — `Chronicle::RuntimeReason.doc_url_for_reason`
+      maps a v0.6 #11 reason code to its framework error doc-page URL
+      (`llm.*` → `llm-behavior-error`, `tool.*` → `tool-error`,
+      `budget.*` → `budget-exhausted`, anything else — including
+      `exception.*` generic catches — → `execution-error`), rooted at
+      `DOCS_BASE_URL`. The `behavior.failed` event payload now carries the
+      `doc_url` field (v1.0.3 #3 — the WARNING log line's More: URL).
+      Ported from activegraph.runtime.runtime._doc_url_for_reason +
+      test_v1_0_3_behavior_failed_ux.py — `spec/chronicle/doc_url_for_reason_spec.cr`.
 - [x] Cooperative quantum drain — `Runtime#run_quantum(max_queue_events,
       max_seconds)` returning `Chronicle::RunQuantumResult` (CONTRACT v1.10
       #3): single-writer hosts can interleave reads/commands between quanta.

@@ -1,4 +1,29 @@
 module Chronicle
+  # v0.6 #11 reason-code → framework error doc-page slug mapping. Used by
+  # the behavior.failed WARNING log so the log line carries a More: URL the
+  # operator can open. The slugs are class-level (the v1.0 #4 More: URL
+  # convention) — a per-reason slug doesn't exist today. Ported from
+  # activegraph.runtime.runtime._doc_url_for_reason.
+  module RuntimeReason
+    extend self
+
+    REASON_PREFIX_TO_DOC_SLUG = {
+      "llm."    => "llm-behavior-error",
+      "tool."   => "tool-error",
+      "budget." => "budget-exhausted",
+    }
+
+    # Return the More: doc-page URL for a v0.6 #11 reason code. Defaults to
+    # the generic execution-error page when no prefix matches (covers
+    # `exception.*` reasons from generic catches).
+    def doc_url_for_reason(reason : String) : String
+      REASON_PREFIX_TO_DOC_SLUG.each do |prefix, slug|
+        return "#{DOCS_BASE_URL}/errors/#{slug}" if reason.starts_with?(prefix)
+      end
+      "#{DOCS_BASE_URL}/errors/execution-error"
+    end
+  end
+
   # Agent harness runtime — orchestrates the event loop, budget, and
   # LogAgent execution. Ported from activegraph.runtime.runtime.Runtime.
   class Runtime(M)
@@ -1527,6 +1552,7 @@ module Chronicle
     end
 
     private def record_behavior_failed(behavior : Packs::PackBehavior, event : Event, error : Exception) : Nil
+      reason = error.is_a?(LLMBehaviorError) ? error.as(LLMBehaviorError).reason : nil
       append_event("behavior.failed", JSON.build do |json|
         json.object do
           json.field "behavior", behavior.name
@@ -1535,7 +1561,10 @@ module Chronicle
           json.field "exception_type", error.class.to_s
           json.field "error_class", error.class.to_s
           json.field "message", error.message || error.class.to_s
-          json.field "reason", error.is_a?(LLMBehaviorError) ? error.as(LLMBehaviorError).reason : nil
+          json.field "reason", reason
+          # v1.0.3 #3: the More: doc-page URL for the failure reason (falls
+          # back to the generic execution-error page for exception.* catches).
+          json.field "doc_url", RuntimeReason.doc_url_for_reason(reason || "exception.#{error.class}")
         end
       end)
     end

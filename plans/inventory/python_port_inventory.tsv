@@ -729,7 +729,7 @@ runtime/runtime.py::class::RunQuantumResult	class	ported	spec/chronicle/run_quan
 runtime/runtime.py::class::Runtime	class	missing	-	auto-generated
 runtime/runtime.py::function::_budget_reason	function	intentional_divergence	-	private budget-reason prose helper; N/A — Chronicle's budget marker payload is a snapshot
 runtime/runtime.py::function::_direct_embedding_event_ids	function	missing	-	auto-generated
-runtime/runtime.py::function::_doc_url_for_reason	function	missing	-	auto-generated
+runtime/runtime.py::function::_doc_url_for_reason	function	ported	spec/chronicle/doc_url_for_reason_spec.cr	RuntimeReason.doc_url_for_reason (llm./tool./budget. prefix -> doc slug; execution-error fallback); behavior.failed payload carries doc_url
 runtime/runtime.py::function::_first_goal	function	missing	-	auto-generated
 runtime/runtime.py::function::_hash_turn_prompt	function	missing	-	auto-generated
 runtime/runtime.py::function::_is_lifecycle	function	missing	-	auto-generated
