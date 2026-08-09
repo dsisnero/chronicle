@@ -337,11 +337,23 @@ From `parity.tsv` (`missing_contains` on Runtime):
       `context_read_payload` (the batched `context.read` payload:
       `behavior`, `event_id`, `execution_event_id` — the `behavior.started`
       id — `object_ids` capped at `CONTEXT_READ_ID_CAP = 200`, `count` always
-      exact,       `truncated: true` only when ids were dropped). Ported from
-      activegraph.runtime.context_reads (the runtime wiring that threads the
-      recorder through `ctx.view` and emits one `context.read` at frame
-      commit is a separate integration — Chronicle behaviors currently receive
-      the graph directly, not a traced view) — `spec/chronicle/context_read_spec.cr`.
+      exact,       `truncated: true` only when ids were dropped). Runtime wiring
+      (CONTRACT v1.10 #1) is complete: `Runtime(trace_context_reads: true)`
+      threads a `ReadRecorder` through each behavior execution — `ctx.view`
+      is a `TracedView` (records `objects(type:)` reads), `graph.get_object`
+      point reads are recorded via a per-execution recorder seam on the
+      projection (`context_read_recorder=`; internal writes like
+      `add_object`'s return lookup bypass the traced accessor so writers are
+      not recorded as readers), and ONE batched `context.read` is emitted at
+      commit (right after the behavior's terminal lifecycle event;
+      `execution_event_id` = the `behavior.started` id; read-free frames stay
+      trace-free; opt-in, default off). `Chronicle::View` gained upstream's
+      query methods (`objects(type:)`/`relations(type:)`/`events(type:)`).
+      Divergence: Chronicle plain behaviors emit `behavior.started` (no
+      `behavior.completed`), so the read commits after the last
+      `behavior.*` lifecycle event rather than after `behavior.completed`.
+      Ported from activegraph.runtime.context_reads + test_context_read_tracing.py —
+      `spec/chronicle/context_read_spec.cr`, `spec/chronicle/context_read_runtime_spec.cr`.
 - [x] `Runtime#errors` — `Chronicle::BehaviorFailure` value struct +
       `Runtime#errors` projection (CONTRACT v1.0.3 #3): the store is the
       source of truth and `errors` is a read-on-access projection of every

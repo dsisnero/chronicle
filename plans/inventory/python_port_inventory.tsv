@@ -761,7 +761,7 @@ runtime/runtime.py::method::Runtime._attach_sink_configs	method	missing	-	auto-g
 runtime/runtime.py::method::Runtime._budget_remaining	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_behavior_failed	method	missing	-	auto-generated
-runtime/runtime.py::method::Runtime._emit_context_read	method	missing	-	auto-generated
+runtime/runtime.py::method::Runtime._emit_context_read	method	ported	spec/chronicle/context_read_runtime_spec.cr	Runtime#emit_context_read (batched context.read at commit; only when tracing + reads exist)
 runtime/runtime.py::method::Runtime._emit_embedding_error	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_embedding_event	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_idle_or_exhausted	method	missing	-	auto-generated

@@ -17,13 +17,21 @@ module Chronicle
       # runtime (propose_object) can reach it. Nil when the context was
       # constructed outside a Runtime (e.g. a direct handler-call test).
       @propose_object_proc : Proc(String, String, String, String)?
+      # v1.10 #1: the behavior's scoped view of the graph. When the runtime
+      # traces context reads, this is a TracedView that records object reads.
+      @view : Chronicle::View | Chronicle::ContextRead::TracedView
 
       def initialize(
         @pack_name : String,
         @settings : Hash(String, JSON::Any),
         @settings_provider : Proc(String, Hash(String, JSON::Any)?),
         @propose_object_proc : Proc(String, String, String, String)? = nil,
+        @view : Chronicle::View | Chronicle::ContextRead::TracedView = Chronicle::View.new,
       )
+      end
+
+      def view : Chronicle::View | Chronicle::ContextRead::TracedView
+        @view
       end
 
       def pack_settings(pack_name : String) : Hash(String, JSON::Any)?

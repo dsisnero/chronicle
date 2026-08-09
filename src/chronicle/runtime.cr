@@ -20,6 +20,10 @@ module Chronicle
     @tool_approval_policies : Array(Policy) = [] of Policy
     @delayed : Packs::DelayedQueue = Packs::DelayedQueue.new
     @metrics : Metrics = NoOpMetrics.new
+    # v1.10 #1: when true, each behavior execution records object reads
+    # through ctx.view / graph.get_object and emits ONE batched
+    # `context.read` at commit.
+    @trace_context_reads : Bool = false
 
     # Action-class authority scale, lowest to highest.
     AUTHORITY_RANKS = {"read" => 0, "write" => 1, "admin" => 2, "root" => 3}
@@ -47,6 +51,7 @@ module Chronicle
       @graph : GraphProjection? = nil,
       @tool_approval_policies : Array(Policy) = [] of Policy,
       @metrics : Metrics = NoOpMetrics.new,
+      @trace_context_reads : Bool = false,
     )
     end
 
@@ -1267,7 +1272,18 @@ module Chronicle
       propose = ->(object_type : String, data : String, reason : String) : String {
         propose_object(object_type, data, reason: reason)
       }
+
+      # v1.10 #1: when tracing, thread a ReadRecorder through ctx.view
+      # (TracedView) and graph.get_object, then commit one context.read.
+      recorder : ContextRead::ReadRecorder? = nil
+      view = graph.build_view
       ctx = Packs::BehaviorContext.new(owner, settings, provider, propose)
+      if @trace_context_reads
+        recorder = ContextRead::ReadRecorder.new
+        ctx = Packs::BehaviorContext.new(owner, settings, provider, propose,
+          view: ContextRead::TracedView.new(view, recorder))
+        graph.context_read_recorder=(recorder)
+      end
 
       @metrics.counter("activegraph_behaviors_invoked_total", {"behavior" => behavior.name})
       t0 = Time.instant
@@ -1294,7 +1310,33 @@ module Chronicle
         record_behavior_failed(behavior, event, error)
       ensure
         @metrics.histogram("activegraph_behaviors_duration_seconds", {"behavior" => behavior.name}, (Time.instant - t0).total_seconds)
+        if rec = recorder
+          graph.context_read_recorder=(nil)
+          emit_context_read(behavior, event, rec)
+        end
       end
+    end
+
+    # Emit the batched `context.read` for one committed execution (CONTRACT
+    # v1.10 #1). At most one event per behavior execution, emitted right
+    # after the terminal lifecycle event — and only when tracing is enabled
+    # AND the execution actually read at least one object. A read-free frame
+    # stays trace-free.
+    private def emit_context_read(
+      behavior : Packs::PackBehavior,
+      event : Event,
+      recorder : ContextRead::ReadRecorder,
+    ) : Nil
+      return if recorder.empty?
+
+      started = @store.iter_events.to_a.reverse.find { |e| e.type == "behavior.started" }
+      payload = ContextRead.context_read_payload(
+        behavior_name: behavior.name,
+        event_id: event.id,
+        execution_event_id: started.try(&.id) || "",
+        recorder: recorder,
+      )
+      append_event("context.read", Prompt.canonical_json(JSON::Any.new(payload)))
     end
 
     # Emit `behavior.scheduled` and push a delayed-queue entry for a behavior

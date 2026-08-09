@@ -156,6 +156,10 @@ module Chronicle
     @pack_object_validator : Proc(String, String, String)?
     @pack_relation_validator : Proc(String, String?, String?, Nil)?
     @replayed_ids : Set(String)
+    # v1.10 #1: when the runtime is tracing context reads, this recorder is
+    # installed for the duration of one behavior execution so point reads
+    # (graph.get_object hits) are recorded. Nil otherwise.
+    @context_read_recorder : ContextRead::ReadRecorder?
 
     def initialize(
       @store : GraphStore = InMemoryGraphStore.new,
@@ -210,7 +214,21 @@ module Chronicle
     end
 
     def get_object(id : String) : GraphObject?
-      @store.get_object(id)
+      obj = @store.get_object(id)
+      if obj
+        if recorder = @context_read_recorder
+          recorder.record(id)
+        end
+      end
+      obj
+    end
+
+    # Install/clear the context-read recorder for one behavior execution
+    # (v1.10 #1). Point reads on get_object are recorded only while a
+    # recorder is present.
+    def context_read_recorder=(recorder : ContextRead::ReadRecorder?) : self
+      @context_read_recorder = recorder
+      self
     end
 
     def get_relation(id : String) : GraphRelation?
@@ -405,7 +423,9 @@ module Chronicle
       end
       object_id = @ids.object(type)
       emit(build_event("object.created", object_created_payload(object_id, type, data), actor, caused_by))
-      get_object(object_id) || raise GraphProjectionError.new("object #{object_id} was not projected")
+      # Internal return-lookup bypasses the traced get_object accessor so the
+      # writer's own emit is not recorded as a context read (v1.10 #1).
+      @store.get_object(object_id) || raise GraphProjectionError.new("object #{object_id} was not projected")
     end
 
     # Builds a relation.created event and emits it. Returns the projected relation.
