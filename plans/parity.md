@@ -376,6 +376,16 @@ From `parity.tsv` (`missing_contains` on Runtime):
       `doc_url` field (v1.0.3 #3 — the WARNING log line's More: URL).
       Ported from activegraph.runtime.runtime._doc_url_for_reason +
       test_v1_0_3_behavior_failed_ux.py — `spec/chronicle/doc_url_for_reason_spec.cr`.
+- [x] LLM retry helpers — `Chronicle::RuntimeReason.transient_llm_reason?`
+      (llm.network_error / llm.rate_limited are transient, retried with
+      backoff; auth/request are terminal — CONTRACT v1.3 #3) and
+      `llm_retry_delay_seconds` (a provider-supplied `retry_after_seconds`
+      is honored and clamped to the maximum when positive; otherwise
+      exponential backoff `initial * 2**attempt_index` capped at the
+      maximum; `initial <= 0` yields 0). Ported from activegraph
+      runtime/runtime.py `_is_transient_llm_reason` / `_llm_retry_delay_seconds`
+      (unit-tested directly; the full flaky-provider retry loop is a
+      platform-edge integration) — `spec/chronicle/llm_retry_spec.cr`.
 - [x] Runtime sink surface — `Runtime#add_sink` / `remove_sink` /
       `sink_statuses` / `flush_sinks` / `close_sinks` (CONTRACT v1.8)
       delegate to the attached graph (raising `IncompatibleRuntimeState`

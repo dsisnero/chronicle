@@ -13,6 +13,10 @@ module Chronicle
       "budget." => "budget-exhausted",
     }
 
+    # v1.3 #3: the transient LLM failure reasons — retried with backoff.
+    # Terminal reasons (auth/request) are never retried.
+    TRANSIENT_LLM_REASONS = Set{"llm.network_error", "llm.rate_limited"}
+
     # Return the More: doc-page URL for a v0.6 #11 reason code. Defaults to
     # the generic execution-error page when no prefix matches (covers
     # `exception.*` reasons from generic catches).
@@ -21,6 +25,35 @@ module Chronicle
         return "#{DOCS_BASE_URL}/errors/#{slug}" if reason.starts_with?(prefix)
       end
       "#{DOCS_BASE_URL}/errors/execution-error"
+    end
+
+    # True when an LLM failure reason is in the transient retry set
+    # (CONTRACT v1.3 #3 — network/rate-limit retried, auth/request terminal).
+    # Ported from activegraph.runtime.runtime._is_transient_llm_reason.
+    def transient_llm_reason?(reason : String) : Bool
+      TRANSIENT_LLM_REASONS.includes?(reason)
+    end
+
+    # Retry delay for an LLM attempt: exponential backoff
+    # `initial * 2**attempt_index` capped at `maximum`, unless the provider
+    # supplied a `retry_after_seconds` (then that value is used, clamped to
+    # the maximum; a non-positive value is ignored). Ported from
+    # activegraph.runtime.runtime._llm_retry_delay_seconds.
+    def llm_retry_delay_seconds(
+      *,
+      attempt_index : Int32,
+      initial : Float64,
+      maximum : Float64,
+      retry_after_seconds : Float64? = nil,
+    ) : Float64
+      if retry_after = retry_after_seconds
+        if retry_after > 0
+          return Math.min(retry_after, maximum)
+        end
+      end
+      return 0.0 if initial <= 0
+
+      Math.min(initial * (2 ** attempt_index), maximum)
     end
   end
 

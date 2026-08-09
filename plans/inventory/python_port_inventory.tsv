@@ -734,8 +734,8 @@ runtime/runtime.py::function::_first_goal	function	missing	-	auto-generated
 runtime/runtime.py::function::_hash_turn_prompt	function	missing	-	auto-generated
 runtime/runtime.py::function::_is_lifecycle	function	missing	-	auto-generated
 runtime/runtime.py::function::_is_promote_block	function	missing	-	auto-generated
-runtime/runtime.py::function::_is_transient_llm_reason	function	missing	-	auto-generated
-runtime/runtime.py::function::_llm_retry_delay_seconds	function	missing	-	auto-generated
+runtime/runtime.py::function::_is_transient_llm_reason	function	ported	spec/chronicle/llm_retry_spec.cr	RuntimeReason.transient_llm_reason? (llm.network_error/rate_limited transient; CONTRACT v1.3 #3)
+runtime/runtime.py::function::_llm_retry_delay_seconds	function	ported	spec/chronicle/llm_retry_spec.cr	RuntimeReason.llm_retry_delay_seconds (retry_after honored/clamped; exponential backoff capped at maximum)
 runtime/runtime.py::function::_materialize_snapshot	function	missing	-	auto-generated
 runtime/runtime.py::function::_maybe_object_id	function	missing	-	auto-generated
 runtime/runtime.py::function::_monotonic	function	missing	-	auto-generated
