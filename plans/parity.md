@@ -432,6 +432,13 @@ From `parity.tsv` (`missing_contains` on Runtime):
       activegraph sinks/base.py SinkConfig + runtime/runtime.py
       `_normalize_sink_configs` + test_event_sinks.py —
       `spec/chronicle/sink_config_spec.cr`.
+- [x] `most_recent_run_id` — `Chronicle::RuntimeReason.most_recent_run_id(path)`
+      returns the most recent run id in a SQLite store (used by
+      `Runtime.load` to resume the latest run), via the already-ported
+      `SQLiteEventStore.list_runs` (ordered by created_at; nil for an empty
+      store). Ported from activegraph runtime/runtime.py
+      `_most_recent_run_id` + store/sqlite.py `most_recent_run_id` —
+      `spec/chronicle/most_recent_run_id_spec.cr`.
 - [x] Runtime sink surface — `Runtime#add_sink` / `remove_sink` /
       `sink_statuses` / `flush_sinks` / `close_sinks` (CONTRACT v1.8)
       delegate to the attached graph (raising `IncompatibleRuntimeState`

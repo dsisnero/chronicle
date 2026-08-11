@@ -85,6 +85,15 @@ module Chronicle
         event.type == "context.read"
     end
 
+    # The most recent run id in a SQLite store (used by Runtime.load to pick
+    # the run to resume when none is given). Ported from activegraph
+    # runtime/runtime.py `_most_recent_run_id` via
+    # SQLiteEventStore.most_recent_run_id (ordered by last event seq, then
+    # created_at). Nil when the store has no runs.
+    def most_recent_run_id(path : String) : String?
+      SQLiteEventStore.list_runs(path).last?.try(&.run_id)
+    end
+
     # Retry delay for an LLM attempt: exponential backoff
     # `initial * 2**attempt_index` capped at `maximum`, unless the provider
     # supplied a `retry_after_seconds` (then that value is used, clamped to
