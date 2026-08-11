@@ -421,6 +421,17 @@ From `parity.tsv` (`missing_contains` on Runtime):
       runtime's broader private `lifecycle?` (which also suppresses
       `llm.*`/`tool.*`/etc. for pattern matching). Ported from activegraph
       runtime/runtime.py `_is_lifecycle` — `spec/chronicle/is_lifecycle_spec.cr`.
+- [x] `SinkConfig` + constructor sink normalization — `Chronicle::SinkConfig`
+      value struct (sink, name?, queue_capacity=1024, overflow_policy=
+      DROP_NEWEST) with locked defaults and validation (empty name, capacity
+      must be a positive integer). `Runtime(sinks: [...])` normalizes the
+      configs (default name from the sink class, duplicate-name rejection
+      BEFORE any attach so a late failure never leaks a partially-attached
+      sink) and attaches each via the graph — sinks accept future events
+      only, history reconstructed by load/fork is never offered. Ported from
+      activegraph sinks/base.py SinkConfig + runtime/runtime.py
+      `_normalize_sink_configs` + test_event_sinks.py —
+      `spec/chronicle/sink_config_spec.cr`.
 - [x] Runtime sink surface — `Runtime#add_sink` / `remove_sink` /
       `sink_statuses` / `flush_sinks` / `close_sinks` (CONTRACT v1.8)
       delegate to the attached graph (raising `IncompatibleRuntimeState`

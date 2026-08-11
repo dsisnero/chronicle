@@ -12,6 +12,31 @@ module Chronicle
     FailSink
   end
 
+  # Configuration for one isolated Sink attachment (upstream SinkConfig). A
+  # capacity of 1024 and DROP_NEWEST are the locked defaults. Supply `name`
+  # when attaching two instances of the same sink class to one runtime;
+  # attachment names are unique status keys.
+  struct SinkConfig
+    getter sink : Sink
+    getter name : String?
+    getter queue_capacity : Int32
+    getter overflow_policy : OverflowPolicy
+
+    def initialize(
+      @sink : Sink,
+      @name : String? = nil,
+      @queue_capacity : Int32 = 1024,
+      @overflow_policy : OverflowPolicy = OverflowPolicy::DropNewest,
+    )
+      if name = @name
+        raise ArgumentError.new("SinkConfig.name must not be empty") if name.strip.empty?
+      end
+      if @queue_capacity < 1
+        raise ArgumentError.new("SinkConfig.queue_capacity must be a positive integer")
+      end
+    end
+  end
+
   enum SinkState
     Running
     Closed

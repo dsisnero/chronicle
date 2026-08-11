@@ -741,7 +741,7 @@ runtime/runtime.py::function::_maybe_object_id	function	ported	spec/chronicle/ma
 runtime/runtime.py::function::_monotonic	function	missing	-	auto-generated
 runtime/runtime.py::function::_most_recent_run_id	function	missing	-	auto-generated
 runtime/runtime.py::function::_non_replayable_llm_attempt_event_ids	function	missing	-	auto-generated
-runtime/runtime.py::function::_normalize_sink_configs	function	missing	-	auto-generated
+runtime/runtime.py::function::_normalize_sink_configs	function	ported	spec/chronicle/sink_config_spec.cr	Runtime(sinks:) normalizes SinkConfig (default name from class, duplicate rejection before attach)
 runtime/runtime.py::function::_now_iso	function	missing	-	auto-generated
 runtime/runtime.py::function::_open_sqlite_store	function	missing	-	auto-generated
 runtime/runtime.py::function::_promote_data_diff	function	missing	-	auto-generated
@@ -888,7 +888,7 @@ sandbox/executor.py::method::TrialSpecification.to_json	method	missing	-	auto-ge
 sinks/base.py::class::DeliveryContext	class	missing	-	auto-generated
 sinks/base.py::class::EventSink	class	missing	-	auto-generated
 sinks/base.py::class::OverflowPolicy	class	missing	-	auto-generated
-sinks/base.py::class::SinkConfig	class	missing	-	auto-generated
+sinks/base.py::class::SinkConfig	class	ported	spec/chronicle/sink_config_spec.cr	Chronicle::SinkConfig struct (name/queue_capacity/overflow_policy; empty-name + positive-integer validation)
 sinks/base.py::class::SinkState	class	missing	-	auto-generated
 sinks/base.py::class::SinkStatus	class	missing	-	auto-generated
 sinks/base.py::const::CLOSED	const	missing	-	auto-generated

@@ -161,7 +161,36 @@ module Chronicle
       @tool_approval_policies : Array(Policy) = [] of Policy,
       @metrics : Metrics = NoOpMetrics.new,
       @trace_context_reads : Bool = false,
+      sinks : Array(SinkConfig) = [] of SinkConfig,
     )
+      attach_constructor_sinks(sinks)
+    end
+
+    # Freeze and validate sink configuration passed at construction, then
+    # attach each (upstream `_normalize_sink_configs`). Resolving names first
+    # prevents a late duplicate-name failure from leaking partially attached
+    # workers. Sinks accept future events only — history reconstructed by
+    # load/fork is never offered.
+    private def attach_constructor_sinks(sinks : Array(SinkConfig)) : Nil
+      g = @graph
+      return if g.nil? || sinks.empty?
+
+      # Validate all names before attaching anything so a duplicate never
+      # leaks a partially-attached sink (upstream _normalize_sink_configs).
+      names = Set(String).new
+      sinks.each do |config|
+        name = config.name || config.sink.class.to_s.split("::").last
+        if names.includes?(name)
+          raise ArgumentError.new(
+            "sink name #{name.inspect} appears more than once; set SinkConfig.name"
+          )
+        end
+        names << name
+      end
+      sinks.each do |config|
+        name = config.name || config.sink.class.to_s.split("::").last
+        g.add_sink(config.sink, name, config.queue_capacity, config.overflow_policy)
+      end
     end
 
     # Run a prompt through the harness.
