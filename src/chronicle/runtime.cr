@@ -94,6 +94,37 @@ module Chronicle
       SQLiteEventStore.list_runs(path).last?.try(&.run_id)
     end
 
+    # Return a validated recorded cooperative wall-stop boundary
+    # `(accepted_sequence, max_seconds_limit)` from a `runtime.budget_exhausted`
+    # event whose `exhausted_by` is `max_seconds`, or nil when no such event
+    # exists. A malformed `stop_position.accepted_sequence` (non-negative
+    # integer) raises ReplayDivergenceError. Ported from activegraph
+    # runtime/runtime.py `_recorded_wall_stop`.
+    def recorded_wall_stop(events : Array(Event)) : {Int64, Float64?}?
+      events.each do |event|
+        next unless event.type == "runtime.budget_exhausted"
+
+        payload = JSON.parse(event.payload).as_h?
+        next unless payload
+
+        next unless payload["exhausted_by"]?.try(&.as_s?) == "max_seconds"
+
+        position = payload["stop_position"]?.try(&.as_h?)
+        raw_sequence = position.try(&.["accepted_sequence"]?.try(&.as_i))
+        if raw_sequence.nil? || raw_sequence < 0
+          raise ReplayDivergenceError.new(
+            "replay diverged: expected wall_stop_position=non-negative integer, got #{raw_sequence.inspect}"
+          )
+        end
+
+        snapshot = payload["snapshot"]?.try(&.as_h?)
+        limits = snapshot.try(&.["limits"]?.try(&.as_h?))
+        raw_limit = limits.try(&.["max_seconds"]?.try(&.as_f?))
+        return {raw_sequence.to_i64, raw_limit}
+      end
+      nil
+    end
+
     # Retry delay for an LLM attempt: exponential backoff
     # `initial * 2**attempt_index` capped at `maximum`, unless the provider
     # supplied a `retry_after_seconds` (then that value is used, clamped to

@@ -439,6 +439,15 @@ From `parity.tsv` (`missing_contains` on Runtime):
       store). Ported from activegraph runtime/runtime.py
       `_most_recent_run_id` + store/sqlite.py `most_recent_run_id` —
       `spec/chronicle/most_recent_run_id_spec.cr`.
+- [x] `recorded_wall_stop` — `Chronicle::RuntimeReason.recorded_wall_stop(events)`
+      returns the validated cooperative wall-stop boundary
+      `(accepted_sequence, max_seconds_limit)` from a
+      `runtime.budget_exhausted` event whose `exhausted_by` is `max_seconds`
+      (nil when no such event). A malformed `stop_position.accepted_sequence`
+      (non-negative integer) raises `ReplayDivergenceError`. Used by strict
+      replay to pin divergence at the right position. Ported from activegraph
+      runtime/runtime.py `_recorded_wall_stop` —
+      `spec/chronicle/recorded_wall_stop_spec.cr`.
 - [x] Runtime sink surface — `Runtime#add_sink` / `remove_sink` /
       `sink_statuses` / `flush_sinks` / `close_sinks` (CONTRACT v1.8)
       delegate to the attached graph (raising `IncompatibleRuntimeState`

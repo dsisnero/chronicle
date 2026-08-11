@@ -746,7 +746,7 @@ runtime/runtime.py::function::_now_iso	function	missing	-	auto-generated
 runtime/runtime.py::function::_open_sqlite_store	function	missing	-	auto-generated
 runtime/runtime.py::function::_promote_data_diff	function	missing	-	auto-generated
 runtime/runtime.py::function::_rebuild_pending_approvals	function	missing	-	auto-generated
-runtime/runtime.py::function::_recorded_wall_stop	function	missing	-	auto-generated
+runtime/runtime.py::function::_recorded_wall_stop	function	ported	spec/chronicle/recorded_wall_stop_spec.cr	RuntimeReason.recorded_wall_stop (validated (sequence, max_seconds) boundary from runtime.budget_exhausted; ReplayDivergenceError on malformed)
 runtime/runtime.py::function::_reject_mid_promote_block_fork	function	missing	-	auto-generated
 runtime/runtime.py::function::_requeue_unfired	function	missing	-	auto-generated
 runtime/runtime.py::function::_resolve_and_validate_llm_models	function	missing	-	auto-generated
