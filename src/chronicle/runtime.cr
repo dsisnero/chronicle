@@ -73,6 +73,18 @@ module Chronicle
       nil
     end
 
+    # True for lifecycle events excluded from strict-replay stream
+    # comparison (upstream `_is_lifecycle`): behavior.*, relation_behavior.*,
+    # runtime.*, and context.read (v1.10 #1 — per-execution bookkeeping that
+    # a tracing-off verify pass never reproduces, so it must not diverge the
+    # compared streams).
+    def lifecycle?(event : Event) : Bool
+      event.type.starts_with?("behavior.") ||
+        event.type.starts_with?("relation_behavior.") ||
+        event.type.starts_with?("runtime.") ||
+        event.type == "context.read"
+    end
+
     # Retry delay for an LLM attempt: exponential backoff
     # `initial * 2**attempt_index` capped at `maximum`, unless the provider
     # supplied a `retry_after_seconds` (then that value is used, clamped to

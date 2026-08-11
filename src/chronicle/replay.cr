@@ -50,12 +50,14 @@ module Chronicle
     end
 
     private def assert_strict_replay(recorded_events : Array(Event), emitted_events : Array(Event)) : Nil
-      max_size = {recorded_events.size, emitted_events.size}.max
+      recorded = recorded_events.reject { |e| Chronicle::RuntimeReason.lifecycle?(e) }
+      emitted = emitted_events.reject { |e| Chronicle::RuntimeReason.lifecycle?(e) }
+      max_size = {recorded.size, emitted.size}.max
       max_size.times do |index|
-        recorded = recorded_events[index]?
-        emitted = emitted_events[index]?
-        if recorded.nil? || emitted.nil? || recorded.canonical_json != emitted.canonical_json
-          sequence = recorded.try(&.sequence) || emitted.try(&.sequence) || 0_u64
+        recorded_event = recorded[index]?
+        emitted_event = emitted[index]?
+        if recorded_event.nil? || emitted_event.nil? || recorded_event.canonical_json != emitted_event.canonical_json
+          sequence = recorded_event.try(&.sequence) || emitted_event.try(&.sequence) || 0_u64
           raise ReplayDivergenceError.new("replay diverged at sequence #{sequence}")
         end
       end

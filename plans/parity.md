@@ -410,6 +410,17 @@ From `parity.tsv` (`missing_contains` on Runtime):
       the first `goal.created` event's goal text, or nil when the run has no
       goal (a raw graph-only run). Ported from activegraph
       runtime/runtime.py `_first_goal` — `spec/chronicle/first_goal_spec.cr`.
+- [x] `is_lifecycle` — `Chronicle::RuntimeReason.lifecycle?` (upstream
+      `_is_lifecycle`): true for `behavior.*`, `relation_behavior.*`,
+      `runtime.*`, and `context.read` (v1.10 #1 — per-execution bookkeeping
+      a tracing-off verify pass never reproduces). Wired into
+      `ReplayEngine.assert_strict_replay` so strict replay skips lifecycle
+      events when comparing recorded vs re-run streams — a verify pass with
+      tracing off no longer diverges on `context.read`/lifecycle markers.
+      Note this is the NARROW replay-exclusion predicate, distinct from the
+      runtime's broader private `lifecycle?` (which also suppresses
+      `llm.*`/`tool.*`/etc. for pattern matching). Ported from activegraph
+      runtime/runtime.py `_is_lifecycle` — `spec/chronicle/is_lifecycle_spec.cr`.
 - [x] Runtime sink surface — `Runtime#add_sink` / `remove_sink` /
       `sink_statuses` / `flush_sinks` / `close_sinks` (CONTRACT v1.8)
       delegate to the attached graph (raising `IncompatibleRuntimeState`
