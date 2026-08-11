@@ -56,6 +56,23 @@ module Chronicle
       nil
     end
 
+    # The first `goal.created` event's goal text, or nil when the run has
+    # no goal (e.g. a raw graph-only run). Ported from
+    # activegraph.runtime.runtime._first_goal.
+    def first_goal(events : Array(Event)) : String?
+      events.each do |event|
+        next unless event.type == "goal.created"
+
+        payload = JSON.parse(event.payload).as_h?
+        if goal = payload.try(&.["goal"]?.try(&.as_s))
+          return goal
+        end
+      rescue JSON::ParseException
+        next
+      end
+      nil
+    end
+
     # Retry delay for an LLM attempt: exponential backoff
     # `initial * 2**attempt_index` capped at `maximum`, unless the provider
     # supplied a `retry_after_seconds` (then that value is used, clamped to

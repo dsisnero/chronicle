@@ -403,9 +403,13 @@ From `parity.tsv` (`missing_contains` on Runtime):
       tags (`behavior.started` now carries `triggering_object_id`).
       Divergence: upstream reads the nested `object.id` (its payloads nest
       under `object`); Chronicle's flat payloads carry `id` at the top level,
-      so the helper reads `payload["id"]`. Returns nil for events without
+      so       the helper reads `payload["id"]`. Returns nil for events without
       one (goal.created) or non-object payloads. Ported from activegraph
       runtime/runtime.py `_maybe_object_id` — `spec/chronicle/maybe_object_id_spec.cr`.
+- [x] `first_goal` — `Chronicle::RuntimeReason.first_goal(events)` returns
+      the first `goal.created` event's goal text, or nil when the run has no
+      goal (a raw graph-only run). Ported from activegraph
+      runtime/runtime.py `_first_goal` — `spec/chronicle/first_goal_spec.cr`.
 - [x] Runtime sink surface — `Runtime#add_sink` / `remove_sink` /
       `sink_statuses` / `flush_sinks` / `close_sinks` (CONTRACT v1.8)
       delegate to the attached graph (raising `IncompatibleRuntimeState`
