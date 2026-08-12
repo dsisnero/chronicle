@@ -448,6 +448,16 @@ From `parity.tsv` (`missing_contains` on Runtime):
       replay to pin divergence at the right position. Ported from activegraph
       runtime/runtime.py `_recorded_wall_stop` —
       `spec/chronicle/recorded_wall_stop_spec.cr`.
+- [x] `non_replayable_llm_attempt_event_ids` —
+      `Chronicle::RuntimeReason.non_replayable_llm_attempt_event_ids(events)`
+      collects the failed LLM-attempt request/response ids so strict replay
+      replays from the successful `llm.responded` cache entry rather than
+      requiring the provider to fail again (upstream
+      `_non_replayable_llm_attempt_event_ids`). Divergence: upstream marks
+      failed attempts via `llm.responded` with an `error` payload; Chronicle
+      emits a separate `llm.failed` event, so the helper collects the
+      `llm.failed` id plus its `caused_by` request id. Ported from activegraph
+      runtime/runtime.py — `spec/chronicle/non_replayable_llm_ids_spec.cr`.
 - [x] Runtime sink surface — `Runtime#add_sink` / `remove_sink` /
       `sink_statuses` / `flush_sinks` / `close_sinks` (CONTRACT v1.8)
       delegate to the attached graph (raising `IncompatibleRuntimeState`

@@ -740,7 +740,7 @@ runtime/runtime.py::function::_materialize_snapshot	function	missing	-	auto-gene
 runtime/runtime.py::function::_maybe_object_id	function	ported	spec/chronicle/maybe_object_id_spec.cr	RuntimeReason.maybe_object_id (top-level id for Chronicle flat payloads; upstream nested object.id); behavior.started carries triggering_object_id
 runtime/runtime.py::function::_monotonic	function	missing	-	auto-generated
 runtime/runtime.py::function::_most_recent_run_id	function	ported	spec/chronicle/most_recent_run_id_spec.cr	RuntimeReason.most_recent_run_id(path) via SQLiteEventStore.list_runs (last run id; nil for empty)
-runtime/runtime.py::function::_non_replayable_llm_attempt_event_ids	function	missing	-	auto-generated
+runtime/runtime.py::function::_non_replayable_llm_attempt_event_ids	function	ported	spec/chronicle/non_replayable_llm_ids_spec.cr	RuntimeReason.non_replayable_llm_attempt_event_ids (llm.failed + its caused_by request id; upstream reads llm.responded with error)
 runtime/runtime.py::function::_normalize_sink_configs	function	ported	spec/chronicle/sink_config_spec.cr	Runtime(sinks:) normalizes SinkConfig (default name from class, duplicate rejection before attach)
 runtime/runtime.py::function::_now_iso	function	missing	-	auto-generated
 runtime/runtime.py::function::_open_sqlite_store	function	missing	-	auto-generated

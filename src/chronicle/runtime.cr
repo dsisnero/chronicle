@@ -125,6 +125,27 @@ module Chronicle
       nil
     end
 
+    # Failed LLM attempt request/response ids (upstream
+    # `_non_replayable_llm_attempt_event_ids`). Provider availability is not
+    # deterministic replay output: a run that hit transient network failures
+    # before a successful retry should replay from the successful
+    # `llm.responded` cache entry, not require the provider to fail again.
+    # Chronicle records failed attempts as `llm.failed` events (upstream uses
+    # `llm.responded` with an `error` payload), so we collect the failed
+    # event id and its `caused_by` request id.
+    def non_replayable_llm_attempt_event_ids(events : Array(Event)) : Set(String)
+      ids = Set(String).new
+      events.each do |event|
+        next unless event.type == "llm.failed"
+
+        ids << event.id
+        if request_id = event.caused_by
+          ids << request_id
+        end
+      end
+      ids
+    end
+
     # Retry delay for an LLM attempt: exponential backoff
     # `initial * 2**attempt_index` capped at `maximum`, unless the provider
     # supplied a `retry_after_seconds` (then that value is used, clamped to
