@@ -547,20 +547,20 @@ packs/scaffold.py::function::normalize_pack_name	function	missing	-	auto-generat
 packs/scaffold.py::function::scaffold_pack	function	missing	-	auto-generated
 policy.py::class::Policy	class	missing	-	auto-generated
 runtime/_live.py::function::_clear_for_test	function	missing	-	auto-generated
-runtime/_live.py::function::_validate_one	function	missing	-	auto-generated
-runtime/_live.py::function::_which_shipped_provider_claims	function	missing	-	auto-generated
+runtime/_live.py::function::_validate_one	function	ported	spec/chronicle/resolve_llm_model_spec.cr	CONTRACT v1.0.2 #1 (b): Chronicle::RuntimeReason.validate_and_resolve_llm_model delegates cross-provider mismatch to which_shipped_provider_claims (ShippedProviderFamily seam; shipped Anthropic/OpenAI deferred)
+runtime/_live.py::function::_which_shipped_provider_claims	function	ported	spec/chronicle/resolve_llm_model_spec.cr	Chronicle::RuntimeReason.which_shipped_provider_claims + Chronicle::ShippedProviderFamily (exclude=type(provider) via provider_class; permissive when no other family claims)
 runtime/_live.py::function::live_runtimes	function	missing	-	auto-generated
 runtime/_live.py::function::track_runtime	function	missing	-	auto-generated
 runtime/_live.py::function::validate_behavior_against_live_runtimes	function	missing	-	auto-generated
-runtime/authority.py::class::AuthorityDecision	class	missing	-	auto-generated
-runtime/authority.py::const::ACTION_CLASSES	const	missing	-	auto-generated
-runtime/authority.py::const::AUTHORITY_CEILINGS	const	missing	-	auto-generated
-runtime/authority.py::const::DECISION_AUTO_APPROVE	const	missing	-	auto-generated
-runtime/authority.py::const::DECISION_GOVERNANCE_GATE	const	missing	-	auto-generated
-runtime/authority.py::const::DECISION_REQUIRE_APPROVAL	const	missing	-	auto-generated
-runtime/authority.py::function::evaluate_action_authority	function	missing	-	auto-generated
-runtime/authority.py::function::validate_ceiling	function	missing	-	auto-generated
-runtime/authority.py::method::AuthorityDecision.auto_approved	method	missing	-	auto-generated
+runtime/authority.py::class::AuthorityDecision	class	ported	spec/chronicle/authority_spec.cr	Canonical action-class authority decision (CONTRACT v1.9 #3); Chronicle::Authority::AuthorityDecision
+runtime/authority.py::const::ACTION_CLASSES	const	ported	spec/chronicle/authority_spec.cr	Closed consequence classes R0..R4
+runtime/authority.py::const::AUTHORITY_CEILINGS	const	ported	spec/chronicle/authority_spec.cr	Closed automatic ceilings none|R0|R1|R2
+runtime/authority.py::const::DECISION_AUTO_APPROVE	const	ported	spec/chronicle/authority_spec.cr	auto_approve decision constant
+runtime/authority.py::const::DECISION_GOVERNANCE_GATE	const	ported	spec/chronicle/authority_spec.cr	governance_gate decision constant
+runtime/authority.py::const::DECISION_REQUIRE_APPROVAL	const	ported	spec/chronicle/authority_spec.cr	require_approval decision constant
+runtime/authority.py::function::evaluate_action_authority	function	ported	spec/chronicle/authority_spec.cr	Fixed-order pure authority decision (CONTRACT v1.9 #2)
+runtime/authority.py::function::validate_ceiling	function	ported	spec/chronicle/authority_spec.cr	Validate ceiling against closed set; ValueError -> ArgumentError
+runtime/authority.py::method::AuthorityDecision.auto_approved	method	ported	spec/chronicle/authority_spec.cr	decision == auto_approve
 runtime/behavior_graph.py::class::BehaviorGraph	class	ported	spec/chronicle/behavior_runner_spec.cr	Behavior subscription and scheduling
 runtime/behavior_graph.py::class::Counters	class	missing	-	auto-generated
 runtime/behavior_graph.py::method::BehaviorGraph.__init__	method	missing	-	auto-generated
@@ -572,20 +572,20 @@ runtime/behavior_graph.py::method::BehaviorGraph.get_relation	method	missing	-	a
 runtime/behavior_graph.py::method::BehaviorGraph.patch_object	method	missing	-	auto-generated
 runtime/behavior_graph.py::method::BehaviorGraph.propose_patch	method	missing	-	auto-generated
 runtime/behavior_graph.py::method::Counters.__init__	method	missing	-	auto-generated
-runtime/budget.py::class::Budget	class	missing	-	auto-generated
-runtime/budget.py::const::KNOWN_LIMITS	const	missing	-	auto-generated
-runtime/budget.py::function::_as_decimal	function	missing	-	auto-generated
-runtime/budget.py::method::Budget.__init__	method	missing	-	auto-generated
-runtime/budget.py::method::Budget.add_cost	method	missing	-	auto-generated
-runtime/budget.py::method::Budget.consume	method	missing	-	auto-generated
-runtime/budget.py::method::Budget.cost_remaining	method	missing	-	auto-generated
-runtime/budget.py::method::Budget.cost_remaining_amount	method	missing	-	auto-generated
-runtime/budget.py::method::Budget.exhausted_by	method	missing	-	auto-generated
-runtime/budget.py::method::Budget.has_cost_limit	method	missing	-	auto-generated
-runtime/budget.py::method::Budget.mark_exhausted	method	missing	-	auto-generated
-runtime/budget.py::method::Budget.remaining	method	missing	-	auto-generated
-runtime/budget.py::method::Budget.snapshot	method	missing	-	auto-generated
-runtime/budget.py::method::Budget.start	method	missing	-	auto-generated
+runtime/budget.py::class::Budget	class	ported	spec/chronicle/budget_spec.cr	Multi-dimensional hard limits (KNOWN_LIMITS); Chronicle::Budget
+runtime/budget.py::const::KNOWN_LIMITS	const	ported	spec/chronicle/budget_spec.cr	Eight limit dimensions
+runtime/budget.py::function::_as_decimal	function	ported	spec/chronicle/budget_spec.cr	N/A in Crystal (Float64); cost tracked as Float64 + String mirror
+runtime/budget.py::method::Budget.__init__	method	ported	spec/chronicle/budget_spec.cr	Initialize limits; unlimited for omitted dims
+runtime/budget.py::method::Budget.add_cost	method	ported	spec/chronicle/budget_spec.cr	Accumulate cost
+runtime/budget.py::method::Budget.consume	method	ported	spec/chronicle/budget_spec.cr	Consume a counter dimension
+runtime/budget.py::method::Budget.cost_remaining	method	ported	spec/chronicle/budget_spec.cr	Prospective cost within ceiling?
+runtime/budget.py::method::Budget.cost_remaining_amount	method	ported	spec/chronicle/budget_spec.cr	Remaining cost or nil
+runtime/budget.py::method::Budget.exhausted_by	method	ported	spec/chronicle/budget_spec.cr	Exhaustion reason
+runtime/budget.py::method::Budget.has_cost_limit	method	ported	spec/chronicle/budget_spec.cr	Cost ceiling present?
+runtime/budget.py::method::Budget.mark_exhausted	method	ported	spec/chronicle/budget_spec.cr	Set authoritative reason for recorded replay
+runtime/budget.py::method::Budget.remaining	method	ported	spec/chronicle/budget_spec.cr	Any enabled limit still has capacity
+runtime/budget.py::method::Budget.snapshot	method	ported	spec/chronicle/budget_spec.cr	BudgetSnapshot value; wired into Runtime#status
+runtime/budget.py::method::Budget.start	method	ported	spec/chronicle/budget_spec.cr	Start wall-clock accounting (read_wall_clock for strict replay)
 runtime/config_errors.py::class::IncompatibleRuntimeState	class	missing	-	auto-generated
 runtime/config_errors.py::class::InvalidArgumentType	class	missing	-	auto-generated
 runtime/config_errors.py::class::InvalidRuntimeConfiguration	class	missing	-	auto-generated
@@ -620,13 +620,13 @@ runtime/diff.py::function::compute_diff	function	ported	spec/chronicle/graph_pro
 runtime/diff.py::method::Diff.is_identical	method	missing	-	auto-generated
 runtime/diff.py::method::DivergentObject.summary	method	missing	-	auto-generated
 runtime/diff.py::method::DivergentRelation.summary	method	missing	-	auto-generated
-runtime/errors.py::class::ReplayDivergenceError	class	missing	-	auto-generated
-runtime/errors.py::function::_build_message	function	missing	-	auto-generated
-runtime/errors.py::function::_embedding_hash_message	function	missing	-	auto-generated
-runtime/errors.py::function::_length_message	function	missing	-	auto-generated
-runtime/errors.py::function::_prompt_hash_message	function	missing	-	auto-generated
-runtime/errors.py::function::_type_message	function	missing	-	auto-generated
-runtime/errors.py::method::ReplayDivergenceError.__init__	method	missing	-	auto-generated
+runtime/errors.py::class::ReplayDivergenceError	class	ported	spec/chronicle/replay_divergence_error_spec.cr	Structured ReplayDivergenceError with kind discriminator + build_message (CONTRACT v1.0 #C1); chronicle class
+runtime/errors.py::function::_build_message	function	ported	spec/chronicle/replay_divergence_error_spec.cr	build_message discriminator: prompt_hash=/embedding_hash=/<no recorded event>/actual nil -> kind shape
+runtime/errors.py::function::_embedding_hash_message	function	ported	spec/chronicle/replay_divergence_error_spec.cr	embedding_hash_mismatch structured message
+runtime/errors.py::function::_length_message	function	ported	spec/chronicle/replay_divergence_error_spec.cr	length_mismatch structured message (early finish / unrecorded event)
+runtime/errors.py::function::_prompt_hash_message	function	ported	spec/chronicle/replay_divergence_error_spec.cr	prompt_hash_mismatch structured message
+runtime/errors.py::function::_type_message	function	ported	spec/chronicle/replay_divergence_error_spec.cr	type_mismatch structured message
+runtime/errors.py::method::ReplayDivergenceError.__init__	method	ported	spec/chronicle/replay_divergence_error_spec.cr	Keyword-only (event_id:, expected:, actual:) structured init; legacy message constructor preserved
 runtime/exec_errors.py::class::ApprovalNotFoundError	class	missing	-	auto-generated
 runtime/exec_errors.py::class::InternalEvaluatorError	class	missing	-	auto-generated
 runtime/exec_errors.py::class::InvalidPatchLifecycleState	class	missing	-	auto-generated
@@ -728,7 +728,7 @@ runtime/runtime.py::class::Context	class	missing	-	auto-generated
 runtime/runtime.py::class::RunQuantumResult	class	ported	spec/chronicle/run_quantum_spec.cr	RunQuantumResult value struct (process observations; elapsed never logged)
 runtime/runtime.py::class::Runtime	class	missing	-	auto-generated
 runtime/runtime.py::function::_budget_reason	function	intentional_divergence	-	private budget-reason prose helper; N/A — Chronicle's budget marker payload is a snapshot
-runtime/runtime.py::function::_direct_embedding_event_ids	function	missing	-	auto-generated
+runtime/runtime.py::function::_direct_embedding_event_ids	function	ported	spec/chronicle/direct_embedding_ids_spec.cr	Operator-invoked embedding pair ids strict replay excludes (upstream _direct_embedding_event_ids)
 runtime/runtime.py::function::_doc_url_for_reason	function	ported	spec/chronicle/doc_url_for_reason_spec.cr	RuntimeReason.doc_url_for_reason (llm./tool./budget. prefix -> doc slug; execution-error fallback); behavior.failed payload carries doc_url
 runtime/runtime.py::function::_first_goal	function	ported	spec/chronicle/first_goal_spec.cr	RuntimeReason.first_goal (first goal.created goal text; nil when none)
 runtime/runtime.py::function::_hash_turn_prompt	function	ported	spec/chronicle/hash_turn_prompt_spec.cr	Prompt.hash_turn_prompt (per-turn cache key over running messages + tools; CONTRACT v0.7 per-turn cache)
@@ -744,13 +744,13 @@ runtime/runtime.py::function::_non_replayable_llm_attempt_event_ids	function	por
 runtime/runtime.py::function::_normalize_sink_configs	function	ported	spec/chronicle/sink_config_spec.cr	Runtime(sinks:) normalizes SinkConfig (default name from class, duplicate rejection before attach)
 runtime/runtime.py::function::_now_iso	function	missing	-	auto-generated
 runtime/runtime.py::function::_open_sqlite_store	function	missing	-	auto-generated
-runtime/runtime.py::function::_promote_data_diff	function	missing	-	auto-generated
-runtime/runtime.py::function::_rebuild_pending_approvals	function	missing	-	auto-generated
+runtime/runtime.py::function::_promote_data_diff	function	ported	spec/chronicle/promote_data_diff_spec.cr	Per-field {old,new} diff for promote replace-patch; wired into patch.applied payload (upstream _promote_data_diff)
+runtime/runtime.py::function::_rebuild_pending_approvals	function	ported	spec/chronicle/rebuild_pending_approvals_spec.cr	Reconstruct pending approvals from log (proposed minus granted) + advance id counter; wired into load/fork (upstream _rebuild_pending_approvals)
 runtime/runtime.py::function::_recorded_wall_stop	function	ported	spec/chronicle/recorded_wall_stop_spec.cr	RuntimeReason.recorded_wall_stop (validated (sequence, max_seconds) boundary from runtime.budget_exhausted; ReplayDivergenceError on malformed)
 runtime/runtime.py::function::_reject_mid_promote_block_fork	function	missing	-	auto-generated
 runtime/runtime.py::function::_requeue_unfired	function	missing	-	auto-generated
-runtime/runtime.py::function::_resolve_and_validate_llm_models	function	missing	-	auto-generated
-runtime/runtime.py::function::_validate_embedding_vectors	function	missing	-	auto-generated
+runtime/runtime.py::function::_resolve_and_validate_llm_models	function	ported	spec/chronicle/resolve_llm_model_spec.cr	CONTRACT v1.0.2 #1: Chronicle::RuntimeReason.resolve_llm_model + validate_and_resolve_llm_model (a) resolve default on model=nil, (b) cross-provider mismatch via _live._validate_one. Divergence: Crystal behaviors immutable, resolution computed not stamped
+runtime/runtime.py::function::_validate_embedding_vectors	function	ported	spec/chronicle/validate_embedding_vectors_spec.cr	Validate + normalize a provider batch embedding response (upstream _validate_embedding_vectors; ValueError -> ArgumentError)
 runtime/runtime.py::function::_verify_replay	function	missing	-	auto-generated
 runtime/runtime.py::method::Context.embed	method	intentional_divergence	-	embedding provider path is deferred (llm/embedding.py); RuntimeContextRequiredError pattern is ported via propose_object
 runtime/runtime.py::method::Context.pack_settings	method	ported	spec/chronicle/context_methods_spec.cr	BehaviorContext#pack_settings (already ported; Form 3 cross-pack lookup)
@@ -830,7 +830,7 @@ runtime/scheduler.py::method::DelayedQueue.pop_due	method	missing	-	auto-generat
 runtime/scheduler.py::method::DelayedQueue.push	method	missing	-	auto-generated
 runtime/scheduler.py::method::InvalidActivateAfter.__init__	method	missing	-	auto-generated
 runtime/view_builder.py::const::DEFAULT_RECENT_EVENTS	const	missing	-	auto-generated
-runtime/view_builder.py::function::_resolve_event_path	function	missing	-	auto-generated
+runtime/view_builder.py::function::_resolve_event_path	function	ported	spec/chronicle/resolve_event_path_spec.cr	Resolve dotted event.<path> expression for view around= anchors (upstream _resolve_event_path)
 runtime/view_builder.py::function::build_view	function	missing	-	auto-generated
 sandbox/__init__.py::class::PackSource	class	missing	-	auto-generated
 sandbox/__init__.py::class::SandboxStartupError	class	missing	-	auto-generated

@@ -64,7 +64,17 @@ pattern layer are ported and green.
 - [x] EventStore interface + backends — `Chronicle::EventStore`, `MemoryEventStore`,
       `SQLiteEventStore` (append/iter_events/get_event/count/truncate_after/close)
       — `spec/chronicle/event_store_spec.cr`, `sqlite_event_store_spec.cr`
-- [x] Replay — `Chronicle::ReplayEngine` (strict/permissive) — `spec/chronicle/replay_spec.cr`
+- [x] Replay — `Chronicle::ReplayEngine` (strict/permissive). Strict mode
+      ports `_verify_replay`'s stream comparison (runtime.py #L4180-L4368):
+      both sides drop lifecycle events and promote blocks; the recorded side
+      additionally drops `non_replayable_llm_attempt_event_ids` and
+      `direct_embedding_event_ids`. Comparison is over `(id, type)` only —
+      payload differences at matching positions do NOT diverge (hash checks
+      live in the cache wiring). The first type mismatch is pinned at the
+      recorded event id with `expected`/`actual`; a length mismatch pins the
+      first unpaired position with `"<no recorded event>"` on the unrecorded
+      side — `spec/chronicle/replay_spec.cr`,
+      `spec/chronicle/replay_stream_spec.cr`
 - [x] Projection — `Chronicle::GraphProjection` (apply, diff) — `spec/chronicle/graph_projection_spec.cr`
 - [x] Graph query API — `objects(type:, where:)`, `query`, `relations`,
       `get_relations`, `objects_in_types`, `has_object_of_type`, `neighborhood`
@@ -173,12 +183,50 @@ From `parity.tsv` (`missing_contains` on Runtime):
 - [x] Bounded run modes — `run_quantum(prompt, steps)` / `run_until_idle(prompt)`
       via a step-capped `drive_loop` — `runtime/runtime.py` — `spec/chronicle/runtime_phase3_spec.cr`
 - [x] Budget — `budget_remaining` / `start_budget` — `runtime/budget.py`
+- [x] Multi-dimensional `Budget` — `Chronicle::Budget` (the full port of
+      `runtime/budget.py`): `KNOWN_LIMITS` (max_events, max_behavior_calls,
+      max_llm_calls, max_tool_calls, max_patches, max_depth, max_seconds,
+      max_cost_usd; omitted dimensions unlimited), `consume` /
+      `remaining` / `exhausted_by` / `mark_exhausted` / `start`
+      (`read_wall_clock:` for clock-free strict replay) for counter + wall
+      dimensions, and the Decimal-cost dimension surfaced as Float64 + String
+      mirror (`has_cost_limit` / `add_cost` / `cost_remaining` /
+      `cost_remaining_amount` / `cost_used`). `snapshot` returns the existing
+      `Chronicle::BudgetSnapshot` value. Wired into `Runtime`: the old nested
+      `Runtime::Budget` struct is now an alias to `Chronicle::Budget` (the
+      `max_events:` convenience constructor preserves pre-port call sites;
+      the runtime default is 1000 max_events), `budget_remaining` /
+      `start_budget` read the max_events dimension, `budget_exhausted?` syncs
+      the used counter from the store and consults `remaining`, the
+      `runtime.budget_exhausted` payload is the full snapshot, and
+      `Runtime#status` reports `@budget.snapshot`. Divergence: `_as_decimal`
+      is N/A — cost accumulates as Float64 (upstream Decimal; CONTRACT v0.6
+      #9 intent preserved for realistic magnitudes) and is mirrored as a
+      String. Ported from activegraph runtime/budget.py —
+      `spec/chronicle/budget_spec.cr`.
 - [x] Tool lookup — `get_tool(name)` — `spec/chronicle/runtime_phase3_spec.cr`
 - [x] Approvals — `pending_approvals` / `approve` / `add_pending_approval` —
       `runtime/runtime.py` — `spec/chronicle/runtime_phase3_spec.cr`
 - [x] Authority — `authority_ceiling` / `set_authority_ceiling` /
-      `evaluate_capability_authority` (read < write < admin < root) —
-      `runtime/authority.py` — `spec/chronicle/runtime_phase3_spec.cr`
+      `evaluate_capability_authority` — `runtime/authority.py` —
+      `spec/chronicle/runtime_phase3_spec.cr`. Upgraded to the CONTRACT v1.9
+      action-class path: `Chronicle::Authority` (the pure decision module
+      ported from `runtime/authority.py`) with the closed class set
+      `R0|R1|R2|R3|R4`, closed ceilings `none|R0|R1|R2`, `AuthorityDecision`,
+      `validate_ceiling`, and `evaluate_action_authority` (fixed evaluation
+      order: missing/invalid class fails closed to approval, R4 →
+      governance_gate always, R3 → require_approval always, R0–R2
+      auto-approve iff at or below the effective ceiling — the stricter of
+      the instance ceiling and a per-capability ceiling that can only lower).
+      `Runtime#authority_ceiling` is log-backed (last accepted
+      `authority.ceiling_changed`, default `"none"`); `set_authority_ceiling`
+      validates (R3/R4/garbage rejected loudly before emission) and emits
+      `authority.ceiling_changed` with mandatory actor/reason, returning the
+      event id; `evaluate_capability_authority` emits an
+      `authority.decision` audit event and returns the decision carrying the
+      accepted event id; `authority.*` events never schedule behaviors
+      (suppressed in dispatch). Ceilings survive load/fork. The legacy
+      read < write < admin < root scale is replaced. `spec/chronicle/authority_spec.cr`.
 - [x] Trace/status output — `export_trace` (structured event JSON) / `status`
       — `runtime/runtime.py`, `trace/*` — `spec/chronicle/runtime_phase3_spec.cr`
 - [x] Structured effect events — `llm.requested/responded/failed`,
@@ -458,6 +506,65 @@ From `parity.tsv` (`missing_contains` on Runtime):
       emits a separate `llm.failed` event, so the helper collects the
       `llm.failed` id plus its `caused_by` request id. Ported from activegraph
       runtime/runtime.py — `spec/chronicle/non_replayable_llm_ids_spec.cr`.
+- [x] `direct_embedding_event_ids` —
+      `Chronicle::RuntimeReason.direct_embedding_event_ids(events)` collects
+      operator-invoked embedding pair ids that strict replay cannot
+      re-derive: an `embedding.requested` with no `caused_by` (an external
+      seed action, not behavior output) plus its `embedding.responded`
+      partner, excluded from the compared streams while the recorded return
+      stays available to the cache on load (upstream
+      `_direct_embedding_event_ids`). Behavior-derived calls (request with a
+      `caused_by`) are excluded. Ported from activegraph runtime/runtime.py —
+      `spec/chronicle/direct_embedding_ids_spec.cr`.
+- [x] `resolve_and_validate_llm_models` — CONTRACT v1.0.2 #1: (a)
+      `Chronicle::RuntimeReason.resolve_llm_model(model, provider)` returns
+      the behavior's pinned model or the configured provider's
+      `default_model` when none is pinned (the protocol's own default is the
+      v1.0.1 fallback `"claude-sonnet-4-5"`, so pre-v1.0.2 call sites keep
+      working byte-identically); (b)
+      `Chronicle::RuntimeReason.validate_and_resolve_llm_model` raises
+      `Chronicle::InvalidRuntimeConfiguration` before the first network call
+      when a pinned model the provider does not recognize is claimed by a
+      DIFFERENT shipped provider family, delegating to
+      `Chronicle::RuntimeReason.which_shipped_provider_claims`
+      (`Chronicle::ShippedProviderFamily` with `exclude=type(provider)` via
+      `provider_class`; permissive default — names no shipped family claims
+      pass through silently). Divergence: upstream stamps `behavior.model` in
+      place via mutable Python behaviors; Chronicle behaviors are immutable
+      so resolution is computed on demand. Shipped Anthropic/OpenAI providers
+      are deferred; the family list is an injectable seam fully exercised by
+      tests. Ported from activegraph runtime/runtime.py
+      `_resolve_and_validate_llm_models` + runtime/_live.py `_validate_one` /
+      `_which_shipped_provider_claims` — `spec/chronicle/resolve_llm_model_spec.cr`.
+- [x] `validate_embedding_vectors` —
+      `Chronicle::RuntimeReason.validate_embedding_vectors(texts, vectors)`
+      validates and normalizes a provider's batch embedding response
+      (upstream `_validate_embedding_vectors`): the vector count must match
+      the text batch, every vector must be a list with uniform dimensions,
+      and every component must be a finite number. Raises `ArgumentError`
+      (the Crystal analogue of upstream `ValueError`) with the upstream
+      message shapes; the runtime records the error rather than caching it.
+      Divergence: the non-list type name renders as the Crystal class name
+      (`Hash`) where upstream reports the Python type. Ported from activegraph
+      runtime/runtime.py — `spec/chronicle/validate_embedding_vectors_spec.cr`.
+- [x] `promote_data_diff` —
+      `Chronicle::RuntimeReason.promote_data_diff(old, new)` builds the
+      per-field `{old, new}` diff for a promote replace-patch (upstream
+      `_promote_data_diff`): sorted keys, dropped fields render as
+      `new: null`, added fields as `old: null`, and equality is numeric-aware
+      (3 == 3.0 is unchanged). Wired into the promote apply path so each
+      `patch.applied` replace-patch carries the `diff` field like any other
+      patch, matching upstream's emit at runtime.py. Ported from activegraph
+      runtime/runtime.py — `spec/chronicle/promote_data_diff_spec.cr`.
+- [x] `resolve_event_path` —
+      `Chronicle::RuntimeReason.resolve_event_path(expr, event)` resolves a
+      dotted `event.<path>` expression against an Event, used by view specs'
+      `around=` anchors (upstream `_resolve_event_path` in
+      runtime/view_builder.py): walks `event.payload.<...>` through the parsed
+      JSON hash; other first segments read event attributes; nil when the
+      expression doesn't start with `event`, is empty, or any segment is
+      missing/null. Ported from activegraph runtime/view_builder.py —
+      `spec/chronicle/resolve_event_path_spec.cr`.
 - [x] Runtime sink surface — `Runtime#add_sink` / `remove_sink` /
       `sink_statuses` / `flush_sinks` / `close_sinks` (CONTRACT v1.8)
       delegate to the attached graph (raising `IncompatibleRuntimeState`
@@ -969,6 +1076,28 @@ globally (CONTRACT v0.9 #3).
       Crystal has no import-time optional dependency surface. Ported from
       activegraph errors.py + test_errors_format.py —
       `spec/chronicle/errors_format_spec.cr`.
+- [x] Structured `ReplayDivergenceError` message builders —
+      `Chronicle::ReplayDivergenceError` now has the keyword-only
+      `(event_id:, expected:, actual:)` constructor (preserving the legacy
+      message-plus-attrs form for back-compat call sites) and a public
+      `build_message` that discriminates the four divergence shapes by input
+      (CONTRACT v1.0 #C1, upstream `_build_message`): `expected` starting with
+      `prompt_hash=` → `prompt_hash_mismatch`, `embedding_hash=` →
+      `embedding_hash_mismatch`, `<no recorded event>`/nil `actual` →
+      `length_mismatch` (early-finish vs unrecorded-event sub-shapes),
+      otherwise → `type_mismatch`. Every shape builds the locked
+      `What failed:` / `Why:` / `How to fix:` structured message with the
+      operator-facing `activegraph inspect <run> [--event N]` /
+      `--pack-version` remediation prose; the `kind` getter and
+      `context` (`event_id`/`kind`/`expected`/`actual`) carry the
+      discriminator. `build_message` is public so strict-replay raise sites
+      can render the same diagnostics without constructing the error.
+      Divergence: upstream's Python `repr` renders the recorded/live types in
+      single quotes; Crystal's `String#inspect` uses double quotes — the
+      diagnostic text is identical otherwise. Ported
+      from activegraph runtime/errors.py + test_errors_format.py +
+      test_replay.py —
+      `spec/chronicle/replay_divergence_error_spec.cr`.
 
 ## Acceptance Gates
 
