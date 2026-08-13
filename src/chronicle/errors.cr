@@ -139,6 +139,65 @@ module Chronicle
     end
   end
 
+  # Caller-provided configuration is invalid: confusing arguments, missing
+  # required argument, out-of-range value (CONTRACT v1.0 PR-F). Raised at
+  # runtime construction / binding — never as a behavior.failed event.
+  # Ported from activegraph.runtime.config_errors.InvalidRuntimeConfiguration.
+  #
+  # The cross-provider LLM mismatch shape (CONTRACT v1.0.2 #1 (b), upstream
+  # _live._validate_one): a behavior pinned a model name that belongs to a
+  # different shipped provider family than the one configured on this
+  # Runtime. Constructed with the provider names so the recovery prose can
+  # point the caller at the concrete swap.
+  class InvalidRuntimeConfiguration < ConfigurationError
+    DOC_SLUG = "invalid-runtime-configuration"
+
+    def initialize(*, behavior_name : String, model : String, provider_class : String, claimed_by : String)
+      @behavior_name = behavior_name
+      @model = model
+      @provider_class = provider_class
+      @claimed_by = claimed_by
+      summary = (
+        "@llm_behavior(name=#{behavior_name.inspect}, model=#{model.inspect}) " \
+        "names a #{claimed_by}-family model, but the runtime is configured " \
+        "with #{provider_class}"
+      )
+      super(
+        summary,
+        what_failed: (
+          "The behavior #{behavior_name.inspect} pinned model=#{model.inspect}. " \
+          "That name belongs to #{claimed_by}'s model family, but this Runtime " \
+          "was constructed with a #{provider_class} instance. Sending the name " \
+          "to the wrong provider produces an HTTP 404 (or equivalent 'unknown " \
+          "model' response) at first LLM call, with no hint that the mismatch " \
+          "is the cause."
+        ),
+        why: (
+          "v1.0.2 #1 validates explicit model names at both binding moments " \
+          "(Runtime construction and register()/decoration) against each " \
+          "shipped provider's recognizes_model() method. The configured " \
+          "provider doesn't claim this name, but another shipped provider " \
+          "does — that's a configuration mismatch worth surfacing before the " \
+          "first network call rather than after."
+        ),
+        how_to_fix: (
+          "Either swap the provider — Runtime(graph, llm_provider=#{claimed_by}()) — " \
+          "or set a #{provider_class}-compatible model name."
+        ),
+        context: {
+          "behavior"            => JSON::Any.new(behavior_name),
+          "model"               => JSON::Any.new(model),
+          "configured_provider" => JSON::Any.new(provider_class),
+          "claimed_by_provider" => JSON::Any.new(claimed_by),
+        },
+      )
+    end
+
+    def self.doc_slug : String
+      DOC_SLUG
+    end
+  end
+
   # Behavior, tool, or pack registration problems: conflicts at
   # registration time, version mismatches, missing providers.
   class RegistrationError < ActiveGraphError

@@ -146,6 +146,234 @@ module Chronicle
       ids
     end
 
+    # Operator-invoked embedding pair ids that strict replay cannot
+    # re-derive (upstream `_direct_embedding_event_ids`). `Runtime.embed`
+    # calls outside a behavior have no causal input event, so strict
+    # behavior replay has no source text from which to reconstruct the
+    # call — they are external seed actions, excluded from the compared
+    # streams (the recorded return remains available to the cache on load).
+    def direct_embedding_event_ids(events : Array(Event)) : Set(String)
+      request_ids = Set(String).new
+      events.each do |event|
+        request_ids << event.id if event.type == "embedding.requested" && event.caused_by.nil?
+      end
+
+      pair_ids = request_ids.dup
+      events.each do |event|
+        if event.type == "embedding.responded" && (req = event.caused_by) && request_ids.includes?(req)
+          pair_ids << event.id
+        end
+      end
+      pair_ids
+    end
+
+    # CONTRACT v1.0.2 #1 (a): the effective model for a behavior — its pinned
+    # model, or the configured provider's default_model when none is pinned.
+    # The LLMProvider protocol's own default_model is the v1.0.1 hardcoded
+    # fallback "claude-sonnet-4-5", so custom providers that pre-date v1.0.2
+    # keep working byte-identically. Ported from activegraph
+    # runtime/runtime.py `_resolve_and_validate_llm_models`. Divergence:
+    # upstream stamps the default onto the behavior in place; Chronicle
+    # behaviors are immutable, so the resolution is computed on demand.
+    def resolve_llm_model(model : String?, provider : LLMProvider) : String
+      model || provider.default_model
+    end
+
+    # CONTRACT v1.0.2 #1 (b): the first shipped provider family that
+    # recognizes `name` after excluding the family whose provider_class
+    # matches the configured provider (upstream `_which_shipped_provider_claims`
+    # with `exclude=type(provider)`). Returns nil when no OTHER shipped family
+    # claims the name — the permissive default. Ported from activegraph
+    # runtime/_live.py `_which_shipped_provider_claims`.
+    def which_shipped_provider_claims(
+      name : String,
+      provider : LLMProvider,
+      shipped_providers : Array(ShippedProviderFamily),
+    ) : ShippedProviderFamily?
+      shipped_providers.each do |family|
+        next if family.provider_class == provider.class
+        return family if family.recognizes?(name)
+      end
+      nil
+    end
+
+    # CONTRACT v1.0.2 #1: resolve a behavior's model AND validate it against
+    # the configured provider, delegating the cross-provider mismatch check to
+    # `which_shipped_provider_claims`. A pinned model the configured provider
+    # does not recognize, but that a DIFFERENT shipped provider family claims,
+    # raises InvalidRuntimeConfiguration before the first network call.
+    # Explicit models no shipped family recognizes pass through silently
+    # (permissive default). Divergence: upstream mutates `behavior.model` in
+    # place; Chronicle returns the resolved model instead. Ported from
+    # activegraph runtime/_live.py `_validate_one` + runtime/runtime.py
+    # `_resolve_and_validate_llm_models`.
+    def validate_and_resolve_llm_model(
+      *,
+      behavior_name : String,
+      model : String?,
+      provider : LLMProvider,
+      shipped_providers : Array(ShippedProviderFamily) = [] of ShippedProviderFamily,
+    ) : String
+      return provider.default_model if model.nil?
+      return model if provider.recognizes_model(model)
+
+      if claimed = which_shipped_provider_claims(model, provider, shipped_providers)
+        raise InvalidRuntimeConfiguration.new(
+          behavior_name: behavior_name,
+          model: model,
+          provider_class: provider.class.name,
+          claimed_by: claimed.name,
+        )
+      end
+      model
+    end
+
+    # Validate and normalize a provider's batch embedding response
+    # (upstream `_validate_embedding_vectors`): the vector count must match
+    # the text batch, every vector must be a list with uniform dimensions,
+    # and every component must be a finite number. Raises ArgumentError (the
+    # Crystal analogue of upstream's ValueError) with the upstream message
+    # shapes; the runtime records the error rather than caching it.
+    def validate_embedding_vectors(texts : Array(String), vectors : JSON::Any) : Array(Array(Float64))
+      raw = vectors.raw
+      unless raw.is_a?(Array(JSON::Any)) && raw.size == texts.size
+        actual = raw.is_a?(Array) ? raw.size.to_s : raw.class.name.gsub(/\(.*/, "").split("::").last
+        raise ArgumentError.new(
+          "embedding provider returned the wrong vector count: " \
+          "expected #{texts.size}, got #{actual}"
+        )
+      end
+
+      normalized = [] of Array(Float64)
+      dimensions : Int32? = nil
+      raw.each do |vector|
+        unless vector.raw.is_a?(Array(JSON::Any))
+          raise ArgumentError.new("embedding provider returned a non-list vector")
+        end
+
+        row = vector.raw.as(Array(JSON::Any))
+        if dims = dimensions
+          raise ArgumentError.new("embedding provider returned mixed vector dimensions") if row.size != dims
+        else
+          dimensions = row.size
+        end
+
+        normalized_row = [] of Float64
+        row.each do |value|
+          number = value.as_f?
+          if number.nil?
+            raise ArgumentError.new("embedding vector components must be numeric")
+          end
+          unless number.finite?
+            raise ArgumentError.new("embedding vector components must be finite")
+          end
+          normalized_row << number
+        end
+        normalized << normalized_row
+      end
+      normalized
+    end
+
+    # Resolve a dotted `event.<path>` expression against an Event, used by
+    # view specs' `around=` anchors (upstream `_resolve_event_path` in
+    # runtime/view_builder.py). Walks `event.payload.<...>` through the parsed
+    # JSON hash; other first segments (e.g. `id`, `type`) read event
+    # attributes. Returns nil when the expression doesn't start with `event`,
+    # is empty, or any segment is missing/null.
+    def resolve_event_path(expr : String, event : Event) : JSON::Any?
+      parts = expr.split(".")
+      return nil if parts.empty? || parts[0] != "event"
+
+      cur : JSON::Any = JSON.parse(event.payload)
+      parts[1..].each do |segment|
+        if segment == "payload"
+          next
+        else
+          value = cur[segment]?
+          return nil if value.nil? || value.raw.nil?
+          cur = value
+        end
+      end
+      cur.raw.nil? ? nil : cur
+    rescue JSON::ParseException
+      nil
+    end
+
+    # Reconstruct the pending-approval queue from the event log (v1.4):
+    # `approval.proposed` minus `approval.granted`, in proposal order. Only
+    # proposals whose events carry the deferred `data` payload are
+    # reconstructible; older events are skipped but still advance the
+    # approval-id counter so fresh proposals can't collide with recorded ids.
+    # Returns the pending approvals plus the next counter value. Ported from
+    # activegraph runtime/runtime.py `_rebuild_pending_approvals`.
+    def rebuild_pending_approvals(events : Array(Event)) : NamedTuple(pending: Array(Packs::PackPendingApproval), next_approval_n: Int32)
+      proposed, granted, max_n = scan_approval_log(events)
+
+      pending = [] of Packs::PackPendingApproval
+      proposed.each do |aid, payload|
+        next if granted.includes?(aid)
+
+        pending << Packs::PackPendingApproval.new(
+          id: aid, kind: "object",
+          object_type: payload["object_type"]?.try(&.as_s?) || "",
+          data: payload["data"]?.try(&.to_json) || %({}),
+          reason: payload["reason"]?.try(&.as_s?) || "",
+          pack: payload["pack"]?.try(&.as_s?) || "",
+        )
+      end
+      {pending: pending, next_approval_n: max_n + 1}
+    end
+
+    # Single pass over the log extracting approval.proposed payloads (only
+    # those carrying the deferred `data`), the granted approval ids, and the
+    # highest recorded approval counter.
+    private def scan_approval_log(events : Array(Event)) : {Hash(String, Hash(String, JSON::Any)), Set(String), Int32}
+      proposed = {} of String => Hash(String, JSON::Any)
+      granted = Set(String).new
+      max_n = 0
+      events.each do |event|
+        payload = JSON.parse(event.payload).as_h?
+        next unless payload
+
+        case event.type
+        when "approval.proposed"
+          aid = payload["approval_id"]?.try(&.as_s?) || ""
+          if (m = aid.match(/^approval_(\d+)$/)) && (n = m[1].to_i?)
+            max_n = Math.max(max_n, n)
+          end
+          proposed[aid] = payload if payload.has_key?("data")
+        when "approval.granted"
+          granted << (payload["approval_id"]?.try(&.as_s?) || "")
+        end
+      rescue JSON::ParseException
+        next
+      end
+      {proposed, granted, max_n}
+    end
+
+    # Per-field {old, new} diff for a promote replace-patch, including fields
+    # the replacement drops (rendered as new=null), so the trace line shows
+    # the full change like any other patch.applied. Keys are sorted; equality
+    # is numeric-aware (3 == 3.0 is unchanged). Ported from activegraph
+    # runtime/runtime.py `_promote_data_diff`.
+    def promote_data_diff(
+      old : Hash(String, JSON::Any),
+      new : Hash(String, JSON::Any),
+    ) : Hash(String, Hash(String, JSON::Any))
+      out = {} of String => Hash(String, JSON::Any)
+      (old.keys | new.keys).sort!.each do |key|
+        old_value = old[key]?
+        new_value = new[key]?
+        if old_value.nil? || new_value.nil? || !JsonCompare.json_equal?(old_value, new_value)
+          out[key] = {
+            "old" => old_value || JSON::Any.new(nil),
+            "new" => new_value || JSON::Any.new(nil),
+          }
+        end
+      end
+      out
+    end
+
     # Retry delay for an LLM attempt: exponential backoff
     # `initial * 2**attempt_index` capped at `maximum`, unless the provider
     # supplied a `retry_after_seconds` (then that value is used, clamped to
@@ -749,6 +977,7 @@ module Chronicle
       )
       fork_rt.inherit_pack_registrations(@pack_behaviors, @pack_state, @pack_tools)
       fork_rt.resume_from_idle(fork_events)
+      fork_rt.rebuild_pending_approvals_from_log(fork_events)
       fork_rt
     end
 
@@ -771,6 +1000,7 @@ module Chronicle
       log = LogAgent(M).new(agent, store: store, max_turns: max_turns)
       runtime = Runtime(M).new(store: store, log_agent: log, graph: graph, run_id: run_id)
       runtime.resume_from_idle(events)
+      runtime.rebuild_pending_approvals_from_log(events)
       runtime
     end
 
@@ -833,6 +1063,17 @@ module Chronicle
     # Mirrors upstream Runtime.load's _requeue_unfired.
     def resume_from_store(events : Array(Event)) : self
       resume_from_idle(events)
+    end
+
+    # Reconstruct the pending-approval queue from the event log
+    # (approval.proposed minus approval.granted) so proposals survive a
+    # reload/fork, and advance the approval-id counter past any recorded ids
+    # so fresh proposals can't collide (v1.4, upstream `_rebuild_pending_approvals`).
+    protected def rebuild_pending_approvals_from_log(events : Array(Event)) : self
+      result = RuntimeReason.rebuild_pending_approvals(events)
+      @pack_state.pack_pending_approvals.clear.concat(result[:pending])
+      @pack_state.next_approval_n = Math.max(@pack_state.next_approval_n, result[:next_approval_n])
+      self
     end
 
     # Raise when a fork cutoff would slice a promote block in half (CONTRACT
@@ -978,25 +1219,7 @@ module Chronicle
         end).id
       end
       plan.object_patches.each do |entry|
-        current = parent_graph.get_object(entry["id"].as_s)
-        expected = current.try(&.version) || 0_i64
-        applied << emit_delta.call("patch.applied", JSON.build do |j|
-          j.object do
-            j.field "patch" do
-              j.object do
-                j.field "id", parent_graph.ids.patch
-                j.field "target", entry["id"].as_s
-                j.field "op", "replace"
-                j.field "value" do
-                  j.raw(entry["data"].to_json)
-                end
-                j.field "expected_version", expected
-                j.field "proposed_by", actor
-              end
-            end
-            j.field "target", entry["id"].as_s
-          end
-        end).id
+        applied << emit_delta.call("patch.applied", promote_patch_payload(parent_graph, entry, actor)).id
       end
       plan.relation_creates.each do |entry|
         applied << emit_delta.call("relation.created", JSON.build do |j|
@@ -1014,6 +1237,36 @@ module Chronicle
       parent_graph.ids.reseed_from_events(parent_graph.events)
 
       PromoteResult.new(plan: plan, marker_event_id: marker.id, applied_event_ids: applied)
+    end
+
+    # The patch.applied payload for one promoted replace-patch: the patch
+    # object plus a per-field {old, new} `diff` (upstream `_promote_data_diff`)
+    # so the trace line shows the full change like any other patch.applied.
+    private def promote_patch_payload(graph : GraphProjection, entry : Hash(String, JSON::Any), actor : String) : String
+      current = graph.get_object(entry["id"].as_s)
+      expected = current.try(&.version) || 0_i64
+      old_data = JsonCompare.object_data_hash(current.try(&.data) || %({}))
+      new_data = entry["data"].as_h
+      JSON.build do |j|
+        j.object do
+          j.field "patch" do
+            j.object do
+              j.field "id", graph.ids.patch
+              j.field "target", entry["id"].as_s
+              j.field "op", "replace"
+              j.field "value" do
+                j.raw(entry["data"].to_json)
+              end
+              j.field "expected_version", expected
+              j.field "proposed_by", actor
+            end
+          end
+          j.field "target", entry["id"].as_s
+          j.field "diff" do
+            j.raw(RuntimeReason.promote_data_diff(old_data, new_data).to_json)
+          end
+        end
+      end
     end
 
     # Structural comparison of this run against `other` (typically a fork):

@@ -288,4 +288,30 @@ module Chronicle
       Time.utc.to_rfc3339
     end
   end
+
+  # A shipped provider family descriptor used by the cross-provider mismatch
+  # check (CONTRACT v1.0.2 #1 (b), upstream `_which_shipped_provider_claims`).
+  # Anthropic/OpenAI shipped providers are deferred in Chronicle; this class
+  # lets the decision logic stay fully testable without real shipped provider
+  # classes. Configuring a provider of class `provider_class` excludes that
+  # family from the "someone else claims this name" lookup, mirroring
+  # upstream's `exclude=type(provider)`.
+  class ShippedProviderFamily
+    getter name : String
+    getter default_model : String
+    getter provider_class : LLMProvider.class
+    @recognizes : Proc(String, Bool)
+
+    def initialize(
+      @name : String,
+      @default_model : String,
+      @provider_class : LLMProvider.class,
+      &@recognizes : String -> Bool
+    )
+    end
+
+    def recognizes?(name : String) : Bool
+      @recognizes.call(name)
+    end
+  end
 end
