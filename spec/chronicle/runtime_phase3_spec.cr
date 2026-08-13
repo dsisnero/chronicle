@@ -92,16 +92,16 @@ describe Chronicle::Runtime do
     runtime.pending_approvals.should be_empty
   end
 
-  it "enforces an authority ceiling" do
+  it "enforces an authority ceiling (CONTRACT v1.9 action-class path)" do
     runtime = Phase3SpecHelper.runtime
-    runtime.authority_ceiling.should be_nil
-    runtime.evaluate_capability_authority("read").should be_true
+    runtime.authority_ceiling.should eq("none")
+    runtime.evaluate_capability_authority(capability: "x.y", action_class: "R0").decision.should eq("require_approval")
 
-    runtime.set_authority_ceiling("write")
-    runtime.authority_ceiling.should eq("write")
-    runtime.evaluate_capability_authority("read").should be_true
-    runtime.evaluate_capability_authority("write").should be_true
-    runtime.evaluate_capability_authority("admin").should be_false
+    runtime.set_authority_ceiling("R1", actor: "owner", reason: "raise")
+    runtime.authority_ceiling.should eq("R1")
+    runtime.evaluate_capability_authority(capability: "x.y", action_class: "R0").decision.should eq("auto_approve")
+    runtime.evaluate_capability_authority(capability: "x.y", action_class: "R1").decision.should eq("auto_approve")
+    runtime.evaluate_capability_authority(capability: "x.y", action_class: "R2").decision.should eq("require_approval")
   end
 
   it "exports a trace and reports status" do

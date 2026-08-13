@@ -407,7 +407,6 @@ module Chronicle
     @execution_targets = [] of Routing::Target
     @execution_target_index = 0
     @approvals : ApprovalAdapter = ApprovalAdapter.new
-    @authority_ceiling : String? = nil
     @frame_stack : FrameStack = FrameStack.new
     @pack_state : Packs::PackRuntimeState = Packs::PackRuntimeState.new
     @pack_behaviors : Array(Packs::PackBehavior) = [] of Packs::PackBehavior
@@ -423,22 +422,15 @@ module Chronicle
     # `context.read` at commit.
     @trace_context_reads : Bool = false
 
-    # Action-class authority scale, lowest to highest.
-    AUTHORITY_RANKS = {"read" => 0, "write" => 1, "admin" => 2, "root" => 3}
-
-    # Budget limits for a run.
-    struct Budget
-      getter max_events : Int64
-
-      def initialize(@max_events : Int64 = 1000)
-      end
-    end
+    # Budget limits for a run. Multi-dimensional hard limits (upstream
+    # activegraph.runtime.budget); see `Chronicle::Budget`.
+    alias Budget = Chronicle::Budget
 
     def initialize(
       @store : EventStore,
       @log_agent : LogAgent(M),
       @policy : Routing::Policy? = nil,
-      @budget : Budget = Budget.new,
+      @budget : Budget = Budget.new(max_events: 1000),
       @available_targets : Array(Routing::Target) = [] of Routing::Target,
       @run_id : String = "default",
       @model_effect_worker : ModelEffectWorker? = nil,
@@ -652,9 +644,9 @@ module Chronicle
       run(prompt, caused_by: caused_by)
     end
 
-    # Events still available under the budget.
+    # Events still available under the max_events dimension.
     def budget_remaining : Int64
-      @budget.max_events - @store.count
+      (@budget.limits["max_events"] - @budget.used["max_events"]).to_i64
     end
 
     def start_budget(max_events : Int64) : self
@@ -1370,14 +1362,21 @@ module Chronicle
     end
 
     # Approve a pending pack approval and materialize the deferred object.
-    def approve_pack(approval_id : String) : GraphObject
+    def approve_pack(approval_id : String, approved_by : String? = nil) : GraphObject
       list = @pack_state.pack_pending_approvals
       approval = list.find { |a| a.id == approval_id }
       raise ApprovalError.new("pack approval not found: #{approval_id}") unless approval
       list.delete(approval)
+      append_event("approval.granted", JSON.build do |json|
+        json.object do
+          json.field "approval_id", approval_id
+          json.field "object_type", approval.object_type
+          json.field "approved_by", approved_by || "user"
+        end
+      end)
       graph = @graph
       raise ApprovalError.new("pack approval requires an attached graph") unless graph
-      graph.add_object(approval.object_type, approval.data, actor: "runtime")
+      graph.add_object(approval.object_type, approval.data, actor: approved_by || "user")
     end
 
     def current_frame_id : String?
@@ -1409,21 +1408,83 @@ module Chronicle
       @approvals.resolve(ApprovalDecision.new(request_id, approved: true))
     end
 
-    def authority_ceiling : String?
-      @authority_ceiling
+    def authority_ceiling : String
+      ceiling = "none"
+      @store.iter_events.each do |event|
+        next unless event.type == "authority.ceiling_changed"
+
+        payload = JSON.parse(event.payload).as_h?
+        value = payload.try(&.["ceiling"]?.try(&.as_s?))
+        ceiling = value if value && Authority::AUTHORITY_CEILINGS.includes?(value)
+      rescue JSON::ParseException
+        next
+      end
+      ceiling
     end
 
-    # ameba:disable Naming/AccessorMethodName
-    def set_authority_ceiling(level : String) : self
-      @authority_ceiling = level
-      self
+    # Change the instance automatic-authority ceiling. Logged, explicit
+    # (CONTRACT v1.9 #2): `ceiling` must be in `none | R0 | R1 | R2` —
+    # `R3`/`R4` are rejected loudly; `actor` and `reason` are mandatory
+    # provenance. Emits `authority.ceiling_changed` and returns the accepted
+    # event id. Ported from activegraph.runtime.runtime.Runtime#set_authority_ceiling.
+    def set_authority_ceiling(ceiling : String, *, actor : String, reason : String) : String
+      Authority.validate_ceiling(ceiling)
+      {"actor" => actor, "reason" => reason}.each do |name, value|
+        if value.strip.empty?
+          raise ArgumentError.new("set_authority_ceiling #{name} must be a non-empty string")
+        end
+      end
+      previous = authority_ceiling
+      append_event("authority.ceiling_changed", JSON.build do |json|
+        json.object do
+          json.field "ceiling", ceiling
+          json.field "previous_ceiling", previous
+          json.field "actor", actor
+          json.field "reason", reason
+        end
+      end, actor).id
     end
 
-    def evaluate_capability_authority(level : String) : Bool
-      ceiling = @authority_ceiling
-      return true if ceiling.nil?
-
-      (AUTHORITY_RANKS[level]? || -1) <= (AUTHORITY_RANKS[ceiling]? || -1)
+    # Evaluate one capability action on the canonical authority path
+    # (CONTRACT v1.9 #2): missing/invalid `action_class` fails closed to
+    # approval; `R4` routes to the governance gate always; `R3` requires
+    # approval always; `R0`–`R2` auto-approve iff at or below the EFFECTIVE
+    # ceiling — the stricter of the instance ceiling and `capability_ceiling`
+    # (local policy can only lower). Emits an `authority.decision` audit event
+    # (CONTRACT v1.9 #3); the returned decision carries the accepted event id.
+    # Ported from activegraph.runtime.runtime.Runtime#evaluate_capability_authority.
+    def evaluate_capability_authority(
+      *,
+      capability : String,
+      action_class : String,
+      capability_ceiling : String? = nil,
+      actor : String = "runtime",
+      caused_by : String? = nil,
+    ) : Authority::AuthorityDecision
+      decision = Authority.evaluate_action_authority(
+        capability: capability, action_class: action_class,
+        ceiling: authority_ceiling, capability_ceiling: capability_ceiling,
+      )
+      event = append_event("authority.decision", JSON.build do |json|
+        json.object do
+          json.field "capability", decision.capability
+          json.field "action_class", decision.action_class
+          json.field "ceiling", decision.ceiling
+          json.field "capability_ceiling", decision.capability_ceiling
+          json.field "effective_ceiling", decision.effective_ceiling
+          json.field "matched_policy", decision.matched_policy
+          json.field "decision", decision.decision
+          json.field "reason", decision.reason
+        end
+      end, actor)
+      Authority::AuthorityDecision.new(
+        capability: decision.capability, action_class: decision.action_class,
+        ceiling: decision.ceiling, capability_ceiling: decision.capability_ceiling,
+        effective_ceiling: decision.effective_ceiling,
+        matched_policy: decision.matched_policy,
+        decision: decision.decision, reason: decision.reason,
+        event_id: event.id,
+      )
     end
 
     # Record and return one exact, run-local developer override receipt. The
@@ -1576,11 +1637,7 @@ module Chronicle
       RuntimeStatus.new(
         run_id: @run_id, state: state, queue_depth: 0,
         events_processed: events.size.to_i64,
-        budget: BudgetSnapshot.new(
-          used: {} of String => Float64,
-          limits: {"max_events" => @budget.max_events.to_f64.as(Float64?)},
-          cost_used_usd: "0", cost_limit_usd: nil, exhausted_by: nil,
-        ),
+        budget: @budget.snapshot,
         frame: current_frame_id.try { |frame_id| FrameSnapshot.new(frame_id, nil) },
         registered_behaviors: behaviors,
         recent_events: recent_events,
@@ -2230,14 +2287,29 @@ module Chronicle
     end
 
     private def budget_exhausted? : Bool
-      @store.count >= @budget.max_events
+      @budget.consume("max_events", @store.count.to_f - @budget.used["max_events"])
+      !@budget.remaining
     end
 
     private def record_budget_exhausted : Nil
+      snap = @budget.snapshot
+      payload = JSON.build do |json|
+        json.object do
+          json.field "used" do
+            json.raw(snap.used.to_json)
+          end
+          json.field "limits" do
+            json.raw(snap.limits.to_json)
+          end
+          json.field "cost_used_usd", snap.cost_used_usd
+          json.field "cost_limit_usd", snap.cost_limit_usd
+          json.field "exhausted_by", snap.exhausted_by
+        end
+      end
       evt = Event.new(
         schema_version: 1_u16, sequence: next_seq, id: "budget_exhausted",
         type: "budget.exhausted", actor: "runtime", caused_by: nil,
-        timestamp: Time.utc, payload: %({"max_events":#{@budget.max_events}}),
+        timestamp: Time.utc, payload: payload,
       )
       @store.append(evt)
     end
@@ -2542,11 +2614,11 @@ module Chronicle
       output
     end
 
-    private def append_event(type : String, payload : String) : Event
+    private def append_event(type : String, payload : String, actor : String = "runtime") : Event
       event = Event.new(
         schema_version: 1_u16, sequence: next_seq,
         id: "#{type.gsub(".", "_")}_#{next_seq}",
-        type: type, actor: "runtime", caused_by: nil,
+        type: type, actor: actor, caused_by: nil,
         frame_id: current_frame_id,
         timestamp: Time.utc, payload: payload,
       )
