@@ -320,22 +320,216 @@ module Chronicle
   # that does not match the recorded log. event_id pins the first divergence
   # point; expected/actual describe recorded vs re-run. Ported from
   # activegraph.runtime.errors.ReplayDivergenceError (under ReplayError).
+  #
+  # The reference error class for the v1.0 message rewrite series. The
+  # keyword-only signature `(event_id:, expected:, actual:)` builds a
+  # structured message with a `kind` discriminator inferred from the inputs:
+  #
+  #   - expected starts with "prompt_hash="    -> prompt_hash_mismatch
+  #   - expected starts with "embedding_hash=" -> embedding_hash_mismatch
+  #   - expected == "<no recorded event>" or actual is nil -> length_mismatch
+  #   - otherwise -> type_mismatch
+  #
+  # The legacy message-plus-attrs constructor (`new(message, event_id:, ...)`)
+  # is preserved verbatim for pre-structured call sites.
   class ReplayDivergenceError < ReplayError
     DOC_SLUG = "replay-divergence-error"
 
+    NO_RECORDED_EVENT = "<no recorded event>"
+
     getter event_id : String
     getter expected : String
-    getter actual : String
+    getter actual : String?
+    getter kind : String
 
-    def initialize(message : String, *, event_id : String = "", expected : String = "", actual : String = "")
+    def initialize(message : String, *, event_id : String = "", expected : String = "", actual : String? = nil)
       @event_id = event_id
       @expected = expected
       @actual = actual
+      @kind = ""
       super(message)
+    end
+
+    def initialize(*, event_id : String, expected : String, actual : String?)
+      @event_id = event_id
+      @expected = expected
+      @actual = actual
+      built = self.class.build_message(event_id: event_id, expected: expected, actual: actual)
+      @kind = built[:kind]
+      super(
+        built[:summary],
+        what_failed: built[:what_failed],
+        why: built[:why],
+        how_to_fix: built[:how_to_fix],
+        context: {
+          "event_id" => JSON::Any.new(event_id),
+          "kind"     => JSON::Any.new(built[:kind]),
+          "expected" => JSON::Any.new(expected),
+          "actual"   => actual.nil? ? JSON::Any.new(nil) : JSON::Any.new(actual),
+        },
+      )
+    end
+
+    # Returns `(kind, summary, what_failed, why, how_to_fix)` for the four
+    # replay-divergence shapes (upstream `_build_message`). The discriminator
+    # is the input shape. Public so call sites and tests can render the same
+    # diagnostics without constructing the error.
+    def self.build_message(*, event_id : String, expected : String, actual : String?) : NamedTuple(kind: String, summary: String, what_failed: String, why: String, how_to_fix: String)
+      if expected.starts_with?("prompt_hash=")
+        prompt_hash_message(event_id, expected, actual)
+      elsif expected.starts_with?("embedding_hash=")
+        embedding_hash_message(event_id, expected, actual)
+      elsif expected == NO_RECORDED_EVENT || actual.nil?
+        length_message(event_id, expected, actual)
+      else
+        type_message(event_id, expected, actual)
+      end
     end
 
     def self.doc_slug : String
       DOC_SLUG
+    end
+
+    private def self.prompt_hash_message(event_id : String, expected : String, actual : String?) : NamedTuple(kind: String, summary: String, what_failed: String, why: String, how_to_fix: String)
+      actual_str = actual || "<no live response>"
+      {
+        kind:        "prompt_hash_mismatch",
+        summary:     "replay diverged at #{event_id}: LLM prompt hash mismatch",
+        what_failed: (
+          "Event #{event_id} (an `llm.requested` event in the recorded log) had a " \
+          "different prompt hash during this replay than the parent run recorded:\n" \
+          "  recorded:  #{expected}\n" \
+          "  live:      #{actual_str}"
+        ),
+        why: (
+          "The replay cache keys on the full prompt hash, so any change to an LLM " \
+          "behavior's code, a prompt template, a system message, or a tool's input " \
+          "arguments produces a mismatch. The framework refuses to silently substitute " \
+          "a stale cached response under a new prompt — that would break the audit " \
+          "trail the cache is designed to preserve."
+        ),
+        how_to_fix: (
+          "If the change was intentional (you edited a behavior or a prompt template),\n" \
+          "re-record the cache from the divergence point:\n" \
+          "    activegraph fork <parent-run> --at-event #{event_id} --record\n" \
+          "\n" \
+          "If the change was unintentional, diff your code against the recorded run's\n" \
+          "pack version and revert the change:\n" \
+          "    activegraph inspect <parent-run> --pack-version\n" \
+          "\n" \
+          "To see the full recorded prompt for this event:\n" \
+          "    activegraph inspect <parent-run> --event #{event_id}"
+        ),
+      }
+    end
+
+    private def self.embedding_hash_message(event_id : String, expected : String, actual : String?) : NamedTuple(kind: String, summary: String, what_failed: String, why: String, how_to_fix: String)
+      actual_str = actual || "<no live request>"
+      {
+        kind:        "embedding_hash_mismatch",
+        summary:     "replay diverged at #{event_id}: embedding input hash mismatch",
+        what_failed: (
+          "Event #{event_id} rebuilt a different runtime-owned embedding " \
+          "request than the recorded run:\n" \
+          "  recorded:  #{expected}\n" \
+          "  live:      #{actual_str}"
+        ),
+        why: (
+          "Embedding replay keys on the model and complete ordered text " \
+          "batch. Serving recorded vectors under a different content hash " \
+          "would silently corrupt retrieval results and provenance."
+        ),
+        how_to_fix: (
+          "Restore the recorded model/text construction or intentionally " \
+          "fork before this request and record a new embedding response."
+        ),
+      }
+    end
+
+    private def self.type_message(event_id : String, expected : String, actual : String?) : NamedTuple(kind: String, summary: String, what_failed: String, why: String, how_to_fix: String)
+      actual_str = actual || "<no live event>"
+      {
+        kind:        "type_mismatch",
+        summary:     "replay diverged at #{event_id}: event type mismatch",
+        what_failed: (
+          "At the stream position pinned to event #{event_id}, the live re-run " \
+          "produced a different event type than recorded:\n" \
+          "  recorded:  #{expected.inspect}\n" \
+          "  live:      #{actual_str.inspect}"
+        ),
+        why: (
+          "Strict replay compares the type stream of non-lifecycle events between the " \
+          "recorded log and the live re-run. A type mismatch means the behavior graph " \
+          "took a different branch — usually because a behavior's `where` filter, a " \
+          "pattern subscription, or a conditional `graph.emit` changed since the " \
+          "recorded run."
+        ),
+        how_to_fix: (
+          "Identify the behavior that produced event #{event_id} in the recorded log:\n" \
+          "    activegraph inspect <parent-run> --event #{event_id}\n" \
+          "\n" \
+          "Diff that behavior against your current source. If the change was\n" \
+          "intentional, re-run without `replay_strict=True` (or fork with --record\n" \
+          "from the divergence point). If unintentional, revert the behavior."
+        ),
+      }
+    end
+
+    private def self.length_message(event_id : String, expected : String, actual : String?) : NamedTuple(kind: String, summary: String, what_failed: String, why: String, how_to_fix: String)
+      if actual.nil?
+        {
+          kind:        "length_mismatch",
+          summary:     "replay diverged at #{event_id}: live re-run finished early",
+          what_failed: (
+            "The recorded log contained event #{event_id} (type #{expected.inspect}) at this " \
+            "position, but the live re-run terminated before producing it.\n" \
+            "  recorded:  #{expected.inspect}\n" \
+            "  live:      <no event produced>"
+          ),
+          why: (
+            "Strict replay requires the live re-run to produce the same number and " \
+            "shape of non-lifecycle events as the recording. A short live re-run means " \
+            "a behavior that fired in the recorded run no longer fires, or short-" \
+            "circuits earlier — usually because a pattern subscription, a `where` " \
+            "filter, or a guard condition was tightened since the recording."
+          ),
+          how_to_fix: (
+            "Identify the behavior that produced #{event_id} in the recorded log:\n" \
+            "    activegraph inspect <parent-run> --event #{event_id}\n" \
+            "\n" \
+            "Compare that behavior's current trigger conditions against the recorded\n" \
+            "run's. If the change was intentional, fork with --record from the\n" \
+            "divergence point to refresh the recording. If unintentional, revert."
+          ),
+        }
+      else
+        {
+          kind:        "length_mismatch",
+          summary:     "replay diverged at #{event_id}: live re-run produced an unrecorded event",
+          what_failed: (
+            "At the position pinned to event #{event_id}, the live re-run produced an " \
+            "event of type #{actual.inspect}, but the recorded log had no event here.\n" \
+            "  recorded:  <no event recorded>\n" \
+            "  live:      #{actual.inspect}"
+          ),
+          why: (
+            "Strict replay requires the live re-run's event stream to match the " \
+            "recording position-for-position. An extra live event means a behavior " \
+            "fires now that did not fire in the recorded run — usually because a new " \
+            "behavior was added, or a pattern subscription was loosened."
+          ),
+          how_to_fix: (
+            "List the behaviors currently registered and compare against the recorded\n" \
+            "pack version:\n" \
+            "    activegraph inspect <parent-run> --behaviors\n" \
+            "\n" \
+            "If the new behavior is intentional, re-record from this position:\n" \
+            "    activegraph fork <parent-run> --at-event #{event_id} --record\n" \
+            "\n" \
+            "If the behavior shouldn't fire here, tighten its trigger conditions."
+          ),
+        }
+      end
     end
   end
 

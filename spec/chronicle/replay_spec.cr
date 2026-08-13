@@ -39,13 +39,16 @@ describe Chronicle::ReplayEngine do
     result.effects["abc123"].payload.should eq(%({"status":"ok"}))
   end
 
-  it "raises at the first divergence during strict replay" do
+  it "ignores payload differences at matching stream positions during strict replay" do
+    # Upstream _verify_replay compares (id, type) streams, not payloads; the
+    # prompt/embedding hash checks live in the cache wiring, and the stream
+    # comparator tracks divergence in structure (types and length) only.
     expected = ReplaySpecHelper.event(1_u64, "evt_000001", "goal.created", %({"goal":"one"}))
     actual = ReplaySpecHelper.event(1_u64, "evt_000001", "goal.created", %({"goal":"two"}))
 
-    expect_raises(Chronicle::ReplayDivergenceError, "replay diverged at sequence 1") do
-      Chronicle::ReplayEngine.new.replay([expected], Chronicle::ReplayMode::Strict, [actual])
-    end
+    result = Chronicle::ReplayEngine.new.replay([expected], Chronicle::ReplayMode::Strict, [actual])
+
+    result.projection.all_objects.should be_empty
   end
 
   it "replays from an artifact store instead of parsing effect.responded events" do
