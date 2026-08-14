@@ -727,7 +727,7 @@ runtime/runtime.py::class::BehaviorFailure	class	ported	spec/chronicle/behavior_
 runtime/runtime.py::class::Context	class	missing	-	auto-generated
 runtime/runtime.py::class::RunQuantumResult	class	ported	spec/chronicle/run_quantum_spec.cr	RunQuantumResult value struct (process observations; elapsed never logged)
 runtime/runtime.py::class::Runtime	class	missing	-	auto-generated
-runtime/runtime.py::function::_budget_reason	function	intentional_divergence	-	private budget-reason prose helper; N/A — Chronicle's budget marker payload is a snapshot
+runtime/runtime.py::function::_budget_reason	function	ported	spec/chronicle/budget_reason_spec.cr	RuntimeReason.budget_reason maps a budget dimension name to the behavior.failed reason code (explicit tool/cost/llm map, max_-stripped default, nil -> budget.exhausted)
 runtime/runtime.py::function::_direct_embedding_event_ids	function	ported	spec/chronicle/direct_embedding_ids_spec.cr	Operator-invoked embedding pair ids strict replay excludes (upstream _direct_embedding_event_ids)
 runtime/runtime.py::function::_doc_url_for_reason	function	ported	spec/chronicle/doc_url_for_reason_spec.cr	RuntimeReason.doc_url_for_reason (llm./tool./budget. prefix -> doc slug; execution-error fallback); behavior.failed payload carries doc_url
 runtime/runtime.py::function::_first_goal	function	ported	spec/chronicle/first_goal_spec.cr	RuntimeReason.first_goal (first goal.created goal text; nil when none)

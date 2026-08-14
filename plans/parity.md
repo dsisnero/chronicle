@@ -565,7 +565,22 @@ From `parity.tsv` (`missing_contains` on Runtime):
       expression doesn't start with `event`, is empty, or any segment is
       missing/null. Ported from activegraph runtime/view_builder.py —
       `spec/chronicle/resolve_event_path_spec.cr`.
-- [x] Runtime sink surface — `Runtime#add_sink` / `remove_sink` /
+ - [x] `budget_reason` —
+      `Chronicle::RuntimeReason.budget_reason(name : String?)` maps a budget
+      dimension name to the `reason` code carried by `behavior.failed` /
+      `llm.failed` when a dimension exhausts (upstream `_budget_reason`):
+      `max_tool_calls` → `budget.tool_calls_exhausted`, `max_cost_usd` →
+      `budget.cost_exhausted`, `max_llm_calls` →
+      `budget.llm_calls_exhausted` (the explicit `_BUDGET_REASON_MAP`); any
+      other dimension derives `budget.<max_-stripped-name>_exhausted`
+      (`max_events` → `budget.events_exhausted`, `max_seconds` →
+      `budget.seconds_exhausted`, ...); nil renders the generic
+      `budget.exhausted`. The `max_`-stripping is a no-op for names without
+      the prefix (`custom` → `budget.custom_exhausted`), matching Python's
+      `removeprefix`. Every `KNOWN_LIMITS` dimension is covered. Ported from
+      activegraph runtime/runtime.py `_budget_reason` + test_reason_codes_docs.py
+      — `spec/chronicle/budget_reason_spec.cr`.
+ - [x] Runtime sink surface — `Runtime#add_sink` / `remove_sink` /
       `sink_statuses` / `flush_sinks` / `close_sinks` (CONTRACT v1.8)
       delegate to the attached graph (raising `IncompatibleRuntimeState`
       when no graph is attached for add). Historical events reconstructed

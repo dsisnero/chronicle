@@ -27,6 +27,27 @@ module Chronicle
       "#{DOCS_BASE_URL}/errors/execution-error"
     end
 
+    # Map a budget dimension name to the `reason` code carried by
+    # `behavior.failed` / `llm.failed` when a budget dimension exhausts.
+    # Explicitly-mapped dimensions keep their upstream codes (tool calls,
+    # cost, LLM calls); any other dimension derives
+    # `budget.<name-without-max_->_exhausted`; nil renders the generic
+    # `budget.exhausted`. Ported from activegraph.
+    def budget_reason(name : String?) : String
+      return "budget.exhausted" if name.nil?
+
+      case name
+      when "max_tool_calls"
+        "budget.tool_calls_exhausted"
+      when "max_cost_usd"
+        "budget.cost_exhausted"
+      when "max_llm_calls"
+        "budget.llm_calls_exhausted"
+      else
+        "budget.#{name.lchop("max_")}_exhausted"
+      end
+    end
+
     # True when an LLM failure reason is in the transient retry set
     # (CONTRACT v1.3 #3 — network/rate-limit retried, auth/request terminal).
     # Ported from activegraph.runtime.runtime._is_transient_llm_reason.
