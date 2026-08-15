@@ -3053,7 +3053,13 @@ module Chronicle
         return placeholder
       end
       tool = @tools.find { |registered| registered.name == name }
-      raise GraphProjectionError.new("unknown tool: #{name}") unless tool
+      unless tool
+        raise UnknownToolError.new(
+          "LLM called tool #{name.inspect} which is not declared",
+          tool_name: name,
+          declared_tools: @tools.map(&.name),
+        )
+      end
       output = tool.call(args)
       record_tool_responded(request_event, name, args, output)
       @tool_cache.try(&.record(name, args, output))

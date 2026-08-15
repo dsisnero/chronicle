@@ -647,6 +647,192 @@ module Chronicle
   class DevOverrideError < DomainError
   end
 
+  # An @llm_behavior is registered but the runtime has no LLM provider wired.
+  # Fires at registration/startup, not at invocation — the runtime validates
+  # the configuration once. Ported from activegraph.llm.errors.
+  class MissingProviderError < RegistrationError
+    DOC_SLUG = "missing-provider-error"
+
+    getter behavior_name : String?
+
+    def initialize(@behavior_name : String? = nil)
+      what = if name = @behavior_name
+               "An LLM-backed behavior (#{name.inspect}) was registered, " \
+               "but Runtime(...) was constructed without an `llm_provider=` " \
+               "argument."
+             else
+               "An @llm_behavior was registered, but Runtime(...) was " \
+               "constructed without an `llm_provider=` argument."
+             end
+      ctx = {} of String => JSON::Any
+      if name = @behavior_name
+        ctx["behavior_name"] = JSON::Any.new(name)
+      end
+      super(
+        "no LLM provider configured for @llm_behavior",
+        what_failed: what,
+        why: (
+          "@llm_behavior dispatches LLM calls through the provider " \
+          "attached to the runtime at construction. Failing loud at " \
+          "registration rather than at first invocation is the v0.6 " \
+          "contract — silently no-op'ing the behavior would corrupt " \
+          "the audit trail (behaviors fire and produce events; a " \
+          "missing provider would produce events that claim to " \
+          "depend on an LLM call that never happened)."
+        ),
+        how_to_fix: (
+          "Pass `llm_provider=` to the Runtime constructor:\n" \
+          "    from activegraph.llm.anthropic import AnthropicProvider\n" \
+          "    rt = Runtime(graph, llm_provider=AnthropicProvider())\n" \
+          "\n" \
+          "For offline replay or tests, use a recorded or scripted " \
+          "provider:\n" \
+          "    from activegraph.llm.recorded import RecordedLLMProvider\n" \
+          "    rt = Runtime(graph, llm_provider=RecordedLLMProvider(...))"
+        ),
+        context: ctx,
+      )
+    end
+
+    def self.doc_slug : String
+      DOC_SLUG
+    end
+  end
+
+  # An @llm_behavior declares a tool name the runtime cannot find in its
+  # tool registry at startup. Fires at construction time, not at LLM-call
+  # time. Ported from activegraph.tools.errors.
+  class MissingToolError < RegistrationError
+    DOC_SLUG = "missing-tool-error"
+
+    getter tool_name : String
+    getter behavior_name : String?
+    getter registered : Array(String)
+
+    def initialize(
+      @tool_name : String,
+      @behavior_name : String? = nil,
+      @registered : Array(String) = [] of String,
+    )
+      ctx = {"tool_name" => JSON::Any.new(@tool_name)}
+      if name = @behavior_name
+        ctx["behavior_name"] = JSON::Any.new(name)
+      end
+      unless @registered.empty?
+        ctx["registered"] = JSON::Any.new(@registered.map { |tool_name| JSON::Any.new(tool_name) })
+      end
+      sample = ""
+      unless @registered.empty?
+        preview = @registered.first(6).map { |tool_name| "'#{tool_name}'" }.join(", ")
+        extra = if @registered.size > 6
+                  " (+#{@registered.size - 6} more)"
+                else
+                  ""
+                end
+        sample = "\n  registered tools: #{preview}#{extra}"
+      end
+      on_behavior = if name = @behavior_name
+                      " on @llm_behavior #{name.inspect}"
+                    else
+                      ""
+                    end
+      super(
+        "no tool named #{@tool_name.inspect} is registered",
+        what_failed: (
+          "@llm_behavior declares the tool #{@tool_name.inspect}#{on_behavior}, " \
+          "but the Runtime's tool registry has no tool by that name.#{sample}"
+        ),
+        why: (
+          "@llm_behavior validates its declared tools at startup so a " \
+          "misconfiguration fails before any LLM call burns budget. " \
+          "A missing tool at LLM-call time would either produce " \
+          "UnknownToolError on every invocation (cost without " \
+          "progress) or silently drop the call (which would corrupt " \
+          "the audit trail). Validation at registration prevents both."
+        ),
+        how_to_fix: (
+          "Either register the tool with the runtime:\n" \
+          "    rt = Runtime(graph, tools=[my_tool, ...])\n" \
+          "or, if the tool comes from a pack, load the pack:\n" \
+          "    rt.load_pack(my_pack)\n" \
+          "\n" \
+          "For pack-scoped tools, use the canonical name " \
+          "`'pack_name.tool_name'` in the @llm_behavior's " \
+          "`tools=[...]` argument."
+        ),
+        context: ctx,
+      )
+    end
+
+    def self.doc_slug : String
+      DOC_SLUG
+    end
+  end
+
+  # An LLM response called a tool the behavior did not declare. The runtime
+  # catches it during the LLM tool-loop and surfaces it as
+  # `behavior.failed reason="tool.unknown_tool"`. Ported from
+  # activegraph.tools.errors.
+  class UnknownToolError < ExecutionError
+    DOC_SLUG = "unknown-tool-error"
+
+    getter tool_name : String?
+    getter behavior_name : String?
+    getter declared_tools : Array(String)
+
+    def initialize(
+      message : String,
+      @tool_name : String? = nil,
+      @behavior_name : String? = nil,
+      @declared_tools : Array(String) = [] of String,
+    )
+      ctx = {"message" => JSON::Any.new(message)}
+      if name = @tool_name
+        ctx["tool_name"] = JSON::Any.new(name)
+      end
+      if name = @behavior_name
+        ctx["behavior_name"] = JSON::Any.new(name)
+      end
+      unless @declared_tools.empty?
+        ctx["declared_tools"] = JSON::Any.new(@declared_tools.map { |tool_name| JSON::Any.new(tool_name) })
+      end
+      declared_list = if @declared_tools.empty?
+                        "(none declared)"
+                      else
+                        @declared_tools.map { |tool_name| "'#{tool_name}'" }.join(", ")
+                      end
+      super(
+        message,
+        what_failed: (
+          "An LLM response asked to invoke a tool that the calling " \
+          "behavior did not declare.\n" \
+          "  tool requested: #{@tool_name.inspect}\n" \
+          "  declared on behavior #{@behavior_name.inspect}: #{declared_list}"
+        ),
+        why: (
+          "@llm_behavior declares the exact set of tools the wrapped " \
+          "behavior is allowed to invoke. The runtime refuses any other " \
+          "tool call rather than silently execute it — an undeclared " \
+          "tool could perform side effects the behavior's audit trail " \
+          "doesn't account for, which would break replay determinism."
+        ),
+        how_to_fix: (
+          "Either add #{@tool_name.inspect} to the @llm_behavior's `tools=[...]` " \
+          "list (and confirm the tool is registered with @tool), or " \
+          "adjust the prompt so the model stops asking for it. If the " \
+          "model is consistently asking for an undeclared tool, the " \
+          "prompt may be implying capabilities the behavior doesn't " \
+          "have — be explicit about which tools are available."
+        ),
+        context: ctx,
+      )
+    end
+
+    def self.doc_slug : String
+      DOC_SLUG
+    end
+  end
+
   # A runtime operation requires a state the runtime is not in (e.g.
   # `fork` on a non-SQLite-backed runtime). Ported from activegraph's
   # IncompatibleRuntimeState.
