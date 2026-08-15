@@ -2495,6 +2495,7 @@ module Chronicle
         calls.each do |call|
           name = call.function.name
           args = call.function.arguments.to_json
+          enforce_tool_call_budget!(behavior, event, call)
           output = invoke_tool(name, args)
           running_messages << Crig::Completion::Message.tool_result_with_call_id(call.id, call.call_id, output)
         end
@@ -2508,6 +2509,29 @@ module Chronicle
       end
 
       final_response.choice.first.text.try(&.text) || ""
+    end
+
+    # The max_tool_calls budget gate for the LLM behavior tool loop. Before
+    # each tool invocation, if the budget has already consumed its max_tool_calls
+    # allowance, fail the behavior loud with reason="budget.tool_calls_exhausted"
+    # and the requested tool (upstream `_loop`'s pre-invocation check, CONTRACT
+    # v0.7 #6). Otherwise consume one max_tool_calls unit so the next call can
+    # trip the gate.
+    private def enforce_tool_call_budget!(
+      behavior : Packs::PackBehavior,
+      event : Event,
+      call : Crig::Completion::ToolCall,
+    ) : Nil
+      limit = @budget.limits.fetch("max_tool_calls", Float64::INFINITY)
+      used = @budget.used.fetch("max_tool_calls", 0.0)
+      if used >= limit
+        raise ToolError.new(
+          "budget.tool_calls_exhausted",
+          "max_tool_calls exhausted",
+          {"tool" => JSON::Any.new(call.function.name)},
+        )
+      end
+      @budget.consume("max_tool_calls")
     end
 
     # Resolve the behavior's declared tool names to registered Tool objects and
@@ -2686,6 +2710,8 @@ module Chronicle
                     error.as(UnknownToolError).tool_name
                   when MissingToolError
                     error.as(MissingToolError).tool_name
+                  when ToolError
+                    error.as(ToolError).payload_extras["tool"]?.try(&.as_s)
                   end
       traceback = error.backtrace.try(&.join("\n")) || ""
       append_event("behavior.failed", JSON.build do |json|
