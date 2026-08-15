@@ -133,6 +133,35 @@ module Chronicle
       SQLiteEventStore.list_runs(path).last?.try(&.run_id)
     end
 
+    # Open a SQLite store by bare path (v0.5-v0.7 sugar) or connection URL
+    # (v0.8), mirroring upstream `_open_sqlite_store`. A bare path is treated
+    # as a SQLite path directly; anything containing `://` is parsed with
+    # `parse_store_url` and dispatched by scheme (sqlite → its resolved
+    # `sqlite_path`). A postgres URL raises `IncompatibleRuntimeState` —
+    # the Postgres backend is deferred (the `EventStore` protocol is the
+    # path for adding it).
+    def open_sqlite_store(path_or_url : String, run_id : String) : SQLiteEventStore
+      if path_or_url.includes?("://")
+        parsed = Chronicle.parse_store_url(path_or_url)
+        case parsed.scheme
+        when "sqlite"
+          if sqlite_path = parsed.sqlite_path
+            SQLiteEventStore.new(sqlite_path, run_id: run_id)
+          else
+            raise IncompatibleRuntimeState.new(
+              "sqlite URL #{path_or_url.inspect} has no resolvable path"
+            )
+          end
+        else
+          raise IncompatibleRuntimeState.new(
+            "postgres store URLs are not supported yet; use a bare SQLite path or a sqlite:/// URL"
+          )
+        end
+      else
+        SQLiteEventStore.new(path_or_url, run_id: run_id)
+      end
+    end
+
     # Return a validated recorded cooperative wall-stop boundary
     # `(accepted_sequence, max_seconds_limit)` from a `runtime.budget_exhausted`
     # event whose `exhausted_by` is `max_seconds`, or nil when no such event
