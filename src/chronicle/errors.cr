@@ -588,7 +588,18 @@ module Chronicle
       message : String,
       @payload_extras : Hash(String, JSON::Any) = {} of String => JSON::Any,
     )
-      super(message)
+      prose = Chronicle::RuntimeReason.llm_prose(@reason, message)
+      super(
+        "#{@reason}: #{message}",
+        what_failed: prose[:what_failed],
+        why: prose[:why],
+        how_to_fix: prose[:how_to_fix],
+        context: {
+          "reason"         => JSON::Any.new(@reason),
+          "message"        => JSON::Any.new(message),
+          "payload_extras" => JSON::Any.new(@payload_extras),
+        },
+      )
     end
   end
 
@@ -615,7 +626,18 @@ module Chronicle
       message : String,
       @payload_extras : Hash(String, JSON::Any) = {} of String => JSON::Any,
     )
-      super(message)
+      prose = Chronicle::RuntimeReason.tool_prose(@reason, message)
+      super(
+        "#{@reason}: #{message}",
+        what_failed: prose[:what_failed],
+        why: prose[:why],
+        how_to_fix: prose[:how_to_fix],
+        context: {
+          "reason"         => JSON::Any.new(@reason),
+          "message"        => JSON::Any.new(message),
+          "payload_extras" => JSON::Any.new(@payload_extras),
+        },
+      )
     end
   end
 

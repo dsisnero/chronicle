@@ -463,6 +463,384 @@ module Chronicle
 
       Math.min(initial * (2 ** attempt_index), maximum)
     end
+
+    # --- Per-reason prose for structured error fields --------------------
+    # Ported from activegraph.llm.errors (_LLM_REASON_PROSE) and
+    # activegraph.tools.errors (_TOOL_REASON_PROSE). Each entry builds the
+    # what_failed / why / how_to_fix triple for LLMBehaviorError / ToolError.
+    # `message` from the call site is interpolated into what_failed; `why`
+    # and `how_to_fix` are reason-specific and stable across instances.
+
+    private def llm_prose_parse_error(message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "The LLM provider returned a response that the framework could not " \
+          "parse as JSON:\n  #{message}"
+        ),
+        why: (
+          "LLM behaviors with a structured `output_schema` expect the model to " \
+          "return JSON that matches the schema; the framework parses the " \
+          "response and constructs typed objects from it. A response that " \
+          "isn't valid JSON breaks the contract that downstream behaviors " \
+          "depend on — they receive typed objects, not raw strings — so the " \
+          "framework fails the call rather than guess at structure."
+        ),
+        how_to_fix: (
+          "If the provider is real, the model's response is non-deterministic; " \
+          "try raising the prompt's emphasis on JSON-only output, or lowering " \
+          "temperature. If the provider is a fixture (RecordedLLMProvider), " \
+          "the recorded response is malformed — re-record from a clean run.\n" \
+          "\n" \
+          "The full response is in the `behavior.failed` event's `payload_extras`; " \
+          "inspect it with:\n" \
+          "    activegraph inspect <store> --event <behavior.failed-id>"
+        ),
+      }
+    end
+
+    private def llm_prose_schema_violation(message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "The LLM provider returned valid JSON, but the JSON did not match " \
+          "the behavior's declared `output_schema`:\n  #{message}"
+        ),
+        why: (
+          "Pydantic validates every LLM response against the schema declared on " \
+          "`@llm_behavior(output_schema=...)`. Schema-violating responses are " \
+          "refused at the boundary so downstream behaviors receive only objects " \
+          "that obey the schema — replay determinism depends on this."
+        ),
+        how_to_fix: (
+          "Check whether the schema's required fields match what the model " \
+          "actually produces. Common causes: a required field is missing in " \
+          "the response, an enum value is out-of-range, or a list field " \
+          "contains items of the wrong type. Add the missing fields to the " \
+          "prompt's example output, or relax the schema (e.g. `Optional[X]`) " \
+          "if the field genuinely can be absent."
+        ),
+      }
+    end
+
+    private def llm_prose_fixture_missing(message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "The RecordedLLMProvider has no fixture for this prompt:\n  #{message}"
+        ),
+        why: (
+          "RecordedLLMProvider replays a directory of recorded LLM responses keyed " \
+          "by prompt content hash. A missing fixture means the live prompt's hash " \
+          "doesn't match any recorded response — either the prompt changed since " \
+          "the fixtures were recorded (a behavior edit, a template change, a " \
+          "tool input difference), or this is a new prompt that was never " \
+          "recorded."
+        ),
+        how_to_fix: (
+          "Re-record the fixture from a live run with the current prompt:\n" \
+          "    1. Switch to AnthropicProvider (set ANTHROPIC_API_KEY)\n" \
+          "    2. Run the goal once to produce live LLM responses\n" \
+          "    3. The provider records each response to the fixture directory\n" \
+          "    4. Subsequent runs against RecordedLLMProvider replay them\n" \
+          "\n" \
+          "Or diff the prompt against the recorded version to find the drift."
+        ),
+      }
+    end
+
+    private def llm_prose_rate_limited(message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "The LLM provider rejected the request as rate-limited:\n  #{message}"
+        ),
+        why: (
+          "Providers cap requests per minute / tokens per minute. When the cap " \
+          "is hit, the runtime makes a small bounded set of provider-call " \
+          "retries before emitting the terminal `behavior.failed` event. The " \
+          "retry attempts are recorded as `llm.responded` events with an " \
+          "`error` payload so operators can distinguish provider unavailability " \
+          "from a legitimate empty extraction."
+        ),
+        how_to_fix: (
+          "Wait until the rate-limit window resets (provider-specific — usually " \
+          "60 seconds), then re-run from the last good event. If this happens " \
+          "during fork/replay, the cache hit should normally prevent the live " \
+          "call — check whether the prompt hash matches the recorded one."
+        ),
+      }
+    end
+
+    private def llm_prose_network_error(message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "The LLM provider call failed with a network error:\n  #{message}"
+        ),
+        why: (
+          "The framework treats network failures as transient and retries the " \
+          "provider call a small bounded number of times before emitting the " \
+          "terminal `behavior.failed` event. Failed attempts are visible in " \
+          "the log as `llm.responded` events with an `error` payload, so a " \
+          "provider outage cannot be confused with a valid empty response."
+        ),
+        how_to_fix: (
+          "If the retry budget is exhausted, re-run the goal — fork-and-replay " \
+          "from the last successful event:\n" \
+          "    activegraph fork <run> --at-event <last-good> --record\n" \
+          "For systematic outages, the provider's status page is the canonical " \
+          "source. Switching to RecordedLLMProvider with previously-recorded " \
+          "fixtures lets the run complete offline."
+        ),
+      }
+    end
+
+    private def llm_prose_auth_error(message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "The LLM provider rejected the request's credentials:\n  #{message}"
+        ),
+        why: (
+          "Authentication and permission failures (HTTP 401/403, " \
+          "`AuthenticationError`, `PermissionDeniedError`) are terminal: " \
+          "retrying the same request with the same credentials cannot " \
+          "succeed, so the runtime fails immediately instead of burning " \
+          "the retry budget. Before v1.3 these were classified as " \
+          "`llm.network_error` and retried with backoff — CONTRACT v1.3 #3 " \
+          "split them out."
+        ),
+        how_to_fix: (
+          "Check the provider API key in the environment " \
+          "(`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`): is it set in THIS " \
+          "process's environment, is it current (keys get rotated and " \
+          "revoked), and does it have access to the requested model? The " \
+          "provider dashboard's API-keys page is the canonical source."
+        ),
+      }
+    end
+
+    private def llm_prose_request_error(message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "The LLM provider rejected the request as invalid:\n  #{message}"
+        ),
+        why: (
+          "4xx request failures other than auth and rate-limit (HTTP " \
+          "400/404/422 — malformed parameters, unknown model, oversize " \
+          "payload) are terminal: the same bytes will fail the same way " \
+          "on every retry, so the runtime fails immediately instead of " \
+          "burning the retry budget. Before v1.3 these were classified as " \
+          "`llm.network_error` and retried with backoff — CONTRACT v1.3 #3 " \
+          "split them out."
+        ),
+        how_to_fix: (
+          "The provider's message above names the offending parameter. " \
+          "Common causes: a model name the account can't access, a " \
+          "sampling parameter the model family rejects, or a request " \
+          "exceeding the model's context window. Fix the " \
+          "`@llm_behavior(...)` configuration and re-run."
+        ),
+      }
+    end
+
+    private def llm_prose_fallback(reason : String, message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "An @llm_behavior wrapper failed with reason #{reason.inspect}:\n  #{message}"
+        ),
+        why: (
+          "The runtime catches structured failures from @llm_behavior bodies " \
+          "and merges them into the emitted `behavior.failed` event, where " \
+          "downstream code can read `reason=#{reason.inspect}` and decide how " \
+          "to proceed. The exception you're seeing is the underlying carrier."
+        ),
+        how_to_fix: (
+          "Inspect the `behavior.failed` event in the trace:\n" \
+          "    activegraph inspect <store> --tail 50\n" \
+          "\n" \
+          "The full message is preserved verbatim above; check the LLM " \
+          "provider's documentation for reason #{reason.inspect}."
+        ),
+      }
+    end
+
+    LLM_REASON_PROSE = {
+      "llm.parse_error"      => ->(m : String) { llm_prose_parse_error(m) },
+      "llm.schema_violation" => ->(m : String) { llm_prose_schema_violation(m) },
+      "llm.fixture_missing"  => ->(m : String) { llm_prose_fixture_missing(m) },
+      "llm.rate_limited"     => ->(m : String) { llm_prose_rate_limited(m) },
+      "llm.network_error"    => ->(m : String) { llm_prose_network_error(m) },
+      "llm.auth_error"       => ->(m : String) { llm_prose_auth_error(m) },
+      "llm.request_error"    => ->(m : String) { llm_prose_request_error(m) },
+    } of String => Proc(String, NamedTuple(what_failed: String, why: String, how_to_fix: String))
+
+    def llm_prose(reason : String, message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      prose_fn = LLM_REASON_PROSE[reason]?
+      prose_fn ? prose_fn.call(message) : llm_prose_fallback(reason, message)
+    end
+
+    private def tool_prose_timeout(message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "A tool invocation exceeded its declared `timeout_seconds`:\n  #{message}"
+        ),
+        why: (
+          "Tools declare a per-call timeout at the decorator. The runtime " \
+          "enforces it so a slow or hung tool can't stall the whole behavior " \
+          "loop. A timed-out call returns a structured failure to the calling " \
+          "behavior; the behavior decides whether to retry, fall back, or " \
+          "fail."
+        ),
+        how_to_fix: (
+          "If the timeout is too aggressive for the expected work, raise the " \
+          "tool's `timeout_seconds`. If the timeout is hitting because the " \
+          "endpoint is slow under contention, the right answer is usually a " \
+          "narrower retry policy in the calling behavior rather than a higher " \
+          "ceiling."
+        ),
+      }
+    end
+
+    private def tool_prose_network_error(message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "A tool call failed with a network error:\n  #{message}"
+        ),
+        why: (
+          "Tools that reach the network can fail for many reasons (DNS, TLS, " \
+          "connection drop, mid-transfer error). The framework treats these as " \
+          "structured tool failures rather than untyped exceptions so the " \
+          "calling behavior can read `reason='tool.network_error'` from the " \
+          "tool.responded event payload and decide how to proceed."
+        ),
+        how_to_fix: (
+          "Inspect the tool.responded event for the full underlying error. " \
+          "Common recoveries: re-run after the network stabilizes, switch to " \
+          "RecordedTool for offline replay, or add explicit retry-on-network " \
+          "logic in the calling behavior."
+        ),
+      }
+    end
+
+    private def tool_prose_invalid_input(message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "A tool was invoked with arguments that didn't match its input schema:\n  #{message}"
+        ),
+        why: (
+          "Tools declare typed input via Pydantic models. The framework " \
+          "validates arguments before invoking the body so a malformed call " \
+          "fails at the boundary with a clear error instead of producing a " \
+          "stack trace inside the tool. This is the same Pydantic invariant " \
+          "the LLM output_schema enforces — typed input is the contract."
+        ),
+        how_to_fix: (
+          "Check the tool's declared input schema (in the @tool decorator) " \
+          "against the arguments the LLM produced. If the LLM is producing " \
+          "consistently malformed args, the prompt may need an explicit " \
+          "example of correct invocation; if the tool's schema is too " \
+          "strict, relax the relevant field."
+        ),
+      }
+    end
+
+    private def tool_prose_invalid_output(message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "A tool returned a value that didn't match its output schema:\n  #{message}"
+        ),
+        why: (
+          "Tools declare typed output via Pydantic models. The framework " \
+          "validates the return value before merging it into the " \
+          "tool.responded event so downstream behaviors can rely on the " \
+          "shape. A schema-violating return is a bug in the tool body — " \
+          "the audit trail would lie if the framework silently coerced it."
+        ),
+        how_to_fix: (
+          "Fix the tool body to return data matching the declared schema, " \
+          "or relax the schema if the actual return shape is correct. The " \
+          "underlying value is in the tool.responded payload for inspection."
+        ),
+      }
+    end
+
+    private def tool_prose_execution_error(message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "A tool body raised an exception:\n  #{message}"
+        ),
+        why: (
+          "When a tool body raises, the framework catches it and surfaces a " \
+          "structured failure so the calling behavior can read " \
+          "`reason='tool.execution_error'` from tool.responded and decide " \
+          "whether to retry or fail. The raw exception is preserved in " \
+          "payload_extras for diagnosis without leaking it past the tool " \
+          "boundary."
+        ),
+        how_to_fix: (
+          "Inspect tool.responded.payload_extras for the original exception " \
+          "type and traceback. If the failure is intrinsic to the tool's " \
+          "inputs (bad data), tighten the input validation. If it's " \
+          "intermittent, add retry-on-execution-error logic to the calling " \
+          "behavior."
+        ),
+      }
+    end
+
+    private def tool_prose_fixture_missing(message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "A RecordedTool has no fixture for this argument combination:\n  #{message}"
+        ),
+        why: (
+          "RecordedTool replays a directory of recorded tool responses keyed " \
+          "by tool name + argument hash. A missing fixture means the live " \
+          "arguments don't match any recorded invocation — either the tool's " \
+          "arguments changed since recording (a behavior edit, an upstream " \
+          "data shift), or this is a new invocation that was never recorded."
+        ),
+        how_to_fix: (
+          "Re-record the fixture from a live run with the current arguments:\n" \
+          "    1. Switch the tool to its live implementation\n" \
+          "    2. Run the goal once to produce live responses\n" \
+          "    3. The recorder writes new fixtures alongside the existing ones\n" \
+          "    4. Subsequent runs against RecordedTool replay them\n" \
+          "\n" \
+          "Or diff the args against the recorded hash to find the drift."
+        ),
+      }
+    end
+
+    private def tool_prose_fallback(reason : String, message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      {
+        what_failed: (
+          "A tool invocation failed with reason #{reason.inspect}:\n  #{message}"
+        ),
+        why: (
+          "The runtime catches structured failures from tool bodies and merges " \
+          "them into the emitted tool.responded event, where the calling " \
+          "behavior can read `reason=#{reason.inspect}` and decide how to " \
+          "proceed. The exception you're seeing is the underlying carrier."
+        ),
+        how_to_fix: (
+          "Inspect the tool.responded event in the trace:\n" \
+          "    activegraph inspect <store> --tail 50\n" \
+          "\n" \
+          "The full message is preserved verbatim above; check the tool's " \
+          "documentation for reason #{reason.inspect}."
+        ),
+      }
+    end
+
+    TOOL_REASON_PROSE = {
+      "tool.timeout"         => ->(m : String) { tool_prose_timeout(m) },
+      "tool.network_error"   => ->(m : String) { tool_prose_network_error(m) },
+      "tool.invalid_input"   => ->(m : String) { tool_prose_invalid_input(m) },
+      "tool.invalid_output"  => ->(m : String) { tool_prose_invalid_output(m) },
+      "tool.execution_error" => ->(m : String) { tool_prose_execution_error(m) },
+      "tool.fixture_missing" => ->(m : String) { tool_prose_fixture_missing(m) },
+    } of String => Proc(String, NamedTuple(what_failed: String, why: String, how_to_fix: String))
+
+    def tool_prose(reason : String, message : String) : NamedTuple(what_failed: String, why: String, how_to_fix: String)
+      prose_fn = TOOL_REASON_PROSE[reason]?
+      prose_fn ? prose_fn.call(message) : tool_prose_fallback(reason, message)
+    end
   end
 
   # Agent harness runtime — orchestrates the event loop, budget, and
