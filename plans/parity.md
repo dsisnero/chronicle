@@ -1199,19 +1199,26 @@ globally (CONTRACT v0.9 #3).
       the behavior's declarations. Ported from activegraph llm/errors.py +
       tools/errors.py + test_errors_format.py —
       `spec/chronicle/error_registration_spec.cr`.
-- [x] LLM-behavior unknown-tool refusal (CONTRACT v0.7 #6) —
-      `invoke_llm_behavior`'s response path now inspects the model choice
-      for tool calls; when the behavior declares tools and the model asks
-      for an undeclared one, the runtime raises `UnknownToolError`
-      (`refuse_undeclared_tool_calls`), which `record_behavior_failed`
-      folds into a `behavior.failed` event with `reason="tool.unknown_tool"`
-      and a `tool` extra (upstream `_emit_behavior_failed(..., reason=...,
-      extras={"tool": name})`). The behavior fails loud instead of silently
-      dropping or executing an undeclared call. Partial port of upstream
-      `_invoke_llm_body`/`_loop`: the undeclared-tool refusal is in place,
-      but declared-tool invocation, tool-result feedback, and the
-      re-call turn loop (max_tool_turns / budget gates) remain pending.
-      Ported from activegraph tests/test_llm_tool_loop.py —
+- [x] LLM-behavior tool loop with declared-tool invocation + unknown-tool
+      refusal (CONTRACT v0.7 #6) — `execute_llm_behavior_request` now runs the
+      upstream `_invoke_llm_body` turn loop: it resolves `behavior.tools` to
+      registered tools (a declared-but-unregistered tool raises
+      `MissingToolError`, folded to `behavior.failed reason="tool.unknown_tool"`
+      with a `tool` extra), attaches the tool definitions to the request, and
+      loops up to `max(1, behavior.max_tool_turns)` turns. Each turn calls the
+      model; when the response carries tool calls, the runtime refuses any
+      undeclared call (`refuse_undeclared_tool_calls` →
+      `reason="tool.unknown_tool"`), invokes each declared call via
+      `invoke_tool` (recording causally-linked `tool.requested` /
+      `tool.responded`), appends the assistant turn + tool-result messages to
+      the running conversation, and re-calls with the accumulated messages so
+      each turn's prompt hash / cache key differs. A non-tool response breaks
+      the loop; exhausting `max_tool_turns` without one raises a `ToolError`
+      folded to `reason="tool.max_turns_exhausted"` with a `max_tool_turns`
+      extra. The handler receives only the final non-tool output. Ported from
+      activegraph tests/test_llm_tool_loop.py (one/two-turn chains,
+      max_tool_turns exhaustion, unknown-tool refusal) —
+      `spec/chronicle/declared_tool_loop_spec.cr`,
       `spec/chronicle/unknown_tool_loop_spec.cr`.
 
 ## Acceptance Gates
