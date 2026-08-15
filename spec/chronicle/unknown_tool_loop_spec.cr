@@ -36,6 +36,11 @@ module UnknownToolPack
   def ex(event : Chronicle::Event, graph : Chronicle::GraphProjection, ctx : Chronicle::Packs::BehaviorContext, output : String)
   end
 
+  @[Tool(name: "my_tool", description: "t")]
+  def my_tool(args : String) : String
+    %({"answer":"ok"})
+  end
+
   pack(name: "llmtool", version: "0.1.0")
 end
 
@@ -52,7 +57,6 @@ private def unknown_tool_behavior_runtime : {Chronicle::MemoryEventStore, Chroni
     log_agent: la,
     graph: graph,
     model_effect_worker: worker,
-    tools: [Chronicle::Tool.new("my_tool", "t") { |args| %({"answer":"ok"}) }],
   )
   {store, graph, rt}
 end

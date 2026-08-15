@@ -313,8 +313,7 @@ module Chronicle
           json.field "paths", @paths
           @target.to_json(json)
           json.field "fallbacks" do
-            # ameba:disable Style/VerboseBlock
-            json.array { @fallbacks.each { |fallback| fallback.to_json(json) } }
+            json.array { @fallbacks.each(&.to_json(json)) }
           end
           json.field "required_permissions", @required_permissions
           json.field "local_only", @local_only

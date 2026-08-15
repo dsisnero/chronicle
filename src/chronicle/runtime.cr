@@ -2429,7 +2429,11 @@ module Chronicle
 
     # Compose the LLM behavior prompt and run it through the same model effect
     # pipeline used by the agent loop (llm.requested -> execute -> llm.responded,
-    # with cache and fallback). Returns the model output text.
+    # with cache and fallback). Runs the upstream turn loop: when the model asks
+    # for a declared tool, the runtime invokes it (recording tool.requested /
+    # tool.responded), feeds the result back into the conversation, and re-calls
+    # the model until a non-tool response arrives or max_tool_turns is exhausted.
+    # Returns the model output text.
     private def execute_llm_behavior_request(
       behavior : Packs::PackBehavior,
       event : Event,
@@ -2438,35 +2442,137 @@ module Chronicle
     ) : String
       system = build_llm_system(behavior)
       user = build_llm_user_message(behavior, event, graph)
-      payload = JSON.build do |json|
-        json.object do
-          json.field "behavior", behavior.name
-          json.field "system", system
-          json.field "user", user
-          json.field "model", behavior.model.to_s
-          json.field "max_tokens", behavior.max_tokens
-          json.field "temperature", behavior.temperature
-        end
-      end
+      tool_defs = resolve_behavior_tools(behavior)
 
-      effect = EffectRequest.new(
-        "llm_behavior_#{next_seq}",
-        EffectKind::Model,
-        payload,
-      )
-
-      builder = Crig::Completion::Request::CompletionRequestBuilder.new(
+      base_builder = Crig::Completion::Request::CompletionRequestBuilder.new(
         user
       )
-      builder = builder
+      base_builder = base_builder
         .preamble(system)
         .model(behavior.model || "claude-sonnet-4-5")
         .temperature(behavior.temperature)
         .max_tokens(behavior.max_tokens.to_i64)
+      base_builder = tool_defs.empty? ? base_builder : base_builder.tools(tool_defs)
 
-      response = execute_model_request(effect, builder.build, caused_by: event.id)
-      refuse_undeclared_tool_calls(behavior, event, response)
-      response.choice.first.text.try(&.text) || ""
+      running_messages = [] of Crig::Completion::Message
+      final_response = nil
+
+      Math.max(1, behavior.max_tool_turns).times do |turn_idx|
+        payload = JSON.build do |json|
+          json.object do
+            json.field "behavior", behavior.name
+            json.field "system", system
+            json.field "user", user
+            json.field "model", behavior.model.to_s
+            json.field "max_tokens", behavior.max_tokens
+            json.field "temperature", behavior.temperature
+            json.field "turn_index", turn_idx
+            json.field "messages" do
+              json.array do
+                running_messages.each { |message| serialize_running_message(message, json) }
+              end
+            end
+          end
+        end
+
+        effect = EffectRequest.new(
+          "llm_behavior_#{next_seq}",
+          EffectKind::Model,
+          payload,
+        )
+
+        builder = running_messages.empty? ? base_builder : base_builder.messages(running_messages)
+        response = execute_model_request(effect, builder.build, caused_by: event.id)
+        refuse_undeclared_tool_calls(behavior, event, response)
+
+        calls = response.choice.to_a.compact_map(&.tool_call)
+        if calls.empty?
+          final_response = response
+          break
+        end
+
+        running_messages << Crig::Completion::Message.from(response.choice)
+        calls.each do |call|
+          name = call.function.name
+          args = call.function.arguments.to_json
+          output = invoke_tool(name, args)
+          running_messages << Crig::Completion::Message.tool_result_with_call_id(call.id, call.call_id, output)
+        end
+      end
+
+      unless final_response
+        raise ToolError.new(
+          "tool.max_turns_exhausted",
+          "exceeded max_tool_turns=#{behavior.max_tool_turns} without a non-tool response",
+        )
+      end
+
+      final_response.choice.first.text.try(&.text) || ""
+    end
+
+    # Resolve the behavior's declared tool names to registered Tool objects and
+    # build the provider-facing tool definitions list. A declared tool that
+    # isn't registered fails the behavior (reason="tool.unknown_tool"), mirroring
+    # upstream `_invoke_llm_body`'s MissingToolError guard.
+    private def resolve_behavior_tools(behavior : Packs::PackBehavior) : Array(Crig::Completion::ToolDefinition)
+      behavior.tools.map do |name|
+        tool = get_tool(name)
+        if tool.nil?
+          raise MissingToolError.new(
+            name,
+            behavior_name: behavior.name,
+            registered: (@tools.map(&.name) + @pack_tools.map(&.name)).uniq,
+          )
+        end
+        Crig::Completion::ToolDefinition.new(
+          tool.name,
+          tool.description,
+          JSON::Any.new({"type" => JSON::Any.new("object")}),
+        )
+      end
+    end
+
+    # Render one running-conversation message into the turn-payload JSON so each
+    # turn's prompt hash (and cache key) reflects the accumulated tool feedback.
+    # `Message` carries a generic `to_json(io)` (no JSON::Serializable), so the
+    # role plus the text / tool-call / tool-result content is built explicitly.
+    private def serialize_running_message(message : Crig::Completion::Message, json : JSON::Builder) : Nil
+      json.object do
+        json.field "role" do
+          case message.role
+          in .assistant? then json.string "assistant"
+          in .user?      then json.string "user"
+          in .system?    then json.string "system"
+          end
+        end
+        json.field "content" do
+          json.array do
+            message.content.each do |item|
+              json.object do
+                case item
+                when Crig::Completion::UserContent
+                  json.field "kind", "user"
+                  if tool_result = item.tool_result
+                    json.field "tool_result", tool_result.id
+                    texts = tool_result.content.map(&.text)
+                    json.field "tool_result_text", texts.join(", ")
+                  end
+                  json.field "text", item.text.try(&.text)
+                when Crig::Completion::AssistantContent
+                  json.field "kind", "assistant"
+                  if call = item.tool_call
+                    json.field "tool_call", call.id
+                    json.field "tool_name", call.function.name
+                    json.field "arguments", call.function.arguments
+                  else
+                    json.field "text", item.text.try(&.text)
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
     end
 
     # The model asked for a tool the behavior did not declare. Refuse loudly
@@ -2570,10 +2676,17 @@ module Chronicle
                  error.as(LLMBehaviorError).reason
                when UnknownToolError
                  "tool.unknown_tool"
+               when MissingToolError
+                 "tool.unknown_tool"
                when ToolError
                  error.as(ToolError).reason
                end
-      tool_name = error.is_a?(UnknownToolError) ? error.as(UnknownToolError).tool_name : nil
+      tool_name = case error
+                  when UnknownToolError
+                    error.as(UnknownToolError).tool_name
+                  when MissingToolError
+                    error.as(MissingToolError).tool_name
+                  end
       traceback = error.backtrace.try(&.join("\n")) || ""
       append_event("behavior.failed", JSON.build do |json|
         json.object do
@@ -3090,7 +3203,7 @@ module Chronicle
         record_tool_responded(request_event, name, args, placeholder)
         return placeholder
       end
-      tool = @tools.find { |registered| registered.name == name }
+      tool = get_tool(name)
       unless tool
         raise UnknownToolError.new(
           "LLM called tool #{name.inspect} which is not declared",
