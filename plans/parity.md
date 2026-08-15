@@ -1163,6 +1163,26 @@ globally (CONTRACT v0.9 #3).
       from activegraph runtime/errors.py + test_errors_format.py +
       test_replay.py —
       `spec/chronicle/replay_divergence_error_spec.cr`.
+- [x] Per-reason prose for structured error fields —
+      `Chronicle::RuntimeReason.llm_prose(reason, message)` and
+      `RuntimeReason.tool_prose(reason, message)` return the
+      what_failed/why/how_to_fix triple for every CONTRACT v0.6 #11 LLM
+      reason (`_LLM_REASON_PROSE` + fallback) and CONTRACT v0.7 #6 tool
+      reason (`_TOOL_REASON_PROSE` + fallback), matching the voice principle
+      (CONTRACT v1.0 #3: name the invariant, not the mechanism). `message`
+      from the call site interpolates into what_failed; why/how_to_fix are
+      reason-specific and stable. `LLMBehaviorError` and `ToolError` now
+      derive their structured fields from the prose table at construction
+      (preserving the `(reason, message, *, payload_extras=)` signature), so
+      `.structured?` is true and `#to_s` renders the locked structured format
+      with the reason/message/payload_extras context — the v1.0 PR-D format
+      migration. Divergence: prose strings are ported verbatim; upstream
+      `activegraph inspect` CLI idioms stay textual in the prose (the CLI
+      subcommand surface is `chronicle-cli`). `MissingProviderError` /
+      `MissingToolError` / `UnknownToolError` registration classes remain
+      unported (no LLM/tool registry raising them yet). Ported from
+      activegraph llm/errors.py + tools/errors.py —
+      `spec/chronicle/error_prose_spec.cr`.
 
 ## Acceptance Gates
 
