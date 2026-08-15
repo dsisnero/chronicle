@@ -18,7 +18,7 @@ module Chronicle
     extend self
 
     def now_iso : String
-      Time.utc.to_rfc3339
+      RuntimeReason.now_iso
     end
   end
 

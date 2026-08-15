@@ -17,6 +17,24 @@ module Chronicle
     # Terminal reasons (auth/request) are never retried.
     TRANSIENT_LLM_REASONS = Set{"llm.network_error", "llm.rate_limited"}
 
+    # UTC ISO-8601 second-precision timestamp with a trailing `Z` — the
+    # single source of truth for recorded timestamps (upstream `_now_iso`).
+    # Ported from activegraph runtime/runtime.py `_now_iso`.
+    def now_iso : String
+      Time.utc.to_rfc3339
+    end
+
+    # Monotonic clock in fractional seconds, immune to wall-clock jumps
+    # (upstream `_monotonic`). Used for elapsed-time measurements that must
+    # stay replay-deterministic. Elapsed since a module-load base reading
+    # (`Time.instant` is opaque, so only differences are meaningful).
+    # Ported from activegraph runtime/runtime.py `_monotonic`.
+    BASE_INSTANT = Time.instant
+
+    def monotonic : Float64
+      (Time.instant - BASE_INSTANT).total_seconds
+    end
+
     # Return the More: doc-page URL for a v0.6 #11 reason code. Defaults to
     # the generic execution-error page when no prefix matches (covers
     # `exception.*` reasons from generic catches).
