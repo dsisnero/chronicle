@@ -245,7 +245,7 @@ llm/embedding_cache.py::method::EmbeddingCache.get	method	missing	-	auto-generat
 llm/embedding_cache.py::method::EmbeddingCache.has	method	missing	-	auto-generated
 llm/embedding_cache.py::method::EmbeddingCache.record	method	missing	-	auto-generated
 llm/errors.py::class::LLMBehaviorError	class	ported	src/chronicle/errors.cr	structured error with reason prose
-llm/errors.py::class::MissingProviderError	class	missing	-	auto-generated
+llm/errors.py::class::MissingProviderError	class	ported	src/chronicle/errors.cr	RegistrationError; structured prose
 llm/errors.py::function::_llm_fallback_prose	function	ported	spec/chronicle/error_prose_spec.cr	llm_prose_fallback (llm_prose dispatch)
 llm/errors.py::function::_llm_prose_auth_error	function	ported	spec/chronicle/error_prose_spec.cr	llm_prose_auth_error
 llm/errors.py::function::_llm_prose_fixture_missing	function	ported	spec/chronicle/error_prose_spec.cr	llm_prose_fixture_missing
@@ -255,7 +255,7 @@ llm/errors.py::function::_llm_prose_rate_limited	function	ported	spec/chronicle/
 llm/errors.py::function::_llm_prose_request_error	function	ported	spec/chronicle/error_prose_spec.cr	llm_prose_request_error
 llm/errors.py::function::_llm_prose_schema_violation	function	ported	spec/chronicle/error_prose_spec.cr	llm_prose_schema_violation
 llm/errors.py::method::LLMBehaviorError.__init__	method	ported	spec/chronicle/error_prose_spec.cr	structured fields from LLM_REASON_PROSE
-llm/errors.py::method::MissingProviderError.__init__	method	missing	-	auto-generated
+llm/errors.py::method::MissingProviderError.__init__	method	ported	src/chronicle/errors.cr	structured fields from what/why/how_to_fix
 llm/native.py::function::_inject	function	missing	-	auto-generated
 llm/native.py::function::_node_compatible	function	missing	-	auto-generated
 llm/native.py::function::inject_additional_properties_false	function	missing	-	auto-generated
@@ -1129,9 +1129,9 @@ tools/decorators.py::function::clear_tool_registry	function	missing	-	auto-gener
 tools/decorators.py::function::get_tool_registry	function	missing	-	auto-generated
 tools/decorators.py::function::tool	function	missing	-	auto-generated
 tools/decorators.py::function::wrap	function	missing	-	auto-generated
-tools/errors.py::class::MissingToolError	class	missing	-	auto-generated
+tools/errors.py::class::MissingToolError	class	ported	src/chronicle/errors.cr	RegistrationError; enumerates registered tools
 tools/errors.py::class::ToolError	class	ported	src/chronicle/errors.cr	structured error with reason prose
-tools/errors.py::class::UnknownToolError	class	missing	-	auto-generated
+tools/errors.py::class::UnknownToolError	class	ported	src/chronicle/errors.cr	ExecutionError; raised at invoke_tool
 tools/errors.py::function::_tool_fallback_prose	function	ported	spec/chronicle/error_prose_spec.cr	tool_prose_fallback (tool_prose dispatch)
 tools/errors.py::function::_tool_prose_execution_error	function	ported	spec/chronicle/error_prose_spec.cr	tool_prose_execution_error
 tools/errors.py::function::_tool_prose_fixture_missing	function	ported	spec/chronicle/error_prose_spec.cr	tool_prose_fixture_missing
@@ -1139,9 +1139,9 @@ tools/errors.py::function::_tool_prose_invalid_input	function	ported	spec/chroni
 tools/errors.py::function::_tool_prose_invalid_output	function	ported	spec/chronicle/error_prose_spec.cr	tool_prose_invalid_output
 tools/errors.py::function::_tool_prose_network_error	function	ported	spec/chronicle/error_prose_spec.cr	tool_prose_network_error
 tools/errors.py::function::_tool_prose_timeout	function	ported	spec/chronicle/error_prose_spec.cr	tool_prose_timeout
-tools/errors.py::method::MissingToolError.__init__	method	missing	-	auto-generated
+tools/errors.py::method::MissingToolError.__init__	method	ported	src/chronicle/errors.cr	structured fields incl. (+N more) suffix
 tools/errors.py::method::ToolError.__init__	method	ported	spec/chronicle/error_prose_spec.cr	structured fields from TOOL_REASON_PROSE
-tools/errors.py::method::UnknownToolError.__init__	method	missing	-	auto-generated
+tools/errors.py::method::UnknownToolError.__init__	method	ported	src/chronicle/errors.cr	structured fields incl. declared list
 tools/graph_query.py::class::GraphQueryInput	class	missing	-	auto-generated
 tools/graph_query.py::class::GraphQueryOutput	class	missing	-	auto-generated
 tools/graph_query.py::class::ObjectRef	class	missing	-	auto-generated

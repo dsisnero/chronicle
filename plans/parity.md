@@ -1178,11 +1178,27 @@ globally (CONTRACT v0.9 #3).
       with the reason/message/payload_extras context — the v1.0 PR-D format
       migration. Divergence: prose strings are ported verbatim; upstream
       `activegraph inspect` CLI idioms stay textual in the prose (the CLI
-      subcommand surface is `chronicle-cli`). `MissingProviderError` /
-      `MissingToolError` / `UnknownToolError` registration classes remain
-      unported (no LLM/tool registry raising them yet). Ported from
+      subcommand surface is `chronicle-cli`). Ported from
       activegraph llm/errors.py + tools/errors.py —
       `spec/chronicle/error_prose_spec.cr`.
+- [x] PR-E registration/execution error leaves —
+      `Chronicle::MissingProviderError` (RegistrationError, fires at
+      registration when an @llm_behavior has no wired provider; optional
+      `behavior_name`, recovery shows real and recorded provider
+      construction), `Chronicle::MissingToolError` (RegistrationError,
+      enumerates the registered tools in what_failed with the `(+N more)`
+      suffix past six and points at `Runtime(tools=)` + `load_pack`), and
+      `Chronicle::UnknownToolError` (ExecutionError, lists the tool
+      requested vs. the behavior's declared tools with `(none declared)`
+      fallback). `UnknownToolError` is wired into the runtime: the LLM
+      tool-loop's invoke site now raises it (with the registered tools) when
+      the LLM asks for an undeclared tool, replacing the generic
+      `GraphProjectionError`. Divergence: Chronicle's drive loop does not
+      thread the current behavior's declared-tools list into `invoke_tool`,
+      so `declared_tools` carries the runtime's registered tools rather than
+      the behavior's declarations. Ported from activegraph llm/errors.py +
+      tools/errors.py + test_errors_format.py —
+      `spec/chronicle/error_registration_spec.cr`.
 
 ## Acceptance Gates
 
