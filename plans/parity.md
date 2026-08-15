@@ -580,6 +580,28 @@ From `parity.tsv` (`missing_contains` on Runtime):
       `removeprefix`. Every `KNOWN_LIMITS` dimension is covered. Ported from
       activegraph runtime/runtime.py `_budget_reason` + test_reason_codes_docs.py
       — `spec/chronicle/budget_reason_spec.cr`.
+ - [x] `open_sqlite_store` —
+      `Chronicle::RuntimeReason.open_sqlite_store(path_or_url, run_id)` opens
+      a SQLite store by bare path (v0.5-v0.7 sugar) or connection URL (v0.8,
+      upstream `_open_sqlite_store`). A bare path is treated as a SQLite path
+      directly; anything containing `://` is parsed with `parse_store_url`
+      and dispatched by scheme (`sqlite` → its resolved `sqlite_path`).
+      A postgres URL raises `IncompatibleRuntimeState` — the Postgres
+      backend is deferred (the `EventStore` protocol is the path for adding
+      it). Ported from activegraph runtime/runtime.py `_open_sqlite_store` +
+      store/url.py `open_store` — `spec/chronicle/open_sqlite_store_spec.cr`.
+ - [x] `now_iso` / `monotonic` —
+      `Chronicle::RuntimeReason.now_iso` (UTC ISO-8601 second-precision
+      timestamp with trailing `Z`, upstream `_now_iso`) is now the single
+      source of truth for recorded timestamps — `ToolRecorded.now_iso` and
+      `RecordingLLMProvider#now_iso` delegate to it — and
+      `Chronicle::RuntimeReason.monotonic` returns the monotonic clock in
+      fractional seconds (upstream `_monotonic`), measured as elapsed
+      seconds since a module-load `Time.instant` base reading (Crystal's
+      `Time.instant` is opaque, so only differences are meaningful; the
+      deprecated `Time.monotonic` is avoided). Ported from activegraph
+      runtime/runtime.py `_now_iso` + `_monotonic` —
+      `spec/chronicle/now_iso_spec.cr`.
  - [x] Runtime sink surface — `Runtime#add_sink` / `remove_sink` /
       `sink_statuses` / `flush_sinks` / `close_sinks` (CONTRACT v1.8)
       delegate to the attached graph (raising `IncompatibleRuntimeState`
@@ -968,6 +990,34 @@ globally (CONTRACT v0.9 #3).
       test_trace_accessors.py — `spec/chronicle/trace_accessors_spec.cr`.
 - [-] Sandbox executor/conformance (`_child`, `executor`, `conformance`) —
       deferred — `sandbox/*`
+- [x] CONTRACT #18 trace line rendering — `Chronicle::Trace.format_event(event)`
+      renders each event type as a CONTRACT #18 line: the `[tag]` column is
+      left-aligned and padded to `TAG_COL = 26` (`format_tag`), with formatters
+      for goal/object/relation/patch/promote/behavior/llm/tool/pattern/runtime/
+      pack event types and a `[event.emitted]` fallback. Divergence: Chronicle
+      stores flat payloads (object.created carries `id`/`type`/`data` at top
+      level; relation.created carries `from_id`/`to_id`; llm.requested carries
+      `request_hash`/`prompt_hash`/`provider`/`model`/`cache_hit` — no
+      `behavior`/`tokens`/`budget` fields), so the formatters read Chronicle's
+      flat shapes rather than upstream's nested `object`/`relation` dicts and
+      elide fields Chronicle does not record. `_fmt_llm_requested` reads
+      Chronicle's actual payload fields when present and omits `prompt_normalized`
+      handling (rollup stays a faithful no-op). Ported from activegraph
+      trace/printer.py `format_event` + formatters —
+      `spec/chronicle/trace_lines_spec.cr`.
+- [x] Trace facade `lines` rendering — `Chronicle::TraceFacade#lines(replayed_ids)`
+      walks the event log in order and renders CONTRACT #18 lines, with replay
+      events rendered as `[replay.event] <id> <type> <summary>` (CONTRACT v0.5
+      #22) followed by a single `[replay.complete] N events replayed, graph
+      reconstructed` + `[runtime.idle] ready to resume` boundary, plus the
+      v0.9.1 `prompt_normalized` `[trace.flags]` rollup (a no-op for
+      Chronicle's prompt_hash payloads, retained for parity). Chronicle's
+      facade wraps the `EventStore` (upstream wraps the Graph), so `lines`
+      takes `replayed_ids` explicitly. Divergence: upstream `Trace.print` /
+      `Trace.export` I/O renderers stay at the CLI boundary — core `trace.cr`
+      is I/O-free (core_io_safety_spec); the CLI `trace` subcommand still
+      renders the causal chain. Ported from activegraph trace/printer.py
+      `Trace.lines` + `_fmt_replay*` — `spec/chronicle/trace_lines_method_spec.cr`.
 - [x] CLI renderers — the `diff` subcommand now renders the upstream-style
       structural summary (shared/parent-only/fork-only/divergent counts) plus
       `divergent objects:` / `divergent relations:` summary lines, computed via

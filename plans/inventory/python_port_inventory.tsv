@@ -738,12 +738,12 @@ runtime/runtime.py::function::_is_transient_llm_reason	function	ported	spec/chro
 runtime/runtime.py::function::_llm_retry_delay_seconds	function	ported	spec/chronicle/llm_retry_spec.cr	RuntimeReason.llm_retry_delay_seconds (retry_after honored/clamped; exponential backoff capped at maximum)
 runtime/runtime.py::function::_materialize_snapshot	function	missing	-	auto-generated
 runtime/runtime.py::function::_maybe_object_id	function	ported	spec/chronicle/maybe_object_id_spec.cr	RuntimeReason.maybe_object_id (top-level id for Chronicle flat payloads; upstream nested object.id); behavior.started carries triggering_object_id
-runtime/runtime.py::function::_monotonic	function	missing	-	auto-generated
+runtime/runtime.py::function::_monotonic	function	ported	spec/chronicle/now_iso_spec.cr	RuntimeReason.monotonic (elapsed seconds since module-load Time.instant base; upstream _monotonic)
 runtime/runtime.py::function::_most_recent_run_id	function	ported	spec/chronicle/most_recent_run_id_spec.cr	RuntimeReason.most_recent_run_id(path) via SQLiteEventStore.list_runs (last run id; nil for empty)
 runtime/runtime.py::function::_non_replayable_llm_attempt_event_ids	function	ported	spec/chronicle/non_replayable_llm_ids_spec.cr	RuntimeReason.non_replayable_llm_attempt_event_ids (llm.failed + its caused_by request id; upstream reads llm.responded with error)
 runtime/runtime.py::function::_normalize_sink_configs	function	ported	spec/chronicle/sink_config_spec.cr	Runtime(sinks:) normalizes SinkConfig (default name from class, duplicate rejection before attach)
-runtime/runtime.py::function::_now_iso	function	missing	-	auto-generated
-runtime/runtime.py::function::_open_sqlite_store	function	missing	-	auto-generated
+runtime/runtime.py::function::_now_iso	function	ported	spec/chronicle/now_iso_spec.cr	RuntimeReason.now_iso (Time.utc.to_rfc3339); single source of truth for ToolRecorded/RecordingLLMProvider recorded_at
+runtime/runtime.py::function::_open_sqlite_store	function	ported	spec/chronicle/open_sqlite_store_spec.cr	RuntimeReason.open_sqlite_store(path_or_url, run_id) opens a SQLite store by bare path or sqlite:/// URL (parse_store_url dispatch); postgres URL raises IncompatibleRuntimeState (backend deferred)
 runtime/runtime.py::function::_promote_data_diff	function	ported	spec/chronicle/promote_data_diff_spec.cr	Per-field {old,new} diff for promote replace-patch; wired into patch.applied payload (upstream _promote_data_diff)
 runtime/runtime.py::function::_rebuild_pending_approvals	function	ported	spec/chronicle/rebuild_pending_approvals_spec.cr	Reconstruct pending approvals from log (proposed minus granted) + advance id counter; wired into load/fork (upstream _rebuild_pending_approvals)
 runtime/runtime.py::function::_recorded_wall_stop	function	ported	spec/chronicle/recorded_wall_stop_spec.cr	RuntimeReason.recorded_wall_stop (validated (sequence, max_seconds) boundary from runtime.budget_exhausted; ReplayDivergenceError on malformed)
@@ -1166,46 +1166,46 @@ trace/causal.py::function::_find_response_for	function	missing	-	auto-generated
 trace/causal.py::function::_fmt_money	function	missing	-	auto-generated
 trace/causal.py::function::causal_chain	function	missing	-	auto-generated
 trace/printer.py::class::Trace	class	ported	spec/chronicle/trace_accessors_spec.cr	Chronicle::TraceFacade (named to avoid clashing with the Chronicle::Trace module): events() copy, failures() behavior.failed events
-trace/printer.py::const::TAG_COL	const	missing	-	auto-generated
-trace/printer.py::function::_compute_prompt_normalized_rollup	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_behavior_completed	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_behavior_failed	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_behavior_scheduled	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_behavior_started	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_event_emitted	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_goal_created	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_llm_requested	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_llm_responded	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_object_created	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_object_removed	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_pack_loaded	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_patch_applied	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_patch_proposed	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_patch_rejected	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_pattern_matched	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_promote_applied	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_relation_behavior_started	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_relation_created	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_relation_removed	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_replay	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_replay_complete	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_replay_ready	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_runtime_budget_exhausted	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_runtime_idle	function	missing	-	auto-generated
+trace/printer.py::const::TAG_COL	const	ported	spec/chronicle/trace_lines_spec.cr	TAG_COL=26 tag column (CONTRACT #18)
+trace/printer.py::function::_compute_prompt_normalized_rollup	function	ported	spec/chronicle/trace_lines_method_spec.cr	prompt_normalized_rollup (no-op: Chronicle llm.requested carries prompt_hash)
+trace/printer.py::function::_fmt_behavior_completed	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_behavior_completed
+trace/printer.py::function::_fmt_behavior_failed	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_behavior_failed
+trace/printer.py::function::_fmt_behavior_scheduled	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_behavior_scheduled
+trace/printer.py::function::_fmt_behavior_started	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_behavior_started
+trace/printer.py::function::_fmt_event_emitted	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_event_emitted
+trace/printer.py::function::_fmt_goal_created	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_goal_created
+trace/printer.py::function::_fmt_llm_requested	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_llm_requested (flat payload)
+trace/printer.py::function::_fmt_llm_responded	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_llm_responded (flat payload)
+trace/printer.py::function::_fmt_object_created	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_object_created (flat id/type/data)
+trace/printer.py::function::_fmt_object_removed	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_object_removed (flat id)
+trace/printer.py::function::_fmt_pack_loaded	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_pack_loaded
+trace/printer.py::function::_fmt_patch_applied	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_patch_applied (multi-line)
+trace/printer.py::function::_fmt_patch_proposed	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_patch_proposed
+trace/printer.py::function::_fmt_patch_rejected	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_patch_rejected
+trace/printer.py::function::_fmt_pattern_matched	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_pattern_matched
+trace/printer.py::function::_fmt_promote_applied	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_promote_applied (CONTRACT v1.3 #4)
+trace/printer.py::function::_fmt_relation_behavior_started	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_relation_behavior_started
+trace/printer.py::function::_fmt_relation_created	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_relation_created (flat from_id/to_id/type)
+trace/printer.py::function::_fmt_relation_removed	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_relation_removed (flat id)
+trace/printer.py::function::_fmt_replay	function	ported	spec/chronicle/trace_lines_method_spec.cr	format_replay (CONTRACT v0.5 #22)
+trace/printer.py::function::_fmt_replay_complete	function	ported	spec/chronicle/trace_lines_method_spec.cr	format_replay_complete
+trace/printer.py::function::_fmt_replay_ready	function	ported	spec/chronicle/trace_lines_method_spec.cr	format_replay_ready
+trace/printer.py::function::_fmt_runtime_budget_exhausted	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_runtime_budget_exhausted
+trace/printer.py::function::_fmt_runtime_idle	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_runtime_idle
 trace/printer.py::function::_fmt_runtime_snapshot	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_tool_requested	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_tool_responded	function	missing	-	auto-generated
-trace/printer.py::function::_fmt_trace_flags	function	missing	-	auto-generated
-trace/printer.py::function::_format_tag	function	missing	-	auto-generated
-trace/printer.py::function::_money	function	missing	-	auto-generated
-trace/printer.py::function::_plural	function	missing	-	auto-generated
-trace/printer.py::function::_short	function	missing	-	auto-generated
-trace/printer.py::function::_short_hash	function	missing	-	auto-generated
-trace/printer.py::function::format_event	function	missing	-	auto-generated
-trace/printer.py::method::Trace.__init__	method	missing	-	auto-generated
-trace/printer.py::method::Trace.causal_chain	method	missing	-	auto-generated
-trace/printer.py::method::Trace.events	method	missing	-	auto-generated
-trace/printer.py::method::Trace.export	method	missing	-	auto-generated
-trace/printer.py::method::Trace.failures	method	missing	-	auto-generated
-trace/printer.py::method::Trace.lines	method	missing	-	auto-generated
-trace/printer.py::method::Trace.print	method	missing	-	auto-generated
+trace/printer.py::function::_fmt_tool_requested	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_tool_requested (flat tool/args)
+trace/printer.py::function::_fmt_tool_responded	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_tool_responded (flat tool)
+trace/printer.py::function::_fmt_trace_flags	function	ported	spec/chronicle/trace_lines_method_spec.cr	format_trace_flags
+trace/printer.py::function::_format_tag	function	ported	spec/chronicle/trace_lines_spec.cr	format_tag (TAG_COL padding)
+trace/printer.py::function::_money	function	ported	spec/chronicle/trace_lines_spec.cr	money
+trace/printer.py::function::_plural	function	ported	spec/chronicle/trace_lines_spec.cr	plural
+trace/printer.py::function::_short	function	ported	spec/chronicle/trace_lines_spec.cr	short
+trace/printer.py::function::_short_hash	function	ported	spec/chronicle/trace_lines_spec.cr	short_hash
+trace/printer.py::function::format_event	function	ported	spec/chronicle/trace_lines_spec.cr	Trace.format_event dispatcher (FORMATTERS table)
+trace/printer.py::method::Trace.__init__	method	intentional_divergence	-	TraceFacade wraps EventStore instead of Graph; constructor differs
+trace/printer.py::method::Trace.causal_chain	method	ported	spec/chronicle/trace_spec.cr	Trace.causal_chain
+trace/printer.py::method::Trace.events	method	ported	spec/chronicle/trace_lines_method_spec.cr	TraceFacade#events
+trace/printer.py::method::Trace.export	method	intentional_divergence	-	I/O renderer stays at CLI boundary (core trace.cr is I/O-free per core_io_safety_spec)
+trace/printer.py::method::Trace.failures	method	ported	spec/chronicle/trace_lines_method_spec.cr	TraceFacade#failures
+trace/printer.py::method::Trace.lines	method	ported	spec/chronicle/trace_lines_method_spec.cr	TraceFacade#lines (replay boundary + rollup)
+trace/printer.py::method::Trace.print	method	intentional_divergence	-	I/O renderer stays at CLI boundary (core trace.cr is I/O-free per core_io_safety_spec)
