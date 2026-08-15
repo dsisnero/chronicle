@@ -159,6 +159,14 @@ module Chronicle
           end
         end
 
+        # Validate each LLM behavior's declared tools resolve to a registered
+        # tool before the pack is considered loaded (CONTRACT v0.7 #2, upstream
+        # `_register_behaviors` MissingToolError guard). Pack-local tools were
+        # registered above; behavior references are canonicalized to
+        # `{pack.name}.{tool}`. A declared-but-unresolvable tool raises
+        # MissingToolError and the pack.loaded event is never recorded.
+        validate_behavior_tools(rt, canonical_behaviors)
+
         rt.pack_behaviors.concat(canonical_behaviors)
 
         # Attach schema validators now so subsequent live add_object /
@@ -175,6 +183,26 @@ module Chronicle
         warn_on_manifest_violations(rt, pack, manifest_path)
 
         true
+      end
+
+      # Validate each LLM behavior's declared tools resolve to a registered
+      # tool before the pack is considered loaded (CONTRACT v0.7 #2, upstream
+      # `_register_behaviors` MissingToolError guard). Pack-local tools were
+      # registered above; behavior references are canonicalized to
+      # `{pack.name}.{tool}`. A declared-but-unresolvable tool raises
+      # MissingToolError and the pack.loaded event is never recorded.
+      private def validate_behavior_tools(rt : Runtime(M), behaviors : Array(PackBehavior)) : Nil forall M
+        registered = rt.tool_names
+        behaviors.each do |behavior|
+          behavior.tools.each do |tool_name|
+            next unless rt.get_tool(tool_name).nil?
+            raise MissingToolError.new(
+              tool_name,
+              behavior_name: behavior.name,
+              registered: registered,
+            )
+          end
+        end
       end
 
       # Manifest warning tier: when a manifest.toml path is supplied to

@@ -1234,6 +1234,12 @@ module Chronicle
       @pack_tools
     end
 
+    # All registered tool names (constructor `tools:` plus loaded pack tools),
+    # for MissingToolError diagnostics.
+    def tool_names : Array(String)
+      (@tools.map(&.name) + @pack_tools.map(&.name)).uniq
+    end
+
     def graph : GraphProjection?
       @graph
     end
