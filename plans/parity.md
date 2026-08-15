@@ -1199,6 +1199,20 @@ globally (CONTRACT v0.9 #3).
       the behavior's declarations. Ported from activegraph llm/errors.py +
       tools/errors.py + test_errors_format.py —
       `spec/chronicle/error_registration_spec.cr`.
+- [x] LLM-behavior unknown-tool refusal (CONTRACT v0.7 #6) —
+      `invoke_llm_behavior`'s response path now inspects the model choice
+      for tool calls; when the behavior declares tools and the model asks
+      for an undeclared one, the runtime raises `UnknownToolError`
+      (`refuse_undeclared_tool_calls`), which `record_behavior_failed`
+      folds into a `behavior.failed` event with `reason="tool.unknown_tool"`
+      and a `tool` extra (upstream `_emit_behavior_failed(..., reason=...,
+      extras={"tool": name})`). The behavior fails loud instead of silently
+      dropping or executing an undeclared call. Partial port of upstream
+      `_invoke_llm_body`/`_loop`: the undeclared-tool refusal is in place,
+      but declared-tool invocation, tool-result feedback, and the
+      re-call turn loop (max_tool_turns / budget gates) remain pending.
+      Ported from activegraph tests/test_llm_tool_loop.py —
+      `spec/chronicle/unknown_tool_loop_spec.cr`.
 
 ## Acceptance Gates
 
