@@ -522,7 +522,7 @@ packs/loader.py::function::_validate	function	missing	-	auto-generated
 packs/loader.py::function::_warn_on_manifest_violations	function	ported	spec/chronicle/manifest_warning_spec.cr	manifest warning tier (CONTRACT v1.6 #1)
 packs/loader.py::function::_wrap_behavior_for_pack	function	missing	-	auto-generated
 packs/loader.py::function::_wrap_with_injection	function	missing	-	auto-generated
-packs/loader.py::function::load_pack_into_runtime	function	missing	-	auto-generated
+packs/loader.py::function::load_pack_into_runtime	function	ported	spec/chronicle/missing_tool_registration_spec.cr	load_pack validates LLM-behavior declared tools (MissingToolError) before pack.loaded
 packs/loader.py::function::wrapped	function	missing	-	auto-generated
 packs/loader.py::method::PackRuntimeState.__init__	method	missing	-	auto-generated
 packs/manifest.py::class::CapabilityDecl	class	missing	-	auto-generated

@@ -1220,12 +1220,20 @@ globally (CONTRACT v0.9 #3).
       (`enforce_tool_call_budget!`): a call that would exceed the allowance
       fails the behavior loud with `reason="budget.tool_calls_exhausted"` and a
       `tool` extra (upstream `_loop`'s pre-invocation budget check); each
-      allowed call consumes one unit. Ported from
+      allowed call consumes one unit. At registration (`load_pack`), each LLM
+      behavior's declared tool names are validated against the merged tool
+      registry (`validate_behavior_tools`, upstream `_register_behaviors`
+      MissingToolError guard, CONTRACT v0.7 #2): a declared-but-unresolvable
+      tool raises `MissingToolError` and the `pack.loaded` event is never
+      recorded — the misconfiguration fails before any LLM call burns budget.
+      Ported from
       activegraph tests/test_llm_tool_loop.py (one/two-turn chains,
-      max_tool_turns exhaustion, max_tool_calls budget, unknown-tool refusal) —
+      max_tool_turns exhaustion, max_tool_calls budget, unknown-tool refusal,
+      missing-tool-at-registration) —
       `spec/chronicle/declared_tool_loop_spec.cr`,
       `spec/chronicle/unknown_tool_loop_spec.cr`,
-      `spec/chronicle/tool_loop_budget_spec.cr`.
+      `spec/chronicle/tool_loop_budget_spec.cr`,
+      `spec/chronicle/missing_tool_registration_spec.cr`.
 
 ## Acceptance Gates
 
