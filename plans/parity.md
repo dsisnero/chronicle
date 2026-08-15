@@ -1215,11 +1215,17 @@ globally (CONTRACT v0.9 #3).
       each turn's prompt hash / cache key differs. A non-tool response breaks
       the loop; exhausting `max_tool_turns` without one raises a `ToolError`
       folded to `reason="tool.max_turns_exhausted"` with a `max_tool_turns`
-      extra. The handler receives only the final non-tool output. Ported from
+      extra. The handler receives only the final non-tool output. Before each
+      tool invocation the `max_tool_calls` budget gate runs
+      (`enforce_tool_call_budget!`): a call that would exceed the allowance
+      fails the behavior loud with `reason="budget.tool_calls_exhausted"` and a
+      `tool` extra (upstream `_loop`'s pre-invocation budget check); each
+      allowed call consumes one unit. Ported from
       activegraph tests/test_llm_tool_loop.py (one/two-turn chains,
-      max_tool_turns exhaustion, unknown-tool refusal) —
+      max_tool_turns exhaustion, max_tool_calls budget, unknown-tool refusal) —
       `spec/chronicle/declared_tool_loop_spec.cr`,
-      `spec/chronicle/unknown_tool_loop_spec.cr`.
+      `spec/chronicle/unknown_tool_loop_spec.cr`,
+      `spec/chronicle/tool_loop_budget_spec.cr`.
 
 ## Acceptance Gates
 

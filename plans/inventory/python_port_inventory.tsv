@@ -776,10 +776,10 @@ runtime/runtime.py::method::Runtime._find_event	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._fire_due_delayed	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._invoke	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._invoke_llm	method	ported	execute_llm_behavior_request + invoke_llm_behavior	-port
-runtime/runtime.py::method::Runtime._invoke_llm_body	method	ported	execute_llm_behavior_request: tool turn loop (declared-tool invoke, re-call, max_tool_turns)	-port
+runtime/runtime.py::method::Runtime._invoke_llm_body	method	ported	execute_llm_behavior_request: tool turn loop (declared-tool invoke, re-call, max_tool_turns, max_tool_calls budget gate)	-port
 runtime/runtime.py::method::Runtime._invoke_relation	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._invoke_tool	method	ported	invoke_tool resolves via get_tool; MissingToolError/UnknownToolError folding	-port
-runtime/runtime.py::method::Runtime._loop	method	ported	turn loop via execute_llm_behavior_request; refusal + re-call + max_turns_exhausted	-port
+runtime/runtime.py::method::Runtime._loop	method	ported	turn loop via execute_llm_behavior_request; refusal + re-call + max_turns_exhausted + max_tool_calls budget	-port
 runtime/runtime.py::method::Runtime._on_event	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._pack_settings_for_behavior	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._rebuild_shorts	method	missing	-	auto-generated
