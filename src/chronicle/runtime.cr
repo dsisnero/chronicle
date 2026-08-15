@@ -2465,7 +2465,36 @@ module Chronicle
         .max_tokens(behavior.max_tokens.to_i64)
 
       response = execute_model_request(effect, builder.build, caused_by: event.id)
+      refuse_undeclared_tool_calls(behavior, event, response)
       response.choice.first.text.try(&.text) || ""
+    end
+
+    # The model asked for a tool the behavior did not declare. Refuse loudly
+    # with a behavior.failed event carrying reason="tool.unknown_tool" and the
+    # requested tool name, mirroring upstream `_loop`'s undeclared-tool check
+    # (CONTRACT v0.7 #6) — the behavior must fail rather than silently drop
+    # or execute an undeclared tool call.
+    private def refuse_undeclared_tool_calls(
+      behavior : Packs::PackBehavior,
+      event : Event,
+      response : Crig::Completion::CompletionResponse(String),
+    ) : Nil
+      declared = behavior.tools
+      return if declared.empty?
+
+      response.choice.each do |item|
+        call = item.tool_call
+        next unless call
+        name = call.function.name
+        next if declared.includes?(name)
+        raise UnknownToolError.new(
+          "LLM called tool #{name.inspect} which is not declared on " \
+          "@llm_behavior(tools=[...])",
+          tool_name: name,
+          behavior_name: behavior.name,
+          declared_tools: declared,
+        )
+      end
     end
 
     # System prompt: the behavior description composed with its (Optional)
@@ -2536,7 +2565,15 @@ module Chronicle
     end
 
     private def record_behavior_failed(behavior : Packs::PackBehavior, event : Event, error : Exception) : Nil
-      reason = error.is_a?(LLMBehaviorError) ? error.as(LLMBehaviorError).reason : nil
+      reason = case error
+               when LLMBehaviorError
+                 error.as(LLMBehaviorError).reason
+               when UnknownToolError
+                 "tool.unknown_tool"
+               when ToolError
+                 error.as(ToolError).reason
+               end
+      tool_name = error.is_a?(UnknownToolError) ? error.as(UnknownToolError).tool_name : nil
       traceback = error.backtrace.try(&.join("\n")) || ""
       append_event("behavior.failed", JSON.build do |json|
         json.object do
@@ -2547,6 +2584,7 @@ module Chronicle
           json.field "error_class", error.class.to_s
           json.field "message", error.message || error.class.to_s
           json.field "reason", reason
+          json.field "tool", tool_name
           # v1.0.3 #3: the full traceback so trace.failures can surface it.
           json.field "traceback", traceback
           # v1.0.3 #3: the More: doc-page URL for the failure reason (falls
