@@ -45,8 +45,115 @@ Current state: `check_source_parity` (1210 symbols) and `check_test_parity`
 ledger is curated, so expand it per phase below. `plan_with_chiasmus.sh` and
 `check_completion_gate.sh` need `chiasmus-plan`/`chiasmus-complete`, which are
 not released yet — treat their absence as a tooling gap, not a porting signal.
+The feature-size roadmap (S / M / L, below) tracks what remains and the
+concrete next-up order.
 
 [cross-language-crystal-parity]: /Users/dominic/.agents/skills/cross-language-crystal-parity/SKILL.md
+
+---
+
+## Feature-size roadmap (S / M / L)
+
+The phases below are sized so each feature is branch-sized and
+user-visible (per the cross-language-crystal-parity skill's feature slicing
+rules). `[x]` = green and committed; `[ ]` = pending; `[-]` = intentionally
+deferred (documented in the Intentional Divergence / deferred rows of the
+phases).
+
+### S — small (helpers, value objects, narrow surfaces)
+
+- [x] `RuntimeReason` helpers — `now_iso`/`monotonic` (593), `open_sqlite_store`
+      (583), `budget_reason` (568), `resolve_event_path` (559),
+      `promote_data_diff` (550), `maybe_object_id` (449), `first_goal` (457),
+      `is_lifecycle` (461), `validate_embedding_vectors` (539),
+      `most_recent_run_id` (483), `recorded_wall_stop` (490),
+      `non_replayable_llm_attempt_event_ids` (499), `direct_embedding_event_ids`
+      (509), `resolve_and_validate_llm_models` (519), `doc_url_for_reason` (420).
+- [x] Structured error leaves — `ActiveGraphError` hierarchy + format (1123),
+      `ReplayDivergenceError` builders (1144), per-reason prose (1166),
+      PR-E registration/execution leaves (1184).
+- [x] Wire helpers — `Chronicle::Wire` tool-name sanitize/restore + provider
+      exception taxonomy (726).
+- [x] `Runtime#status` value object + `RuntimeStatus`/`BehaviorInfo`/`EventSummary`
+      (804).
+- [x] `SinkConfig` + constructor sink normalization (472).
+- [x] `Runtime#errors` projection — `BehaviorFailure` value struct (406).
+- [x] LLM retry helpers (pure) — `transient_llm_reason?` / `llm_retry_delay_seconds`
+      (429).
+- [ ] `Runtime#print_graph` — `Runtime#print_graph` (runtime.py:3137) —
+      deferred: no console renderer surface ported yet.
+- [ ] `Runtime#save_state` — `Runtime#save_state(path)` (runtime.py:3152) —
+      deferred: fork/load currently reconstruct state from the log; a
+      snapshot sidecar is pending.
+- [ ] `EventQueue` — `runtime/queue.py` value object (bounded FIFO used by
+      upstream dispatch) — Chronicle's dispatch drains directly from the
+      store, so this is a parity shape, not a runtime gap.
+- [ ] `ToolContext` — `tools/context.py` (`external_io_mode`, live_unrecorded
+      permission per invocation) — `Chronicle::ExternalIOMode` exists on the
+      Tool; the ctx wrapper that threads it into tool bodies is pending.
+
+### M — medium (behavioral surfaces spanning one module)
+
+- [x] LLM-behavior tool loop (1202) — declared-tool invoke + re-call,
+      `max_tool_turns` exhaustion, `max_tool_calls` budget gate, unknown-tool
+      refusal, missing-tool-at-registration, bad-tool-input schema validation,
+      `llm.network_error` fold.
+- [x] LLM cache — wiring into replay/fork (651), tool-call round-trip (1286).
+- [x] Tool input-schema validation — `validate_input!` (1229).
+- [x] `ctx.propose_object` + approval materialization (929).
+- [x] `activate_after` delayed-queue scheduling (352).
+- [x] `run_quantum` cooperative drain (614).
+- [x] Sink conformance mixin + raising-sibling isolation (850).
+- [ ] Same-target LLM retry loop — upstream `_invoke_llm_body` retries a
+      transient provider failure in place (`llm_retry_max_attempts`,
+      `attempt_index`, `retry_of`, `_emit_llm_error_response`,
+      `retry_exhausted`) before emitting the terminal `behavior.failed`.
+      Chronicle retries only via routing fallbacks; the retry helpers are
+      ported (429) but the in-place retry loop is not — upstream tests
+      `test_transient_llm_network_error_retries_before_handler_runs` /
+      `..._exhausts_after_max_attempts` are RED / not ported.
+- [ ] Structured-output schema typing — `@[LLMBehavior]` handlers currently
+      receive the raw output string; upstream `output_schema=` +
+      `parse_structured_response` / `_resolve_structured_output_mode`
+      (llm/parsing.py, llm/native.py) is not ported. Divergence noted at
+      (1081).
+- [ ] `llm.responded` error-shape parity — upstream folds provider failures
+      into `llm.responded` `{error, retryable, attempt_index}` payloads
+      (`_emit_llm_error_response`); Chronicle emits a separate `llm.failed`
+      event. The `llm.network_error` fold now lands on `behavior.failed`
+      (1299), but the `llm.responded` error shape is still a divergence.
+
+### L — large (provider/platform edges, external backends)
+
+- [ ] Provider adapters (Anthropic/OpenAI) — `llm/anthropic.py`,
+      `llm/openai.py`, `llm/native.py` (deferred; the `ModelExecutor` seam
+      already routes through registered executors).
+- [ ] Embedding — `llm/embedding.py`, `llm/embedding_cache.py` (deferred).
+- [ ] Postgres event store — `store/postgres.py` (deferred; needs `pg` shard +
+      live server).
+- [ ] Postgres / FalkorDB GraphStore pushdown — `store/postgres.py`,
+      `store/falkordb.py` (deferred).
+- [ ] Retention / compaction — `store/retention.py` (deferred: offline
+      snapshot + archive-tier compaction).
+- [ ] Sandbox executor/conformance — `sandbox/*` (deferred).
+- [ ] Diligence reference pack — `packs/diligence/*` (deferred).
+- [ ] Prometheus / OTel / migration — `observability/prometheus.py`,
+      `observability/otel.py`, `observability/migration.py` (deferred).
+- [ ] CLI quickstart/renderers — `cli/quickstart.py`, `cli/renderers.py`
+      (deferred; `trace`/`diff`/`log inspect` renderers are ported).
+
+### Next up (concrete plan order)
+
+1. `[ ]` Same-target LLM retry loop — port upstream
+   `test_transient_llm_network_error_retries_before_handler_runs` /
+   `test_transient_llm_network_error_exhausts_after_max_attempts`
+   (`test_llm_failure.py`) RED → GREEN → ledger (`_invoke_llm_body`,
+   `_emit_llm_error_response`) → parity.
+2. `[ ]` Structured-output schema typing — `@[LLMBehavior(output_schema:)`
+   + `parse_structured_response`; closes the (1081) divergence.
+3. `[ ]` `Runtime#print_graph` / `Runtime#save_state` small parity surfaces.
+4. `[ ]` `ToolContext` external-io-mode threading.
+5. `[ ]` `EventQueue` parity shape.
 
 ---
 
