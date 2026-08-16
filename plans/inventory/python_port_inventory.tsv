@@ -1111,7 +1111,7 @@ store/url.py::const::SQLITE_SCHEMES	const	missing	-	auto-generated
 store/url.py::function::_invalid_url	function	missing	-	auto-generated
 store/url.py::function::open_store	function	missing	-	auto-generated
 store/url.py::function::parse_store_url	function	missing	-	auto-generated
-tools/base.py::class::Tool	class	missing	-	auto-generated
+tools/base.py::class::Tool	class	ported	spec/chronicle/tool_input_schema_spec.cr	input_schema validation (validate_input! -> ToolError tool.invalid_input)
 tools/base.py::method::Tool.to_definition	method	missing	-	auto-generated
 tools/cache.py::class::CachedToolResponse	class	ported	spec/chronicle/tool_recorded_spec.cr	CachedToolResponse struct (output/error/latency/cost_usd/cache_hit)
 tools/cache.py::class::ToolCache	class	ported	spec/chronicle/tool_recorded_spec.cr	ToolCache (prior Phase 5 port; key/canonicalize_args/hash_tool_call added here)

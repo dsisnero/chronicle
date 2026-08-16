@@ -1226,14 +1226,20 @@ globally (CONTRACT v0.9 #3).
       MissingToolError guard, CONTRACT v0.7 #2): a declared-but-unresolvable
       tool raises `MissingToolError` and the `pack.loaded` event is never
       recorded — the misconfiguration fails before any LLM call burns budget.
-      Ported from
+      A tool may declare an `input_schema` (a `JSON::Serializable` struct via
+      the `@[Tool(input_schema: ...)]` annotation); `invoke_tool` runs
+      `validate_input!` before calling the body, so args that fail schema
+      validation produce `behavior.failed reason="tool.invalid_input"` with a
+      `tool` extra and the tool body never runs (upstream `_invoke_tool`'s
+      input_schema.model_validate guard). Ported from
       activegraph tests/test_llm_tool_loop.py (one/two-turn chains,
       max_tool_turns exhaustion, max_tool_calls budget, unknown-tool refusal,
-      missing-tool-at-registration) —
+      missing-tool-at-registration, bad-tool-input) —
       `spec/chronicle/declared_tool_loop_spec.cr`,
       `spec/chronicle/unknown_tool_loop_spec.cr`,
       `spec/chronicle/tool_loop_budget_spec.cr`,
-      `spec/chronicle/missing_tool_registration_spec.cr`.
+      `spec/chronicle/missing_tool_registration_spec.cr`,
+      `spec/chronicle/tool_input_schema_spec.cr`.
 
 ## Acceptance Gates
 
