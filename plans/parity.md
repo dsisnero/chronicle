@@ -1283,6 +1283,19 @@ globally (CONTRACT v0.9 #3).
       cache; a divergent prompt falls through), plus a `Runtime#llm_cache`
       getter. Ported from activegraph runtime.py fork cache wiring —
       `spec/chronicle/llm_cache_wiring_spec.cr`.
+- [x] LLM cache round-trips tool-call turns (v1.0.3 #4) —
+      `response_cache_payload` now serializes every assistant content block
+      (text + tool_use id/name/arguments) alongside `content`, and
+      `completion_response_from_cache` / `choice_from_cache_payload`
+      reconstructs them, so a cached tool-calling turn re-dispatches the tool
+      on replay instead of degrading to a text-only response (upstream
+      `_response_from_event_payload` hydrating `tool_calls` back into the
+      response). The assistant turn in a re-call history carries both its text
+      and its tool_use blocks (`Message.from(choice)`), matching Anthropic's
+      tool_result→tool_use_id wire invariant. Ported from activegraph
+      tests/test_v1_0_3_tool_multiturn.py —
+      `spec/chronicle/cached_tool_turn_spec.cr`,
+      `spec/chronicle/multiturn_tool_history_spec.cr`.
 - [x] `frame_id` preserved on events and visible in log inspect — the event
       envelope already carried `frame_id` through `canonical_json` and the
       codec round-trip (`frames_spec.cr`); `Runtime#export_trace` already

@@ -222,7 +222,7 @@ llm/anthropic.py::method::AnthropicProvider.recognizes_model	method	missing	-	au
 llm/anthropic.py::method::AnthropicProvider.supports_native_structured_output	method	missing	-	auto-generated
 llm/cache.py::class::CachedEntry	class	missing	-	auto-generated
 llm/cache.py::class::LLMCache	class	missing	-	auto-generated
-llm/cache.py::function::_response_from_event_payload	function	missing	-	auto-generated
+llm/cache.py::function::_response_from_event_payload	function	ported	spec/chronicle/cached_tool_turn_spec.cr	completion_response_from_cache reconstructs text + tool_call content blocks from llm.responded payload
 llm/cache.py::method::LLMCache.__init__	method	missing	-	auto-generated
 llm/cache.py::method::LLMCache.__len__	method	missing	-	auto-generated
 llm/cache.py::method::LLMCache.from_events	method	missing	-	auto-generated
