@@ -52,6 +52,7 @@ module Chronicle
     getter? export_globally : Bool
     @fn : String -> String
     @mode_fn : Proc(String, ExternalIOMode, String)?
+    @input_validator : Proc(String, Nil)?
 
     def initialize(
       @name : String,
@@ -60,12 +61,30 @@ module Chronicle
       @pack_local : Bool = false,
       @export_globally : Bool = false,
       @mode_fn : Proc(String, ExternalIOMode, String)? = nil,
+      @input_validator : Proc(String, Nil)? = nil,
       &@fn : String -> String
     )
     end
 
     def call(args : String) : String
       @fn.call(args)
+    end
+
+    # Validate the args JSON against the tool's declared input schema. Raises
+    # ToolError(reason="tool.invalid_input") on any parse/schema failure so the
+    # runtime fails the behavior loud instead of invoking the tool with bad
+    # input (upstream `_invoke_tool`'s input_schema.model_validate guard). No-op
+    # when the tool declares no input schema.
+    def validate_input!(args : String) : Nil
+      validator = @input_validator
+      return if validator.nil?
+      validator.call(args)
+    rescue ex : Exception
+      raise ToolError.new(
+        "tool.invalid_input",
+        "tool #{name.inspect} received invalid input: #{ex.message}",
+        {"tool" => JSON::Any.new(name), "validation_errors" => JSON::Any.new(ex.message.to_s)},
+      )
     end
 
     # Invoke with an explicit external-I/O permission mode. Tools that
@@ -86,6 +105,8 @@ module Chronicle
         @deterministic,
         @pack_local,
         @export_globally,
+        @mode_fn,
+        @input_validator,
       ) { |args| call(args) }.with_mode_fn(@mode_fn)
     end
 

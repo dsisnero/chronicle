@@ -3243,6 +3243,7 @@ module Chronicle
           declared_tools: @tools.map(&.name),
         )
       end
+      tool.validate_input!(args)
       output = tool.call(args)
       record_tool_responded(request_event, name, args, output)
       @tool_cache.try(&.record(name, args, output))

@@ -249,6 +249,12 @@ module Chronicle
                   deterministic: {% if ann[:deterministic] %}{{ ann[:deterministic] }}{% else %}false{% end %},
                   pack_local: true,
                   export_globally: {% if ann[:export_globally] %}{{ ann[:export_globally] }}{% else %}false{% end %},
+                  {% if ann[:input_schema] %}
+                    input_validator: ->(args : String) : Nil {
+                      {{ ann[:input_schema] }}.from_json(args)
+                      nil
+                    },
+                  {% end %}
                 ) { |args| {{ type }}.{{ method.name }}(args) },
               {% end %}
             {% end %}
