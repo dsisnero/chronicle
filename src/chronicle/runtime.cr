@@ -867,6 +867,12 @@ module Chronicle
     # through ctx.view / graph.get_object and emits ONE batched
     # `context.read` at commit.
     @trace_context_reads : Bool = false
+    # Same-target LLM retry configuration (upstream `_invoke_llm_body`): a
+    # transient provider failure is retried IN PLACE on the same target up to
+    # `llm_retry_max_attempts` before the terminal behavior.failed is emitted.
+    @llm_retry_max_attempts : Int32 = 3
+    @llm_retry_initial_delay_seconds : Float64 = 0.5
+    @llm_retry_max_delay_seconds : Float64 = 8.0
 
     # Budget limits for a run. Multi-dimensional hard limits (upstream
     # activegraph.runtime.budget); see `Chronicle::Budget`.
@@ -889,7 +895,15 @@ module Chronicle
       @metrics : Metrics = NoOpMetrics.new,
       @trace_context_reads : Bool = false,
       sinks : Array(SinkConfig) = [] of SinkConfig,
+      llm_retry_max_attempts : Int32 = 3,
+      llm_retry_initial_delay_seconds : Float64 = 0.5,
+      llm_retry_max_delay_seconds : Float64 = 8.0,
     )
+      # Normalize like upstream: at least one attempt, non-negative initial
+      # delay, and the max never below the initial.
+      @llm_retry_max_attempts = Math.max(1, llm_retry_max_attempts)
+      @llm_retry_initial_delay_seconds = Math.max(0.0, llm_retry_initial_delay_seconds)
+      @llm_retry_max_delay_seconds = Math.max(@llm_retry_initial_delay_seconds, llm_retry_max_delay_seconds)
       attach_constructor_sinks(sinks)
     end
 
@@ -1292,6 +1306,10 @@ module Chronicle
       @llm_cache
     end
 
+    getter llm_retry_max_attempts : Int32
+    getter llm_retry_initial_delay_seconds : Float64
+    getter llm_retry_max_delay_seconds : Float64
+
     # Read-only trace facade over this run's event log (v1.3). `trace.events`
     # returns events with ids usable as fork points; `trace.failures` returns
     # behavior.failed events. Ported from activegraph Runtime.trace.
@@ -1379,7 +1397,8 @@ module Chronicle
     # reseeds the graph's id counters, and returns a Runtime that continues
     # from the fork point. Forks-of-forks work the same way. Ported from
     # activegraph.runtime.runtime.Runtime#fork.
-    def fork(at_event : String, label : String? = nil, *, replay_llm_cache : Bool = false, replay_tool_cache : Bool = false) : Runtime(M)
+    def fork(at_event : String, label : String? = nil, *, replay_llm_cache : Bool = false, replay_tool_cache : Bool = false,
+             llm_retry_max_attempts : Int32? = nil, llm_retry_initial_delay_seconds : Float64? = nil, llm_retry_max_delay_seconds : Float64? = nil) : Runtime(M)
       store = @store
       unless store.is_a?(SQLiteEventStore)
         raise IncompatibleRuntimeState.new(
@@ -1418,6 +1437,9 @@ module Chronicle
       fork_rt = Runtime(M).new(
         store: fork_store, log_agent: fork_log, graph: fork_graph,
         run_id: new_run_id, llm_cache: fork_cache, tool_cache: fork_tool_cache,
+        llm_retry_max_attempts: llm_retry_max_attempts || @llm_retry_max_attempts,
+        llm_retry_initial_delay_seconds: llm_retry_initial_delay_seconds || @llm_retry_initial_delay_seconds,
+        llm_retry_max_delay_seconds: llm_retry_max_delay_seconds || @llm_retry_max_delay_seconds,
       )
       fork_rt.inherit_pack_registrations(@pack_behaviors, @pack_state, @pack_tools)
       fork_rt.resume_from_idle(fork_events)
@@ -1435,6 +1457,9 @@ module Chronicle
       agent : Crig::Agent(M),
       *,
       max_turns : Int32 = 1,
+      llm_retry_max_attempts : Int32 = 3,
+      llm_retry_initial_delay_seconds : Float64 = 0.5,
+      llm_retry_max_delay_seconds : Float64 = 8.0,
     ) : Runtime(M)
       store = SQLiteEventStore.new(path, run_id: run_id)
       events = store.iter_events
@@ -1442,7 +1467,12 @@ module Chronicle
       graph.attach_store(store)
       graph.ids.reseed_from_events(events)
       log = LogAgent(M).new(agent, store: store, max_turns: max_turns)
-      runtime = Runtime(M).new(store: store, log_agent: log, graph: graph, run_id: run_id)
+      runtime = Runtime(M).new(
+        store: store, log_agent: log, graph: graph, run_id: run_id,
+        llm_retry_max_attempts: llm_retry_max_attempts,
+        llm_retry_initial_delay_seconds: llm_retry_initial_delay_seconds,
+        llm_retry_max_delay_seconds: llm_retry_max_delay_seconds,
+      )
       runtime.resume_from_idle(events)
       runtime.rebuild_pending_approvals_from_log(events)
       runtime
@@ -2437,20 +2467,34 @@ module Chronicle
     # Errors that already carry a reason (LLMBehaviorError, ToolError,
     # UnknownToolError, MissingToolError) record verbatim; a generic provider /
     # network exception is folded to reason="llm.network_error", mirroring
-    # upstream `_invoke_llm_body`'s generic-exception catch.
+    # upstream `_invoke_llm_body`'s generic-exception catch. A retried-but-
+    # exhausted transient failure (LLMRetriesExhaustedError) folds the inner
+    # error and stamps attempts/max_attempts/retry_exhausted extras.
     private def record_llm_behavior_failed(behavior : Packs::PackBehavior, event : Event, error : Exception) : Nil
+      extras = {} of String => JSON::Any
+      folded_error = error
       traceback = error.backtrace.try(&.join("\n")) || ""
-      folded = case error
+      if error.is_a?(LLMRetriesExhaustedError)
+        inner = error.cause || error
+        traceback = inner.backtrace.try(&.join("\n")) || traceback
+        extras = {
+          "attempts"        => JSON::Any.new(error.attempts),
+          "max_attempts"    => JSON::Any.new(error.max_attempts),
+          "retry_exhausted" => JSON::Any.new(true),
+        }
+        folded_error = inner
+      end
+      folded = case folded_error
                when LLMBehaviorError, ToolError, UnknownToolError, MissingToolError
-                 error
+                 folded_error
                else
                  LLMBehaviorError.new(
                    "llm.network_error",
-                   error.message || error.class.to_s,
-                   {"error_class" => JSON::Any.new(error.class.to_s)},
+                   folded_error.message || folded_error.class.to_s,
+                   {"error_class" => JSON::Any.new(folded_error.class.to_s)},
                  )
                end
-      record_behavior_failed(behavior, event, folded, traceback)
+      record_behavior_failed(behavior, event, folded, traceback, extras)
     end
 
     # Compose the LLM behavior prompt and run it through the same model effect
@@ -2508,7 +2552,14 @@ module Chronicle
         )
 
         builder = running_messages.empty? ? base_builder : base_builder.messages(running_messages)
-        response = execute_model_request(effect, builder.build, caused_by: event.id)
+        response = execute_model_request(
+          effect,
+          builder.build,
+          caused_by: event.id,
+          retry_max_attempts: @llm_retry_max_attempts,
+          retry_initial_delay_seconds: @llm_retry_initial_delay_seconds,
+          retry_max_delay_seconds: @llm_retry_max_delay_seconds,
+        )
         refuse_undeclared_tool_calls(behavior, event, response)
 
         calls = response.choice.to_a.compact_map(&.tool_call)
@@ -2720,7 +2771,7 @@ module Chronicle
       end)
     end
 
-    private def record_behavior_failed(behavior : Packs::PackBehavior, event : Event, error : Exception, traceback_override : String? = nil) : Nil
+    private def record_behavior_failed(behavior : Packs::PackBehavior, event : Event, error : Exception, traceback_override : String? = nil, extras : Hash(String, JSON::Any) = {} of String => JSON::Any) : Nil
       reason = case error
                when LLMBehaviorError
                  error.as(LLMBehaviorError).reason
@@ -2757,6 +2808,12 @@ module Chronicle
           # v1.0.3 #3: the More: doc-page URL for the failure reason (falls
           # back to the generic execution-error page for exception.* catches).
           json.field "doc_url", RuntimeReason.doc_url_for_reason(reason || "exception.#{error.class}")
+          # Same-target retry-exhaustion metadata (upstream `_emit_behavior_failed`
+          # extras): attempts / max_attempts / retry_exhausted. Only present when
+          # a transient failure consumed its whole retry budget.
+          extras.each do |key, value|
+            json.field key, value
+          end
         end
       end)
     end
@@ -2809,6 +2866,9 @@ module Chronicle
       replay_strict : Bool = false,
       tools : Array(Tool) = [] of Tool,
       replay_tool_cache : Bool = false,
+      llm_retry_max_attempts : Int32 = 3,
+      llm_retry_initial_delay_seconds : Float64 = 0.5,
+      llm_retry_max_delay_seconds : Float64 = 8.0,
     ) : self
       cache = replay_llm_cache ? LLMCache.from_events(store.iter_events) : nil
       tool_cache = replay_tool_cache ? ToolCache.from_events(store.iter_events) : nil
@@ -2821,6 +2881,9 @@ module Chronicle
         store: store, log_agent: log_agent, policy: policy, budget: budget,
         llm_cache: cache, strict_expected_hashes: strict_hashes,
         tools: tools, tool_cache: tool_cache,
+        llm_retry_max_attempts: llm_retry_max_attempts,
+        llm_retry_initial_delay_seconds: llm_retry_initial_delay_seconds,
+        llm_retry_max_delay_seconds: llm_retry_max_delay_seconds,
       )
     end
 
@@ -3007,10 +3070,20 @@ module Chronicle
       @log_agent.model_response(turn, result_hash: effect.content_hash)
     end
 
+    # Run one model effect through the recorded pipeline (llm.requested ->
+    # execute -> llm.responded) with cache and routing-fallback handling. The
+    # LLM-behavior path passes `retry_max_attempts` > 1 so a transient
+    # provider failure is retried IN PLACE on the same target (upstream
+    # `_invoke_llm_body`): each attempt records its own `llm.requested` (with
+    # attempt_index / max_attempts / retry_of on retries) and failed attempt,
+    # and only after the budget is exhausted does the terminal error escape.
     private def execute_model_request(
       effect : EffectRequest,
       request : Crig::Completion::Request::CompletionRequest,
       caused_by : String? = nil,
+      retry_max_attempts : Int32 = 1,
+      retry_initial_delay_seconds : Float64 = 0.0,
+      retry_max_delay_seconds : Float64 = 8.0,
     )
       loop do
         target = current_execution_target || Routing::Target.new("legacy", "default", false)
@@ -3018,12 +3091,71 @@ module Chronicle
         if hashes = @strict_expected_hashes
           assert_prompt_hash!(hashes, effect.content_hash)
         end
-        request_event = record_llm_requested(effect, target, cache_hit: !cached.nil?, caused_by: caused_by)
+
+        # The cache is consulted once per turn; a cache hit is not retried
+        # (upstream `max_attempts = 1 if cached is not None`).
+        max_attempts = cached.nil? ? Math.max(1, retry_max_attempts) : 1
+
+        outcome = run_same_target_retry_loop(
+          effect, request, caused_by, target, cached,
+          max_attempts, retry_initial_delay_seconds, retry_max_delay_seconds,
+        )
+
+        case outcome
+        when RetryLoopOutcome::Succeeded
+          return outcome.response
+        when RetryLoopOutcome::Failed
+          if outcome.error.is_a?(RetryableProviderError)
+            if select_next_fallback(outcome.failed_event)
+              next
+            else
+              record_fallback_exhausted(outcome.failed_event)
+            end
+          end
+          # A retried-but-exhausted transient failure carries the retry
+          # metadata so the terminal behavior.failed can stamp
+          # attempts/max_attempts/retry_exhausted (upstream extras).
+          if retryable_provider_failure?(outcome.error) && max_attempts > 1
+            raise LLMRetriesExhaustedError.new(outcome.error, outcome.attempts, max_attempts)
+          end
+          raise outcome.error
+        end
+      end
+    end
+
+    # The same-target retry loop (upstream `_invoke_llm_body`): consult the
+    # cache once, then attempt the provider up to `max_attempts`, retrying a
+    # transient failure in place with `llm_retry_delay_seconds` backoff. A
+    # recorded response (cache or live) yields `Succeeded`; a failure that
+    # exhausted (or is terminal) yields `Failed` with its `llm.failed` event.
+    private def run_same_target_retry_loop(
+      effect : EffectRequest,
+      request : Crig::Completion::Request::CompletionRequest,
+      caused_by : String?,
+      target : Routing::Target,
+      cached : EffectResult?,
+      max_attempts : Int32,
+      retry_initial_delay_seconds : Float64,
+      retry_max_delay_seconds : Float64,
+    ) : RetryLoopOutcome
+      attempt_index = 0
+      first_attempt_request_id : String? = nil
+
+      loop do
+        request_event = record_llm_requested(
+          effect, target,
+          cache_hit: !cached.nil?,
+          caused_by: caused_by,
+          attempt_index: attempt_index.zero? ? nil : attempt_index,
+          max_attempts: max_attempts > 1 ? max_attempts : nil,
+          retry_of: attempt_index.zero? ? nil : first_attempt_request_id,
+        )
+        first_attempt_request_id ||= request_event.id
 
         if cached_result = cached
           response = completion_response_from_cache(cached_result)
           record_llm_responded(request_event, target, response)
-          return response
+          return RetryLoopOutcome::Succeeded.new(response)
         end
 
         begin
@@ -3036,18 +3168,84 @@ module Chronicle
           )
           record_llm_responded(request_event, target, response)
           @llm_cache.try(&.record(effect.content_hash, EffectResult.new(effect.content_hash, true, response_cache_payload(response))))
-          return response
+          return RetryLoopOutcome::Succeeded.new(response)
         rescue ex : Exception
           failed_event = record_llm_failed(request_event, target, ex)
-          if ex.is_a?(RetryableProviderError)
-            if select_next_fallback(failed_event)
-              next
-            else
-              record_fallback_exhausted(failed_event)
-            end
+          if retryable_provider_failure?(ex) && attempt_index + 1 < max_attempts
+            delay = RuntimeReason.llm_retry_delay_seconds(
+              attempt_index: attempt_index,
+              initial: retry_initial_delay_seconds,
+              maximum: retry_max_delay_seconds,
+              retry_after_seconds: retry_after_seconds_from(ex),
+            )
+            sleep(delay.seconds) if delay > 0
+            attempt_index += 1
+            next
           end
-          raise ex
+          return RetryLoopOutcome::Failed.new(ex, failed_event, attempt_index + 1)
         end
+      end
+    end
+
+    # Whether a provider failure should be retried in place on the same target
+    # (upstream `_is_transient_llm_reason`): LLMBehaviorError with a transient
+    # reason, and every generic / RetryableProviderError failure (the
+    # llm.network_error fold — upstream's generic `except Exception` catch).
+    private def retryable_provider_failure?(error : Exception) : Bool
+      case error
+      when LLMBehaviorError
+        RuntimeReason.transient_llm_reason?(error.as(LLMBehaviorError).reason)
+      when RetryableProviderError
+        true
+      else
+        true
+      end
+    end
+
+    # The provider's `retry_after_seconds` hint (upstream reads it from
+    # `LLMBehaviorError.payload_extras`), honored and clamped by
+    # `llm_retry_delay_seconds`.
+    private def retry_after_seconds_from(error : Exception) : Float64?
+      case error
+      when LLMBehaviorError
+        error.as(LLMBehaviorError).payload_extras["retry_after_seconds"]?.try(&.as_f?)
+      else
+        nil
+      end
+    end
+
+    # Outcome of the same-target LLM retry loop: either a recorded provider
+    # response (cache hit or live call) to return, or a failure that escaped
+    # the retry budget with its `llm.failed` event and consumed attempt count.
+    private abstract struct RetryLoopOutcome
+      struct Succeeded < RetryLoopOutcome
+        getter response : Crig::Completion::CompletionResponse(String)
+
+        def initialize(@response : Crig::Completion::CompletionResponse(String))
+        end
+      end
+
+      struct Failed < RetryLoopOutcome
+        getter error : Exception
+        getter failed_event : Event
+        getter attempts : Int32
+
+        def initialize(@error : Exception, @failed_event : Event, @attempts : Int32)
+        end
+      end
+    end
+
+    # A transient provider failure whose same-target retry budget was
+    # exhausted. Wraps the original error (as `cause`) so
+    # `record_llm_behavior_failed` folds the inner error and stamps the retry
+    # extras onto the terminal behavior.failed (upstream `_emit_behavior_failed`
+    # extras). Only raised when the retry loop was engaged (`max_attempts > 1`).
+    private class LLMRetriesExhaustedError < Exception
+      getter attempts : Int32
+      getter max_attempts : Int32
+
+      def initialize(original : Exception, @attempts : Int32, @max_attempts : Int32)
+        super(original.message || "llm retries exhausted", cause: original)
       end
     end
 
@@ -3187,6 +3385,9 @@ module Chronicle
       target : Routing::Target?,
       cache_hit : Bool = false,
       caused_by : String? = nil,
+      attempt_index : Int32? = nil,
+      max_attempts : Int32? = nil,
+      retry_of : String? = nil,
     ) : Event
       event = Event.new(
         schema_version: 1_u16,
@@ -3203,6 +3404,14 @@ module Chronicle
             json.field "provider", target.try(&.provider)
             json.field "model", target.try(&.model)
             json.field "cache_hit", cache_hit
+            if attempt_index
+              # Same-target retry metadata (upstream `_invoke_llm_body`):
+              # attempt_index / max_attempts / retry_of ride the retried
+              # request events so trace consumers can reconstruct the retry.
+              json.field "attempt_index", attempt_index
+              json.field "max_attempts", max_attempts
+              json.field "retry_of", retry_of
+            end
           end
         end,
       )

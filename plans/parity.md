@@ -104,14 +104,30 @@ phases).
 - [x] `activate_after` delayed-queue scheduling (352).
 - [x] `run_quantum` cooperative drain (614).
 - [x] Sink conformance mixin + raising-sibling isolation (850).
-- [ ] Same-target LLM retry loop — upstream `_invoke_llm_body` retries a
-      transient provider failure in place (`llm_retry_max_attempts`,
-      `attempt_index`, `retry_of`, `_emit_llm_error_response`,
-      `retry_exhausted`) before emitting the terminal `behavior.failed`.
-      Chronicle retries only via routing fallbacks; the retry helpers are
-      ported (429) but the in-place retry loop is not — upstream tests
+- [x] Same-target LLM retry loop — upstream `_invoke_llm_body` retries a
+      transient provider failure in place before emitting the terminal
+      `behavior.failed`. `Runtime` now takes `llm_retry_max_attempts` /
+      `llm_retry_initial_delay_seconds` / `llm_retry_max_delay_seconds`
+      (upstream defaults 3 / 0.5 / 8.0, normalized like upstream), threaded
+      through the constructor, `fork`, and both `load` overloads. The
+      LLM-behavior path's `execute_model_request` retries a transient failure
+      on the SAME target up to `max_attempts` (cache consulted once per turn,
+      not per attempt — upstream `max_attempts = 1 if cached is not None`);
+      each retried `llm.requested` carries `attempt_index` / `max_attempts` /
+      `retry_of` (the first attempt's request id), and the backoff sleeps
+      `llm_retry_delay_seconds` (honoring a provider-supplied
+      `retry_after_seconds`). A transient failure that exhausts the budget
+      emits `behavior.failed` with `attempts` / `max_attempts` /
+      `retry_exhausted` extras (upstream `_emit_behavior_failed`); a terminal
+      reason (e.g. `llm.parse_error`, `llm.auth_error`) is never retried. The
+      shared agent path keeps `retry_max_attempts=1` so routing-fallback
+      selection is unchanged. Divergence: Chronicle records each failed
+      attempt as a separate `llm.failed` event (the `_emit_llm_error_response`
+      `llm.responded` error-shape is the next pending item). Ported from
+      activegraph tests/test_llm_failure.py
       `test_transient_llm_network_error_retries_before_handler_runs` /
-      `..._exhausts_after_max_attempts` are RED / not ported.
+      `test_transient_llm_network_error_exhausts_after_max_attempts` —
+      `spec/chronicle/llm_retry_loop_spec.cr`.
 - [ ] Structured-output schema typing — `@[LLMBehavior]` handlers currently
       receive the raw output string; upstream `output_schema=` +
       `parse_structured_response` / `_resolve_structured_output_mode`
@@ -120,8 +136,9 @@ phases).
 - [ ] `llm.responded` error-shape parity — upstream folds provider failures
       into `llm.responded` `{error, retryable, attempt_index}` payloads
       (`_emit_llm_error_response`); Chronicle emits a separate `llm.failed`
-      event. The `llm.network_error` fold now lands on `behavior.failed`
-      (1299), but the `llm.responded` error shape is still a divergence.
+      event. The retry loop now records per-attempt `llm.failed` events, and
+      the `llm.network_error` fold lands on `behavior.failed` (1299), but the
+      `llm.responded` error shape is still a divergence.
 
 ### L — large (provider/platform edges, external backends)
 
@@ -144,11 +161,12 @@ phases).
 
 ### Next up (concrete plan order)
 
-1. `[ ]` Same-target LLM retry loop — port upstream
+1. `[x]` Same-target LLM retry loop — port upstream
    `test_transient_llm_network_error_retries_before_handler_runs` /
    `test_transient_llm_network_error_exhausts_after_max_attempts`
    (`test_llm_failure.py`) RED → GREEN → ledger (`_invoke_llm_body`,
-   `_emit_llm_error_response`) → parity.
+   `_emit_llm_error_response`) → parity. Chronicle's failed-attempt recording
+   stays `llm.failed` (the `_emit_llm_error_response` shape is the next item).
 2. `[ ]` Structured-output schema typing — `@[LLMBehavior(output_schema:)`
    + `parse_structured_response`; closes the (1081) divergence.
 3. `[ ]` `Runtime#print_graph` / `Runtime#save_state` small parity surfaces.

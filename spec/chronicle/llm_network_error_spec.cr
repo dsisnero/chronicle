@@ -42,6 +42,7 @@ describe Chronicle::Runtime do
     worker = Chronicle::ModelEffectWorker.new(Chronicle::FixedModelExecutor(NetworkErrorModel).new(model))
     rt = Chronicle::Runtime(NetworkErrorModel).new(
       store: store, log_agent: la, graph: graph, model_effect_worker: worker,
+      llm_retry_initial_delay_seconds: 0.0,
     )
     rt.load_pack(NetworkErrorPack::PACK)
     graph.add_object("document", %({"title":"hello"}))
