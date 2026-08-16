@@ -2429,8 +2429,28 @@ module Chronicle
           relations_created: graph.all_relations.size - relations_before,
         )
       rescue ex : Exception
-        record_behavior_failed(behavior, event, ex)
+        record_llm_behavior_failed(behavior, event, ex)
       end
+    end
+
+    # Fold an LLM-behavior exception into a durable `behavior.failed` event.
+    # Errors that already carry a reason (LLMBehaviorError, ToolError,
+    # UnknownToolError, MissingToolError) record verbatim; a generic provider /
+    # network exception is folded to reason="llm.network_error", mirroring
+    # upstream `_invoke_llm_body`'s generic-exception catch.
+    private def record_llm_behavior_failed(behavior : Packs::PackBehavior, event : Event, error : Exception) : Nil
+      traceback = error.backtrace.try(&.join("\n")) || ""
+      folded = case error
+               when LLMBehaviorError, ToolError, UnknownToolError, MissingToolError
+                 error
+               else
+                 LLMBehaviorError.new(
+                   "llm.network_error",
+                   error.message || error.class.to_s,
+                   {"error_class" => JSON::Any.new(error.class.to_s)},
+                 )
+               end
+      record_behavior_failed(behavior, event, folded, traceback)
     end
 
     # Compose the LLM behavior prompt and run it through the same model effect
@@ -2700,7 +2720,7 @@ module Chronicle
       end)
     end
 
-    private def record_behavior_failed(behavior : Packs::PackBehavior, event : Event, error : Exception) : Nil
+    private def record_behavior_failed(behavior : Packs::PackBehavior, event : Event, error : Exception, traceback_override : String? = nil) : Nil
       reason = case error
                when LLMBehaviorError
                  error.as(LLMBehaviorError).reason
@@ -2719,7 +2739,9 @@ module Chronicle
                   when ToolError
                     error.as(ToolError).payload_extras["tool"]?.try(&.as_s)
                   end
-      traceback = error.backtrace.try(&.join("\n")) || ""
+      # The folded error may never have been raised, so its backtrace is
+      # unavailable; use the captured traceback from the raised exception.
+      traceback = traceback_override || error.backtrace.try(&.join("\n")) || ""
       append_event("behavior.failed", JSON.build do |json|
         json.object do
           json.field "behavior", behavior.name
