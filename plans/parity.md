@@ -1296,6 +1296,16 @@ globally (CONTRACT v0.9 #3).
       tests/test_v1_0_3_tool_multiturn.py —
       `spec/chronicle/cached_tool_turn_spec.cr`,
       `spec/chronicle/multiturn_tool_history_spec.cr`.
+- [x] LLM provider network failure folds to `behavior.failed reason="llm.network_error"`
+      — `invoke_llm_behavior`'s rescue runs `record_llm_behavior_failed`, which
+      records errors that already carry a reason (LLMBehaviorError / ToolError /
+      UnknownToolError / MissingToolError) verbatim and folds any generic
+      provider / network exception into a new `LLMBehaviorError` with
+      reason="llm.network_error", mirroring upstream `_invoke_llm_body`'s
+      generic-exception catch. The folded error is never raised, so its
+      backtrace is captured from the original exception before folding.
+      Ported from activegraph tests/test_llm_failure.py::test_network_error_becomes_behavior_failed_with_reason —
+      `spec/chronicle/llm_network_error_spec.cr`.
 - [x] `frame_id` preserved on events and visible in log inspect — the event
       envelope already carried `frame_id` through `canonical_json` and the
       codec round-trip (`frames_spec.cr`); `Runtime#export_trace` already
