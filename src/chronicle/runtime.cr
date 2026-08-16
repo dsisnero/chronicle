@@ -3040,12 +3040,10 @@ module Chronicle
 
     private def completion_response_from_cache(result : EffectResult) : Crig::Completion::CompletionResponse(String)
       payload = JSON.parse(result.payload).as_h
-      content = payload["content"]?.try(&.as_s) || ""
+      content = payload["content"]?.try(&.as_s?) || ""
       input = payload["input_tokens"]?.try(&.as_i) || 0
       output = payload["output_tokens"]?.try(&.as_i) || 0
-      choice = Crig::OneOrMany(Crig::Completion::AssistantContent).one(
-        Crig::Completion::AssistantContent.text(content)
-      )
+      choice = choice_from_cache_payload(payload, content)
       Crig::Completion::CompletionResponse(String).new(
         choice,
         Crig::Completion::Usage.new(input_tokens: input, output_tokens: output),
@@ -3054,10 +3052,56 @@ module Chronicle
       )
     end
 
+    # Reconstruct the assistant choice from a cached llm.responded payload.
+    # v1.0.3 #4: the payload carries every content block (text + tool_use), so
+    # a cached tool-calling turn re-dispatches the tool on replay instead of
+    # silently degrading to a text-only response.
+    private def choice_from_cache_payload(payload : Hash(String, JSON::Any), fallback_text : String) : Crig::OneOrMany(Crig::Completion::AssistantContent)
+      items = [] of Crig::Completion::AssistantContent
+      if blocks = payload["content_blocks"]?.try(&.as_a)
+        blocks.each do |block|
+          case block["type"]?.try(&.as_s)
+          when "text"
+            items << Crig::Completion::AssistantContent.text(block["text"]?.try(&.as_s) || "")
+          when "tool_call"
+            call = block["tool_call"].as_h
+            items << Crig::Completion::AssistantContent.tool_call(
+              call["id"]?.try(&.as_s) || "",
+              call["name"]?.try(&.as_s) || "",
+              call["arguments"]? || JSON::Any.new({} of String => JSON::Any),
+            )
+          end
+        end
+      end
+      items << Crig::Completion::AssistantContent.text(fallback_text) if items.empty?
+      Crig::OneOrMany(Crig::Completion::AssistantContent).many(items)
+    end
+
     private def response_cache_payload(response) : String
       JSON.build do |json|
         json.object do
           json.field "content", response.choice.first.text.try(&.text)
+          json.field "content_blocks" do
+            json.array do
+              response.choice.each do |item|
+                json.object do
+                  if call = item.tool_call
+                    json.field "type", "tool_call"
+                    json.field "tool_call" do
+                      json.object do
+                        json.field "id", call.id
+                        json.field "name", call.function.name
+                        json.field "arguments", call.function.arguments
+                      end
+                    end
+                  else
+                    json.field "type", "text"
+                    json.field "text", item.text.try(&.text)
+                  end
+                end
+              end
+            end
+          end
           json.field "input_tokens", response.usage.input_tokens
           json.field "output_tokens", response.usage.output_tokens
           json.field "message_id", response.message_id
