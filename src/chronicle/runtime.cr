@@ -2698,7 +2698,13 @@ module Chronicle
           name = call.function.name
           args = call.function.arguments.to_json
           enforce_tool_call_budget!(behavior, event, call)
-          output = invoke_tool(name, args)
+          output = invoke_tool(name, args, ToolContext.new(
+            behavior_name: behavior.name,
+            event_id: event.id,
+            frame_id: current_frame_id,
+            idempotency_key: Random::Secure.hex(16),
+            external_io_mode: ExternalIOMode::RuntimeRecorded,
+          ))
           running_messages << Crig::Completion::Message.tool_result_with_call_id(call.id, call.call_id, output)
         end
       end
@@ -3641,7 +3647,7 @@ module Chronicle
       @log_agent.tool_results(results)
     end
 
-    private def invoke_tool(name : String, args : String) : String
+    private def invoke_tool(name : String, args : String, ctx : ToolContext? = nil) : String
       request_event = record_tool_requested(name, args)
       if cached = @tool_cache.try(&.get(name, args))
         record_tool_responded(request_event, name, args, cached)
@@ -3662,7 +3668,12 @@ module Chronicle
         )
       end
       tool.validate_input!(args)
-      output = tool.call(args)
+      # Runtime dispatch is recorded I/O: every invocation threads a
+      # ToolContext whose external_io_mode is "runtime_recorded" (upstream
+      # `_invoke_tool`), so mode-gated tools (web_fetch) fail closed unless
+      # an explicit live_unrecorded bypass is configured.
+      effective_ctx = ctx || ToolContext.new(external_io_mode: ExternalIOMode::RuntimeRecorded)
+      output = tool.call(args, effective_ctx)
       record_tool_responded(request_event, name, args, output)
       @tool_cache.try(&.record(name, args, output))
       output

@@ -104,9 +104,23 @@ phases).
 - [ ] `EventQueue` — `runtime/queue.py` value object (bounded FIFO used by
       upstream dispatch) — Chronicle's dispatch drains directly from the
       store, so this is a parity shape, not a runtime gap.
-- [ ] `ToolContext` — `tools/context.py` (`external_io_mode`, live_unrecorded
-      permission per invocation) — `Chronicle::ExternalIOMode` exists on the
-      Tool; the ctx wrapper that threads it into tool bodies is pending.
+- [x] `ToolContext` — `tools/context.py` value object (CONTRACT v0.7 #5):
+      `Chronicle::ToolContext` (behavior_name, event_id, frame_id,
+      idempotency_key, timeout_seconds, external_io_mode defaulting to
+      `forbid`). The runtime threads one into EVERY tool invocation:
+      `invoke_tool` supplies `external_io_mode=runtime_recorded` (upstream
+      `_invoke_tool`) and the LLM-behavior tool loop stamps
+      behavior_name/event_id/frame_id plus a fresh idempotency_key, so
+      mode-gated tools (web_fetch) fail closed unless an explicit
+      `live_unrecorded` bypass is configured. `@[Tool]` methods may now
+      declare an optional `(args, ctx)` parameter to read the context
+      (the DSL raises for any other parameter shape). Ported from
+      activegraph tools/context.py + tests/test_tools.py ToolContext
+      construction + runtime `_invoke_tool` wiring —
+      `spec/chronicle/tool_context_spec.cr`. Divergence: the per-tool logger
+      is platform-edge (Crystal has no stdlib logging context), and
+      `timeout_seconds` defaults to 30.0 (the Crystal `@[Tool]` decorator has
+      no timeout field yet).
 
 ### M — medium (behavioral surfaces spanning one module)
 
@@ -208,7 +222,7 @@ phases).
 2. `[x]` Structured-output schema typing — `@[LLMBehavior(output_schema:)`
    + `parse_structured_response`; closes the (1081) divergence.
 3. `[x]` `Runtime#print_graph` / `Runtime#save_state` small parity surfaces.
-4. `[ ]` `ToolContext` external-io-mode threading.
+4. `[x]` `ToolContext` external-io-mode threading.
 5. `[ ]` `EventQueue` parity shape.
 
 ---
@@ -1231,8 +1245,11 @@ globally (CONTRACT v0.9 #3).
 - **Cross-pack settings (`ctx.pack_settings`) return the canonical settings
   Hash**, not a typed object — typed cross-pack access isn't expressible in
   Crystal. Behavior-local settings stay fully typed.
-- **Pack tools accept only `args`** (no `ctx`/settings parameter yet); the DSL
-  raises at compile time if a `@[Tool]` method declares other parameters.
+- **Pack tools accept `args` plus an optional `ctx`** (no `settings` parameter
+  yet); the DSL raises at compile time if a `@[Tool]` method declares any
+  other parameter. A tool body may declare `(args, ctx : Chronicle::ToolContext)`
+  to read the triggering behavior/event/frame, idempotency key, and the
+  `external_io_mode` threaded by runtime dispatch.
 - **Object/relation schemas use `JSON::Serializable` + a DSL-generated
   validator**; Pydantic `Field(ge=...)`-style constraint annotations aren't
   supported (type/requiredness checks are).

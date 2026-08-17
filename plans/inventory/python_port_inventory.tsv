@@ -1124,7 +1124,7 @@ tools/cache.py::method::ToolCache.from_events	method	ported	spec/chronicle/tool_
 tools/cache.py::method::ToolCache.get	method	ported	spec/chronicle/tool_recorded_spec.cr	ToolCache#get
 tools/cache.py::method::ToolCache.has	method	ported	spec/chronicle/tool_recorded_spec.cr	ToolCache#has_key? via get
 tools/cache.py::method::ToolCache.record	method	ported	spec/chronicle/tool_recorded_spec.cr	ToolCache#record
-tools/context.py::class::ToolContext	class	missing	-	auto-generated
+tools/context.py::class::ToolContext	class	ported	spec/chronicle/tool_context_spec.cr	Chronicle::ToolContext value object (behavior_name, event_id, frame_id, idempotency_key, timeout_seconds, external_io_mode default forbid); runtime dispatch threads external_io_mode=runtime_recorded into every invocation via Tool#call(args, ctx), and @[Tool] methods may declare an optional (args, ctx). Divergence: per-tool logger platform-edge; timeout_seconds defaults 30.0 (no @[Tool] timeout field yet)
 tools/decorators.py::function::clear_tool_registry	function	missing	-	auto-generated
 tools/decorators.py::function::get_tool_registry	function	missing	-	auto-generated
 tools/decorators.py::function::tool	function	missing	-	auto-generated

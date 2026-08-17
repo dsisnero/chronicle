@@ -257,9 +257,29 @@ module Chronicle
           tools: [
             {% for method in type.methods %}
               {% if ann = method.annotation(::Chronicle::Packs::Annotations::Tool) %}
-                {% if method.args.any? { |arg| arg.name != :args } %}
-                  {% raise "pack: @[Tool] methods may only declare a single `args` parameter in this port (no ctx/settings injection yet)" %}
+                {% for arg in method.args %}
+                  {% if arg.name != :args && arg.name != :ctx %}
+                    {% raise "pack: @[Tool] methods may only declare `args` and an optional `ctx` parameter" %}
+                  {% end %}
                 {% end %}
+                {% if method.args.any? { |arg| arg.name == :ctx } %}
+                ::Chronicle::Tool.new(
+                  name: {% if ann[:name] %}{{ ann[:name] }}{% else %}{{ method.name }}{% end %},
+                  description: {% if ann[:description] %}{{ ann[:description] }}{% else %}""{% end %},
+                  deterministic: {% if ann[:deterministic] %}{{ ann[:deterministic] }}{% else %}false{% end %},
+                  pack_local: true,
+                  export_globally: {% if ann[:export_globally] %}{{ ann[:export_globally] }}{% else %}false{% end %},
+                  {% if ann[:input_schema] %}
+                    input_validator: ->(args : String) : Nil {
+                      {{ ann[:input_schema] }}.from_json(args)
+                      nil
+                    },
+                  {% end %}
+                  ctx_fn: ->(args : String, ctx : ::Chronicle::ToolContext) : String {
+                    {{ type }}.{{ method.name }}(args, ctx)
+                  },
+                ) { |args| {{ type }}.{{ method.name }}(args, ::Chronicle::ToolContext.new) },
+                {% else %}
                 ::Chronicle::Tool.new(
                   name: {% if ann[:name] %}{{ ann[:name] }}{% else %}{{ method.name }}{% end %},
                   description: {% if ann[:description] %}{{ ann[:description] }}{% else %}""{% end %},
@@ -273,6 +293,7 @@ module Chronicle
                     },
                   {% end %}
                 ) { |args| {{ type }}.{{ method.name }}(args) },
+                {% end %}
               {% end %}
             {% end %}
             {% if tools %}{{ tools }}{% end %}

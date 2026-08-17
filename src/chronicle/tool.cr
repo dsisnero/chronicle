@@ -41,6 +41,36 @@ module Chronicle
     end
   end
 
+  # The narrow surface a tool function body sees (upstream tools/context.py,
+  # CONTRACT v0.7 #5): the triggering behavior + event id, the active frame,
+  # an opaque `idempotency_key` to forward to external APIs (the runtime never
+  # uses it for dedupe — caching is the cache's job), the decorator's
+  # `timeout_seconds` (advisory), and the `external_io_mode` (default "forbid";
+  # runtime dispatch supplies "runtime_recorded"; an intentional replay bypass
+  # must say "live_unrecorded"). No graph reference — tools that need graph
+  # state close over it explicitly at registration (make_graph_query_tool).
+  # Divergence: the per-tool logger is platform-edge (Crystal has no stdlib
+  # logging context) and `timeout_seconds` defaults to 30.0 (the Crystal
+  # @[Tool] decorator has no timeout field yet).
+  struct ToolContext
+    getter behavior_name : String
+    getter event_id : String
+    getter frame_id : String?
+    getter idempotency_key : String
+    getter timeout_seconds : Float64
+    getter external_io_mode : ExternalIOMode
+
+    def initialize(
+      @behavior_name : String = "",
+      @event_id : String = "",
+      @frame_id : String? = nil,
+      @idempotency_key : String = "",
+      @timeout_seconds : Float64 = 30.0,
+      @external_io_mode : ExternalIOMode = ExternalIOMode::Forbid,
+    )
+    end
+  end
+
   # A runtime-invokable tool: metadata plus a callable body. The body runs
   # `fn(args_json) -> output_json`; the runtime owns invocation and the
   # tool.requested / tool.responded event pair.
@@ -52,6 +82,7 @@ module Chronicle
     getter? export_globally : Bool
     @fn : String -> String
     @mode_fn : Proc(String, ExternalIOMode, String)?
+    @ctx_fn : Proc(String, ToolContext, String)?
     @input_validator : Proc(String, Nil)?
 
     def initialize(
@@ -62,6 +93,7 @@ module Chronicle
       @export_globally : Bool = false,
       @mode_fn : Proc(String, ExternalIOMode, String)? = nil,
       @input_validator : Proc(String, Nil)? = nil,
+      @ctx_fn : Proc(String, ToolContext, String)? = nil,
       &@fn : String -> String
     )
     end
@@ -97,6 +129,20 @@ module Chronicle
       end
     end
 
+    # Invoke with the runtime's ToolContext (upstream `_invoke_tool`'s
+    # `tool_fn(args, ctx)`): ctx-aware bodies receive the full context; tools
+    # with a mode gate (web_fetch) see the context's external_io_mode; plain
+    # tools receive args only.
+    def call(args : String, ctx : ToolContext) : String
+      if ctx_fn = @ctx_fn
+        ctx_fn.call(args, ctx)
+      elsif mode_fn = @mode_fn
+        mode_fn.call(args, ctx.external_io_mode)
+      else
+        @fn.call(args)
+      end
+    end
+
     # A canonical (prefixed) copy stamped with pack ownership.
     def with_pack_prefix(pack_name : String, short_name : String) : Tool
       self.class.new(
@@ -107,6 +153,7 @@ module Chronicle
         @export_globally,
         @mode_fn,
         @input_validator,
+        @ctx_fn,
       ) { |args| call(args) }.with_mode_fn(@mode_fn)
     end
 
