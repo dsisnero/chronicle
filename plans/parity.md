@@ -295,10 +295,25 @@ phases).
       `LLMProvider` protocol (`RecordedLLMProvider` / `RecordingLLMProvider`)
       stays a standalone fixture seam, not wired into the runtime execution
       path. Marked `intentional_divergence` in the ledger.
-- [ ] Diligence reference pack — `packs/diligence/*` (86-line `__init__` +
-      modules): a runnable reference pack built on the ported pack DSL
-      (`@[Behavior]`/`@[LLMBehavior]`/`@[Tool]` + `ToolContext`), gated on the
-      embedding + web_fetch providers above.
+- [x] Diligence reference pack — `packs/diligence/*`: a runnable Crystal port
+      of the upstream reference pack on the pack DSL —
+      `Chronicle::Packs::Diligence` with `@[ObjectType]` schemas (company,
+      question, claim, evidence, contradiction, memo), `@[RelationType]`
+      rules (addresses, supports, contradicts), typed settings
+      (`auto_approve_memos` / `max_questions` / `max_claims_per_document` /
+      `confidence_threshold_for_review`), plain + `@[LLMBehavior]` +
+      pattern-subscription behaviors (company_planner, question_generator,
+      claim_extractor with a pack-scoped tool, evidence_linker safety net,
+      contradiction_detector via the `(c1:claim)-[r:contradicts]->(c2:claim)
+      WHERE c1.confidence > 0.7 ...` pattern, memo_synthesizer), and the
+      `memo_approval` policy (propose_object / approve_pack). Runs the full
+      flow end-to-end against a scripted Crig provider: goal → company →
+      questions → claims + evidence + contradicts edge → contradiction (pattern)
+      → memo (materialized under auto_approve_memos, proposed + approve_pack
+      otherwise). Not a line-for-line port: the recorded 3-company fixtures
+      and `risk_identifier` are out of scope (fixtures are scripted in the
+      spec; a production user swaps real tool bodies). Ported from activegraph
+      packs/diligence/* — `spec/chronicle/diligence_pack_spec.cr`.
 - [ ] CLI quickstart — `cli/quickstart.py` (477): the `chronicle-cli
       quickstart` demo surface and its result renderers (builds on the CLI
       renderers S item).
@@ -340,8 +355,10 @@ remaining S/M batch, then the deferred L batch:
    provider factories; the `LLMProvider` protocol stays the standalone
    recorded-fixture seam (not wired into the runtime path). Ledger rows marked
    `intentional_divergence`.
-6. `[ ]` Diligence reference pack — `packs/diligence/*` (M), gated on
-   embedding + web_fetch.
+6. `[x]` Diligence reference pack — `Chronicle::Packs::Diligence` runnable
+   reference on the pack DSL (object/relation types, settings, plain/LLM/
+   pattern behaviors, tool, policy); spec drives the full flow with a
+   scripted provider.
 7. `[-]` L deferred (ordered): Postgres event store → Postgres/FalkorDB
    GraphStore pushdown → retention/compaction → sandbox conformance →
    Prometheus/OTel/migration.
@@ -1227,7 +1244,10 @@ globally (CONTRACT v0.9 #3).
       llm.responded -> handler -> `behavior.completed` / `behavior.failed`),
       reusing the cache + fallback path — `runtime/runtime.py` —
       `spec/chronicle/llm_behavior_runtime_spec.cr`
-- [-] Diligence reference pack — deferred — `packs/diligence/*`
+- [x] Diligence reference pack — `Chronicle::Packs::Diligence` runnable
+      reference on the pack DSL (see the roadmap M-batch row); the recorded
+      3-company fixtures and `risk_identifier` stay out of scope (fixtures
+      scripted in the spec).
 - [x] `pack.settings_overridden` fork override — `load_pack` now applies
       recorded `pack.settings_overridden` events for the pack onto its settings
       (the CLI `fork --set` surface): the parent prefix stays intact and the
