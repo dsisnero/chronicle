@@ -698,12 +698,12 @@ runtime/promote.py::function::promote_warnings	function	missing	-	auto-generated
 runtime/promote.py::method::PromotePlan.is_empty	method	missing	-	auto-generated
 runtime/promote.py::method::PromotePlan.is_promotable	method	missing	-	auto-generated
 runtime/promote.py::method::PromoteResult.computed_against	method	missing	-	auto-generated
-runtime/queue.py::class::EventQueue	class	missing	-	auto-generated
-runtime/queue.py::method::EventQueue.__bool__	method	missing	-	auto-generated
-runtime/queue.py::method::EventQueue.__init__	method	missing	-	auto-generated
-runtime/queue.py::method::EventQueue.__len__	method	missing	-	auto-generated
-runtime/queue.py::method::EventQueue.pop	method	missing	-	auto-generated
-runtime/queue.py::method::EventQueue.push	method	missing	-	auto-generated
+runtime/queue.py::class::EventQueue	class	ported	spec/chronicle/event_queue_spec.cr	Chronicle::EventQueue (single in-process FIFO, CONTRACT #10; no priority, no async). Chronicle dispatch drains directly from the store, so this is a parity shape, not wired into dispatch
+runtime/queue.py::method::EventQueue.__bool__	method	ported	spec/chronicle/event_queue_spec.cr	EventQueue#empty? (Python __bool__/len truthiness)
+runtime/queue.py::method::EventQueue.__init__	method	ported	spec/chronicle/event_queue_spec.cr	EventQueue#initialize (Deque(Event))
+runtime/queue.py::method::EventQueue.__len__	method	ported	spec/chronicle/event_queue_spec.cr	EventQueue#size (Python __len__)
+runtime/queue.py::method::EventQueue.pop	method	ported	spec/chronicle/event_queue_spec.cr	EventQueue#pop (front, nil when empty; Python popleft)
+runtime/queue.py::method::EventQueue.push	method	ported	spec/chronicle/event_queue_spec.cr	EventQueue#push (append to back; Python append)
 runtime/registration_errors.py::class::AmbiguousBehaviorError	class	missing	-	auto-generated
 runtime/registration_errors.py::class::AmbiguousToolError	class	missing	-	auto-generated
 runtime/registration_errors.py::class::BehaviorNotFoundError	class	missing	-	auto-generated

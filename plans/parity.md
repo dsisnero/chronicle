@@ -101,9 +101,13 @@ phases).
       `test_save_state_path_must_match_attached_store`,
       `test_save_then_load_produces_identical_graph`) —
       `spec/chronicle/save_state_spec.cr`.
-- [ ] `EventQueue` — `runtime/queue.py` value object (bounded FIFO used by
-      upstream dispatch) — Chronicle's dispatch drains directly from the
-      store, so this is a parity shape, not a runtime gap.
+- [x] `EventQueue` — `runtime/queue.py` value object (bounded FIFO used by
+      upstream dispatch, CONTRACT #10: no priority, no async):
+      `Chronicle::EventQueue` (push / pop / size / empty?, FIFO ordering).
+      Chronicle's dispatch drains directly from the store, so this is a
+      parity shape, not a runtime gap — the value object is available for
+      tests and tools rather than wired into dispatch —
+      `spec/chronicle/event_queue_spec.cr`.
 - [x] `ToolContext` — `tools/context.py` value object (CONTRACT v0.7 #5):
       `Chronicle::ToolContext` (behavior_name, event_id, frame_id,
       idempotency_key, timeout_seconds, external_io_mode defaulting to
@@ -223,7 +227,7 @@ phases).
    + `parse_structured_response`; closes the (1081) divergence.
 3. `[x]` `Runtime#print_graph` / `Runtime#save_state` small parity surfaces.
 4. `[x]` `ToolContext` external-io-mode threading.
-5. `[ ]` `EventQueue` parity shape.
+5. `[x]` `EventQueue` parity shape.
 
 ---
 
