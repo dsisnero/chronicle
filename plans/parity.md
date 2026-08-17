@@ -46,7 +46,13 @@ ledger is curated, so expand it per phase below. `plan_with_chiasmus.sh` and
 `check_completion_gate.sh` need `chiasmus-plan`/`chiasmus-complete`, which are
 not released yet — treat their absence as a tooling gap, not a porting signal.
 The feature-size roadmap (S / M / L, below) tracks what remains and the
-concrete next-up order.
+concrete next-up order. **S and M core are complete and committed** (the
+event-sourcing core, runtime execution surface, LLM layer, tools, packs,
+sinks/observability, frames, CLI/trace, and both GraphStore backends); the
+remaining S/M batch targets the provider/platform seams (embedding, native
+structured output, provider adapters, CLI quickstart, scheduler wall-clock)
+and the L batch targets external backends (Postgres, sandbox, observability
+backends, retention).
 
 [cross-language-crystal-parity]: /Users/dominic/.agents/skills/cross-language-crystal-parity/SKILL.md
 
@@ -206,38 +212,84 @@ phases).
       `_emit_llm_error_response` + tests/test_llm_failure.py —
       `spec/chronicle/llm_error_shape_spec.cr`.
 
-### L — large (provider/platform edges, external backends)
+### S — next batch (small: renderers, narrow runtime surfaces)
 
-- [ ] Provider adapters (Anthropic/OpenAI) — `llm/anthropic.py`,
-      `llm/openai.py`, `llm/native.py` (deferred; the `ModelExecutor` seam
-      already routes through registered executors).
-- [ ] Embedding — `llm/embedding.py`, `llm/embedding_cache.py` (deferred).
-- [ ] Postgres event store — `store/postgres.py` (deferred; needs `pg` shard +
-      live server).
+- [ ] CLI renderers — `cli/renderers.py` (97-line module): the remaining
+      `chronicle-cli` renderer surfaces beyond the already-ported
+      `trace`/`diff`/`log inspect` (the CONTRACT #18 line renderers live in
+      the core `Trace`; this is the quickstart/result renderer surface).
+- [ ] Scheduler wall-clock extension — `runtime/scheduler.py` (206-line
+      module) `schedule`/`loop`: the runtime API for wall-clock delayed and
+      periodic behavior runs. The event-sequence `activate_after` tick is
+      already ported; the `schedule`/`loop` wall-clock extension was noted as
+      not ported in the activate_after row and is this item.
+
+### M — next batch (medium: provider/platform seams spanning one module)
+
+- [ ] Embedding provider protocol + cache — `llm/embedding.py` (92) +
+      `llm/embedding_cache.py` (130): the `EmbeddingProvider` protocol,
+      `EmbeddingCache` (from-events harvest mirroring `LLMCache`),
+      `Runtime#embed` wiring, and `ctx.embed` on the behavior context. The
+      pure helpers (`validate_embedding_vectors` 539,
+      `direct_embedding_event_ids` 509) are already ported; the
+      provider/cache/runtime surface is pending. This also unblocks the
+      deferred `ctx.embed` noted in the `propose_object` row.
+- [ ] Native structured output — `llm/native.py` (173) +
+      `runtime.py::_resolve_structured_output_mode`: resolve a behavior's
+      structured-output mode (`native` vs `prompt`) from the provider's
+      `supports_native_structured_output` capability, and forward the
+      `json_schema` output config on native calls. Closes the native-mode half
+      of the schema-typing divergence (the prompt-mode parse path is ported).
+- [ ] Provider adapters (Anthropic/OpenAI) — `llm/anthropic.py` (389) +
+      `llm/openai.py` (528): `Chronicle::LLMProvider` implementations over the
+      `ModelExecutor`/`ProviderRegistry` seam (Crig clients already route
+      model execution), including `complete(output_schema:)`,
+      `estimate_cost`/`count_tokens`/`recognizes_model`, native structured
+      output forwarding, and the `Wire` tool-name round-trip.
+- [ ] Diligence reference pack — `packs/diligence/*` (86-line `__init__` +
+      modules): a runnable reference pack built on the ported pack DSL
+      (`@[Behavior]`/`@[LLMBehavior]`/`@[Tool]` + `ToolContext`), gated on the
+      embedding + web_fetch providers above.
+- [ ] CLI quickstart — `cli/quickstart.py` (477): the `chronicle-cli
+      quickstart` demo surface and its result renderers (builds on the CLI
+      renderers S item).
+
+### L — next batch (large: external backends, deferred)
+
+- [ ] Postgres event store — `store/postgres.py` (needs `pg` shard + live
+      server; the `EventStore` protocol is the path for adding it).
 - [ ] Postgres / FalkorDB GraphStore pushdown — `store/postgres.py`,
-      `store/falkordb.py` (deferred).
-- [ ] Retention / compaction — `store/retention.py` (deferred: offline
-      snapshot + archive-tier compaction).
-- [ ] Sandbox executor/conformance — `sandbox/*` (deferred).
-- [ ] Diligence reference pack — `packs/diligence/*` (deferred).
+      `store/falkordb.py` (any backend passing the conformance suite is
+      interchangeable).
+- [ ] Retention / compaction — `store/retention.py` (368): offline snapshot
+      sidecar + archive-tier compaction.
+- [ ] Sandbox executor/conformance — `sandbox/*` (`_child`, `executor`,
+      `conformance`).
 - [ ] Prometheus / OTel / migration — `observability/prometheus.py`,
-      `observability/otel.py`, `observability/migration.py` (deferred).
-- [ ] CLI quickstart/renderers — `cli/quickstart.py`, `cli/renderers.py`
-      (deferred; `trace`/`diff`/`log inspect` renderers are ported).
+      `observability/otel.py`, `observability/migration.py` (external
+      backends; the `Metrics` protocol + `Logging` schema are ported).
 
 ### Next up (concrete plan order)
 
-1. `[x]` Same-target LLM retry loop — port upstream
-   `test_transient_llm_network_error_retries_before_handler_runs` /
-   `test_transient_llm_network_error_exhausts_after_max_attempts`
-   (`test_llm_failure.py`) RED → GREEN → ledger (`_invoke_llm_body`,
-   `_emit_llm_error_response`) → parity. Chronicle's failed-attempt recording
-   stays `llm.failed` (the `_emit_llm_error_response` shape is the next item).
-2. `[x]` Structured-output schema typing — `@[LLMBehavior(output_schema:)`
-   + `parse_structured_response`; closes the (1081) divergence.
-3. `[x]` `Runtime#print_graph` / `Runtime#save_state` small parity surfaces.
-4. `[x]` `ToolContext` external-io-mode threading.
-5. `[x]` `EventQueue` parity shape.
+The S and M core batches above are complete; this is the ordered plan for the
+remaining S/M batch, then the deferred L batch:
+
+1. `[ ]` CLI renderers + quickstart — port `cli/renderers.py` (S) then
+   `cli/quickstart.py` (M) renderer surfaces onto `chronicle-cli`.
+2. `[ ]` Scheduler wall-clock extension — `runtime/scheduler.py`
+   `schedule`/`loop` (S), on top of the ported `activate_after` event tick.
+3. `[ ]` Embedding provider protocol + cache — `llm/embedding.py` +
+   `llm/embedding_cache.py` + `Runtime#embed` / `ctx.embed` (M); unblocks the
+   diligence pack.
+4. `[ ]` Native structured output mode — `llm/native.py` +
+   `_resolve_structured_output_mode` (M), gated on provider capability.
+5. `[ ]` Provider adapters (Anthropic/OpenAI) — `Chronicle::LLMProvider`
+   implementations over the `ModelExecutor` seam (M).
+6. `[ ]` Diligence reference pack — `packs/diligence/*` (M), gated on
+   embedding + web_fetch.
+7. `[-]` L deferred (ordered): Postgres event store → Postgres/FalkorDB
+   GraphStore pushdown → retention/compaction → sandbox conformance →
+   Prometheus/OTel/migration.
 
 ---
 
@@ -857,7 +909,7 @@ From `parity.tsv` (`missing_contains` on Runtime):
       `EffectRequest`/`ModelEffectRequest` remain structs carrying the
       canonical `content_hash`. Ported from activegraph runtime.py
       requested_payload — `spec/chronicle/llm_cache_wiring_spec.cr`.
-      `llm/types.py` provider types and `llm/parsing.py` stay deferred.
+      `llm/types.py` provider types and `llm/native.py` stay deferred.
 - [x] LLM data types — `Chronicle::LLMMessage` / `Chronicle::ToolCall` /
       `Chronicle::LLMResponse` structs (from `llm/types.py`, v0.7 shapes)
       plus a `Chronicle::Role` enum (`user`/`assistant`/`tool`). These are
