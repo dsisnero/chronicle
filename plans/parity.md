@@ -277,12 +277,24 @@ phases).
       `test_prompt_mode_hashable_has_no_mode_key` —
       `spec/chronicle/native_structured_output_spec.cr`,
       `spec/chronicle/native_mode_runtime_spec.cr`.
-- [ ] Provider adapters (Anthropic/OpenAI) — `llm/anthropic.py` (389) +
-      `llm/openai.py` (528): `Chronicle::LLMProvider` implementations over the
-      `ModelExecutor`/`ProviderRegistry` seam (Crig clients already route
-      model execution), including `complete(output_schema:)`,
-      `estimate_cost`/`count_tokens`/`recognizes_model`, native structured
-      output forwarding, and the `Wire` tool-name round-trip.
+- [x] Provider adapters (Anthropic/OpenAI) — **covered, no adapter port
+      needed**: the router already executes every provider through Crig via the
+      `ModelExecutor`/`ProviderRegistry` seam + the Crig provider factories
+      (`AnthropicProviderFactory`, `OpenAIProviderFactory`,
+      `OpenAICompatibleProviderFactory`, `DeepSeekProviderFactory`,
+      `OllamaProviderFactory`, `GeminiProviderFactory`) — adding a provider is
+      a `CrigProviderFactory`, not an `LLMProvider` implementation. The
+      upstream `llm/anthropic.py` / `llm/openai.py` HTTP providers (and the
+      `Wire` tool-name round-trip / provider-exception taxonomy they consume)
+      map onto Crig clients + the already-ported `Wire` helpers. Recording and
+      replay are event-log based: every `llm.requested`/`llm.responded` event
+      carries `provider` + `model` (from the routing target) + prompt hash, and
+      `LLMCache.from_events` + `Runtime.load/fork(replay_llm_cache: true)`
+      replay recorded responses with zero provider contact — so the provider
+      used is captured automatically, with no separate adapter. The
+      `LLMProvider` protocol (`RecordedLLMProvider` / `RecordingLLMProvider`)
+      stays a standalone fixture seam, not wired into the runtime execution
+      path. Marked `intentional_divergence` in the ledger.
 - [ ] Diligence reference pack — `packs/diligence/*` (86-line `__init__` +
       modules): a runnable reference pack built on the ported pack DSL
       (`@[Behavior]`/`@[LLMBehavior]`/`@[Tool]` + `ToolContext`), gated on the
@@ -323,8 +335,11 @@ remaining S/M batch, then the deferred L batch:
    `_resolve_structured_output_mode` (M); the runtime resolves + carries the
    mode and hashes it when native; provider-wire forwarding stays at the
    adapter boundary.
-5. `[ ]` Provider adapters (Anthropic/OpenAI) — `Chronicle::LLMProvider`
-   implementations over the `ModelExecutor` seam (M).
+5. `[x]` Provider adapters (Anthropic/OpenAI) — covered, no port needed: the
+   router executes through Crig via `ModelExecutor`/`ProviderRegistry` + the
+   provider factories; the `LLMProvider` protocol stays the standalone
+   recorded-fixture seam (not wired into the runtime path). Ledger rows marked
+   `intentional_divergence`.
 6. `[ ]` Diligence reference pack — `packs/diligence/*` (M), gated on
    embedding + web_fetch.
 7. `[-]` L deferred (ordered): Postgres event store → Postgres/FalkorDB
@@ -939,9 +954,14 @@ From `parity.tsv` (`missing_contains` on Runtime):
       recorded back into the cache. `replay_strict: true` raises
       `ReplayDivergenceError` on prompt-hash mismatch — `llm/cache.py`,
       `runtime.py` — `spec/chronicle/llm_cache_wiring_spec.cr`
-- [-] Provider adapters (Anthropic/OpenAI/native structured output) — deferred;
-      `Chronicle::ModelExecutor` already routes through registered executors —
-      `llm/anthropic.py`, `llm/openai.py`, `llm/native.py`
+- [-] Provider adapters (Anthropic/OpenAI/native structured output) — covered
+      by the Crig seam: the router executes through `ModelExecutor`/
+      `ProviderRegistry` + the Crig provider factories (`AnthropicProviderFactory`,
+      `OpenAIProviderFactory`, ...), and native-mode resolution is ported
+      (`Chronicle::Native`). The upstream HTTP providers are not ported as
+      classes — the `LLMProvider` protocol stays the standalone recorded-fixture
+      seam. `llm/native.py` pre-flight/resolution ported; the raw
+      request/response helpers stay Crig's job.
 - [x] Wire protocol (request/response types, canonical serialization,
       `prompt_hash`) — `llm.requested` events now carry `prompt_hash` (the
       canonical prompt digest, upstream `turn_hash`) alongside `request_hash`
