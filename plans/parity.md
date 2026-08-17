@@ -50,9 +50,8 @@ concrete next-up order. **S and M core are complete and committed** (the
 event-sourcing core, runtime execution surface, LLM layer, tools, packs,
 sinks/observability, frames, CLI/trace, and both GraphStore backends); the
 remaining S/M batch targets the provider/platform seams (embedding, native
-structured output, provider adapters, CLI quickstart, scheduler wall-clock)
-and the L batch targets external backends (Postgres, sandbox, observability
-backends, retention).
+structured output, CLI quickstart) and the L batch targets external backends
+(Postgres, sandbox, observability backends, retention).
 
 [cross-language-crystal-parity]: /Users/dominic/.agents/skills/cross-language-crystal-parity/SKILL.md
 
@@ -226,11 +225,19 @@ phases).
       via Python repr; Chronicle returns lines and renders contradictions as
       compact JSON. Ported from activegraph cli/renderers.py —
       `spec/chronicle/cli_renderers_spec.cr`.
-- [ ] Scheduler wall-clock extension — `runtime/scheduler.py` (206-line
-      module) `schedule`/`loop`: the runtime API for wall-clock delayed and
-      periodic behavior runs. The event-sequence `activate_after` tick is
-      already ported; the `schedule`/`loop` wall-clock extension was noted as
-      not ported in the activate_after row and is this item.
+- [x] Scheduler (covered) — `runtime/scheduler.py` (206-line module) is the
+      event-count scheduler for `activate_after` (CONTRACT v0.7 #13) and is
+      fully ported: `Chronicle::Packs.parse_activate_after` (int / "N" /
+      "N event(s)"; rejects bool, wall-clock units, garbage, zero/negative),
+      `InvalidActivateAfter`, `ScheduledEntry`, and `DelayedQueue`
+      (`push`/`pop_due`/`empty?`), wired into `Runtime#schedule_delayed` /
+      `_fire_due_delayed`. There is NO upstream wall-clock `schedule`/`loop`
+      API to port: the module deliberately keeps wall-clock OUT (the docstring
+      and `InvalidActivateAfter` reject seconds/minutes/hours with a CONTRACT
+      v0.7 #13 pointer; the v1+ escape hatch is `runtime.tick()` + injected
+      `timer.fired` events, not a ported surface). The earlier "schedule/loop
+      wall-clock extension is not ported" note was a misread of that decision.
+      — `spec/chronicle/activate_after_spec.cr`.
 
 ### M — next batch (medium: provider/platform seams spanning one module)
 
@@ -348,8 +355,10 @@ remaining S/M batch, then the deferred L batch:
 
 1. `[x]` CLI renderers — `Chronicle::Renderers` memo renderer lines (S);
    `cli/quickstart.py` demo surface stays M-pending on top of it.
-2. `[ ]` Scheduler wall-clock extension — `runtime/scheduler.py`
-   `schedule`/`loop` (S), on top of the ported `activate_after` event tick.
+2. `[x]` Scheduler — covered: `runtime/scheduler.py` is the event-count
+   `activate_after` scheduler (fully ported in `Chronicle::Packs`); there is
+   no upstream wall-clock `schedule`/`loop` API (wall-clock is out of scope
+   per CONTRACT v0.7 #13).
 3. `[x]` Embedding provider protocol + cache — `llm/embedding.py` +
    `llm/embedding_cache.py` + `Runtime#embed` / `ctx.embed` (M); uses Crig's
    `EmbeddingModel` seam (`CrigEmbeddingProvider` + the `HashEmbeddingProvider`
@@ -681,8 +690,10 @@ From `parity.tsv` (`missing_contains` on Runtime):
       Intentional divergence: Chronicle's dispatch tick is the event sequence
       (add_object emits events that advance it); `patch_object` does not emit a
       log event, so patches do not advance the schedule tick (upstream's
-      object.updated does). The `schedule`/`loop` wall-clock extension is not
-      ported.
+      object.updated does). There is no upstream wall-clock `schedule`/`loop`
+      extension to port — `runtime/scheduler.py` is event-count only
+      (CONTRACT v0.7 #13), and the v1+ escape hatch (`runtime.tick()` +
+      injected `timer.fired` events) is not a ported surface.
 - [x] Dev override — `dev_override` / `dev_overrides` / `validate_dev_override`
       (exact run-local receipts, promotion/event-log/R4 gates rejected before
       emission, receipts rebuilt from the log) — `runtime/dev_override.py` —

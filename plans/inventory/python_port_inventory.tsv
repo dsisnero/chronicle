@@ -821,14 +821,14 @@ runtime/runtime.py::method::Runtime.sink_statuses	method	ported	spec/chronicle/r
 runtime/runtime.py::method::Runtime.status	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.trace	method	ported	spec/chronicle/trace_accessors_spec.cr	Runtime#trace returns Chronicle::TraceFacade (events/failures)
 runtime/runtime.py::method::Runtime.validate_dev_override	method	missing	-	auto-generated
-runtime/scheduler.py::class::DelayedQueue	class	missing	-	auto-generated
-runtime/scheduler.py::class::InvalidActivateAfter	class	missing	-	auto-generated
-runtime/scheduler.py::class::ScheduledEntry	class	missing	-	auto-generated
-runtime/scheduler.py::function::parse_activate_after	function	missing	-	auto-generated
-runtime/scheduler.py::method::DelayedQueue.__len__	method	missing	-	auto-generated
-runtime/scheduler.py::method::DelayedQueue.pop_due	method	missing	-	auto-generated
-runtime/scheduler.py::method::DelayedQueue.push	method	missing	-	auto-generated
-runtime/scheduler.py::method::InvalidActivateAfter.__init__	method	missing	-	auto-generated
+runtime/scheduler.py::class::DelayedQueue	class	ported	spec/chronicle/activate_after_spec.cr	Chronicle::Packs::DelayedQueue (push / pop_due / empty?; FIFO within a fire tick)
+runtime/scheduler.py::class::InvalidActivateAfter	class	ported	spec/chronicle/activate_after_spec.cr	Chronicle::Packs::InvalidActivateAfter (RegistrationError leaf)
+runtime/scheduler.py::class::ScheduledEntry	class	ported	spec/chronicle/activate_after_spec.cr	Chronicle::Packs::ScheduledEntry record (fire_at_sequence)
+runtime/scheduler.py::function::parse_activate_after	function	ported	spec/chronicle/activate_after_spec.cr	Packs.parse_activate_after (int/str; rejects bool, wall-clock units, garbage, zero/negative)
+runtime/scheduler.py::method::DelayedQueue.__len__	method	ported	spec/chronicle/activate_after_spec.cr	DelayedQueue#size/empty?
+runtime/scheduler.py::method::DelayedQueue.pop_due	method	ported	spec/chronicle/activate_after_spec.cr	DelayedQueue#pop_due(current_sequence)
+runtime/scheduler.py::method::DelayedQueue.push	method	ported	spec/chronicle/activate_after_spec.cr	DelayedQueue#push
+runtime/scheduler.py::method::InvalidActivateAfter.__init__	method	ported	spec/chronicle/activate_after_spec.cr	InvalidActivateAfter structured construction
 runtime/view_builder.py::const::DEFAULT_RECENT_EVENTS	const	missing	-	auto-generated
 runtime/view_builder.py::function::_resolve_event_path	function	ported	spec/chronicle/resolve_event_path_spec.cr	Resolve dotted event.<path> expression for view around= anchors (upstream _resolve_event_path)
 runtime/view_builder.py::function::build_view	function	missing	-	auto-generated
