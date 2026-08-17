@@ -226,14 +226,30 @@ phases).
 
 ### M — next batch (medium: provider/platform seams spanning one module)
 
-- [ ] Embedding provider protocol + cache — `llm/embedding.py` (92) +
-      `llm/embedding_cache.py` (130): the `EmbeddingProvider` protocol,
-      `EmbeddingCache` (from-events harvest mirroring `LLMCache`),
-      `Runtime#embed` wiring, and `ctx.embed` on the behavior context. The
-      pure helpers (`validate_embedding_vectors` 539,
-      `direct_embedding_event_ids` 509) are already ported; the
-      provider/cache/runtime surface is pending. This also unblocks the
-      deferred `ctx.embed` noted in the `propose_object` row.
+- [x] Embedding provider protocol + cache — `llm/embedding.py` +
+      `llm/embedding_cache.py` (CONTRACT v1.8 #6): `Chronicle::EmbeddingProvider`
+      (default_model + `embed(texts, model)`), the deterministic
+      `HashEmbeddingProvider` test double (SHA-256 bucket-count L2-normalized
+      vectors; rejects `dimensions < 1`) which ALSO implements Crig's
+      `EmbeddingModel` seam (`max_documents`/`ndims`/`embed_texts`) so it
+      plugs into Crig vector stores, and `CrigEmbeddingProvider(M)` adapting
+      any Crig embedding model to the protocol. `Chronicle::EmbeddingCache`
+      (content-keyed by SHA-256 of sorted-key `{model, texts}`; defensive
+      copies; `from_events` harvest skipping error/malformed/count-mismatch
+      responses). `Runtime#embed` records a content-keyed
+      `embedding.requested`/`embedding.responded` pair (never the input text),
+      serves recorded returns from the cache on load/fork with zero provider
+      contact, records provider errors without caching, and strict replay
+      rejects input-hash drift with `embedding_hash_mismatch` (offline gate —
+      strict replay never contacts the provider). The provider/cache thread
+      through the constructor, `fork`, and both `load` overloads (inherit
+      parent provider on fork). `ctx.embed` threads the behavior + triggering
+      event through the recorded path (`RuntimeContextRequiredError` when
+      unbound) — this also unblocks the deferred `ctx.embed` noted in the
+      `propose_object` row. Ported from activegraph tests/test_embedding_provider.py +
+      tests/test_embedding_replay.py — `spec/chronicle/embedding_spec.cr`,
+      `spec/chronicle/embedding_cache_spec.cr`,
+      `spec/chronicle/embedding_runtime_spec.cr`.
 - [ ] Native structured output — `llm/native.py` (173) +
       `runtime.py::_resolve_structured_output_mode`: resolve a behavior's
       structured-output mode (`native` vs `prompt`) from the provider's
@@ -278,9 +294,10 @@ remaining S/M batch, then the deferred L batch:
    `cli/quickstart.py` (M) renderer surfaces onto `chronicle-cli`.
 2. `[ ]` Scheduler wall-clock extension — `runtime/scheduler.py`
    `schedule`/`loop` (S), on top of the ported `activate_after` event tick.
-3. `[ ]` Embedding provider protocol + cache — `llm/embedding.py` +
-   `llm/embedding_cache.py` + `Runtime#embed` / `ctx.embed` (M); unblocks the
-   diligence pack.
+3. `[x]` Embedding provider protocol + cache — `llm/embedding.py` +
+   `llm/embedding_cache.py` + `Runtime#embed` / `ctx.embed` (M); uses Crig's
+   `EmbeddingModel` seam (`CrigEmbeddingProvider` + the `HashEmbeddingProvider`
+   shim); unblocks the diligence pack.
 4. `[ ]` Native structured output mode — `llm/native.py` +
    `_resolve_structured_output_mode` (M), gated on provider capability.
 5. `[ ]` Provider adapters (Anthropic/OpenAI) — `Chronicle::LLMProvider`
@@ -921,7 +938,12 @@ From `parity.tsv` (`missing_contains` on Runtime):
       `to_dict` dataclass idiom and `_parsed_to_jsonable` Pydantic adapter
       are N/A (divergence) — structs serialize themselves —
       `spec/chronicle/llm_types_spec.cr`.
-- [-] Embedding — deferred — `llm/embedding.py`, `llm/embedding_cache.py`
+- [x] Embedding — `llm/embedding.py`, `llm/embedding_cache.py` ported:
+      `EmbeddingProvider` protocol + `HashEmbeddingProvider` (also a Crig
+      `EmbeddingModel` shim) + `CrigEmbeddingProvider(M)` adapter +
+      `EmbeddingCache` + `Runtime#embed` / `ctx.embed` (CONTRACT v1.8 #6).
+      Real network embedding providers (OpenAI embeddings, Voyage, local
+      sentence-transformers) remain pack/application territory per upstream.
 - [x] LLM provider protocol + fixture providers — `Chronicle::LLMProvider`
       abstract class (CONTRACT v0.6 #3 + v1.0.2 #1): `complete(output_schema :
       T.class)` generic, `estimate_cost`, `count_tokens`, `recognizes_model`,
@@ -1180,9 +1202,9 @@ globally (CONTRACT v0.9 #3).
       outside a runtime raises `RuntimeContextRequiredError` (an
       `ExecutionError` with the structured format + doc slug
       `runtime-context-required-error`). This completes the
-      approve-materialization of gated object types. Divergence: upstream's
-      `ctx.embed` stays deferred (embedding provider not ported); the
-      runtime-required error pattern is shared via `propose_object`. Ported
+      approve-materialization of gated object types. `ctx.embed` uses the
+      same runtime-backref pattern and now threads through the recorded
+      embedding path. Ported
       from activegraph.runtime Context.propose_object +
       exec_errors.RuntimeContextRequiredError + test_errors_format.py /
       _legacy_approval_scenario.py — `spec/chronicle/context_methods_spec.cr`.

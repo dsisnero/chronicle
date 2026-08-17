@@ -17,6 +17,10 @@ module Chronicle
       # runtime (propose_object) can reach it. Nil when the context was
       # constructed outside a Runtime (e.g. a direct handler-call test).
       @propose_object_proc : Proc(String, String, String, String)?
+      # Optional runtime backref so ctx methods that defer embedding I/O to the
+      # runtime (ctx.embed) can reach it. Nil when the context was constructed
+      # outside a Runtime.
+      @embed_proc : Proc(Array(String), String?, Array(Array(Float64)))? = nil
       # v1.10 #1: the behavior's scoped view of the graph. When the runtime
       # traces context reads, this is a TracedView that records object reads.
       @view : Chronicle::View | Chronicle::ContextRead::TracedView
@@ -26,6 +30,7 @@ module Chronicle
         @settings : Hash(String, JSON::Any),
         @settings_provider : Proc(String, Hash(String, JSON::Any)?),
         @propose_object_proc : Proc(String, String, String, String)? = nil,
+        @embed_proc : Proc(Array(String), String?, Array(Array(Float64)))? = nil,
         @view : Chronicle::View | Chronicle::ContextRead::TracedView = Chronicle::View.new,
       )
       end
@@ -52,6 +57,18 @@ module Chronicle
           proc.call(object_type, data, reason)
         else
           raise RuntimeContextRequiredError.new(method: "ctx.propose_object")
+        end
+      end
+
+      # Embed text through the runtime's recorded/replayable I/O path (upstream
+      # Context.embed, CONTRACT v1.8). Packs should use this instead of calling
+      # the provider object directly, which bypasses the event pair and replay
+      # cache.
+      def embed(texts : Array(String), *, model : String? = nil) : Array(Array(Float64))
+        if proc = @embed_proc
+          proc.call(texts, model)
+        else
+          raise RuntimeContextRequiredError.new(method: "ctx.embed")
         end
       end
     end

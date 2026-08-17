@@ -873,6 +873,14 @@ module Chronicle
     @llm_retry_max_attempts : Int32 = 3
     @llm_retry_initial_delay_seconds : Float64 = 0.5
     @llm_retry_max_delay_seconds : Float64 = 8.0
+    # Runtime-owned embedding seam (CONTRACT v1.8): the provider is never
+    # called by the runtime itself; `Runtime#embed` / `ctx.embed` record a
+    # content-keyed embedding.requested/responded pair and replay from the
+    # cache. Mirrors the LLM cache posture.
+    @embedding_provider : EmbeddingProvider?
+    @embedding_cache : EmbeddingCache?
+    @replay_embedding_cache : Bool = false
+    @strict_expected_embedding_hashes : Array(String)? = nil
 
     # Budget limits for a run. Multi-dimensional hard limits (upstream
     # activegraph.runtime.budget); see `Chronicle::Budget`.
@@ -898,6 +906,10 @@ module Chronicle
       llm_retry_max_attempts : Int32 = 3,
       llm_retry_initial_delay_seconds : Float64 = 0.5,
       llm_retry_max_delay_seconds : Float64 = 8.0,
+      @embedding_provider : EmbeddingProvider? = nil,
+      @embedding_cache : EmbeddingCache? = nil,
+      @replay_embedding_cache : Bool = false,
+      @strict_expected_embedding_hashes : Array(String)? = nil,
     )
       # Normalize like upstream: at least one attempt, non-negative initial
       # delay, and the max never below the initial.
@@ -1306,6 +1318,9 @@ module Chronicle
       @llm_cache
     end
 
+    getter embedding_provider : EmbeddingProvider?
+    getter embedding_cache : EmbeddingCache?
+
     getter llm_retry_max_attempts : Int32
     getter llm_retry_initial_delay_seconds : Float64
     getter llm_retry_max_delay_seconds : Float64
@@ -1389,6 +1404,67 @@ module Chronicle
       )
       @store.append(event)
       run_until_idle
+    end
+
+    # Embed `texts` through a recorded, content-keyed runtime path (CONTRACT
+    # v1.8, upstream Runtime.embed). The request event stores only a content
+    # hash — never the input text — and the response event stores the ordered
+    # vectors so replay can return without provider contact. Behavior code
+    # normally reaches this path through `ctx.embed`, which supplies causal
+    # metadata.
+    def embed(
+      texts : Array(String),
+      *,
+      model : String? = nil,
+      actor : String = "runtime",
+      caused_by : String? = nil,
+    ) : Array(Array(Float64))
+      provider = @embedding_provider
+      resolved_model = model || provider.try(&.default_model)
+      if resolved_model.nil?
+        raise RuntimeError.new("Runtime.embed() requires embedding_provider= when model is omitted")
+      end
+      if resolved_model.empty?
+        raise ArgumentError.new("embedding model must be a non-empty string")
+      end
+
+      inputs_hash = EmbeddingCache.hash_embedding_request(texts, resolved_model)
+      cached = @replay_embedding_cache ? @embedding_cache.try(&.get(inputs_hash)) : nil
+
+      request_event = record_embedding_event("embedding.requested", JSON.build do |json|
+        json.object do
+          json.field "inputs_hash", inputs_hash
+          json.field "model", resolved_model
+          json.field "input_count", texts.size
+          json.field "cache_hit", !cached.nil?
+        end
+      end, actor: actor, caused_by: caused_by)
+
+      if hashes = @strict_expected_embedding_hashes
+        assert_embedding_hash!(hashes, inputs_hash, request_event.id)
+      end
+
+      vectors = if cached_result = cached
+                  cached_result
+                else
+                  fresh = run_embedding_provider(request_event, inputs_hash, resolved_model, texts, actor)
+                  @embedding_cache.try(&.record(inputs_hash, fresh, requesting_event_id: request_event.id))
+                  fresh
+                end
+
+      dimensions = vectors.first?.try(&.size) || 0
+      record_embedding_event("embedding.responded", JSON.build do |json|
+        json.object do
+          json.field "inputs_hash", inputs_hash
+          json.field "model", resolved_model
+          json.field "vectors", vectors
+          json.field "vector_count", vectors.size
+          json.field "dimensions", dimensions
+          json.field "cache_hit", !cached.nil?
+          json.field "error", nil
+        end
+      end, actor: actor, caused_by: request_event.id)
+      vectors.map(&.dup)
     end
 
     # Render the attached graph in the upstream console format
@@ -1515,7 +1591,8 @@ module Chronicle
     # from the fork point. Forks-of-forks work the same way. Ported from
     # activegraph.runtime.runtime.Runtime#fork.
     def fork(at_event : String, label : String? = nil, *, replay_llm_cache : Bool = false, replay_tool_cache : Bool = false,
-             llm_retry_max_attempts : Int32? = nil, llm_retry_initial_delay_seconds : Float64? = nil, llm_retry_max_delay_seconds : Float64? = nil) : Runtime(M)
+             llm_retry_max_attempts : Int32? = nil, llm_retry_initial_delay_seconds : Float64? = nil, llm_retry_max_delay_seconds : Float64? = nil,
+             embedding_provider : EmbeddingProvider? = nil, replay_embedding_cache : Bool = false) : Runtime(M)
       store = @store
       unless store.is_a?(SQLiteEventStore)
         raise IncompatibleRuntimeState.new(
@@ -1551,12 +1628,16 @@ module Chronicle
       # (CONTRACT v0.6 #8).
       fork_cache = replay_llm_cache ? LLMCache.from_events(@store.iter_events) : nil
       fork_tool_cache = replay_tool_cache ? ToolCache.from_events(@store.iter_events) : nil
+      fork_embedding_cache = replay_embedding_cache ? EmbeddingCache.from_events(@store.iter_events) : nil
       fork_rt = Runtime(M).new(
         store: fork_store, log_agent: fork_log, graph: fork_graph,
         run_id: new_run_id, llm_cache: fork_cache, tool_cache: fork_tool_cache,
         llm_retry_max_attempts: llm_retry_max_attempts || @llm_retry_max_attempts,
         llm_retry_initial_delay_seconds: llm_retry_initial_delay_seconds || @llm_retry_initial_delay_seconds,
         llm_retry_max_delay_seconds: llm_retry_max_delay_seconds || @llm_retry_max_delay_seconds,
+        embedding_provider: embedding_provider || @embedding_provider,
+        embedding_cache: fork_embedding_cache,
+        replay_embedding_cache: replay_embedding_cache,
       )
       fork_rt.inherit_pack_registrations(@pack_behaviors, @pack_state, @pack_tools)
       fork_rt.resume_from_idle(fork_events)
@@ -1577,6 +1658,8 @@ module Chronicle
       llm_retry_max_attempts : Int32 = 3,
       llm_retry_initial_delay_seconds : Float64 = 0.5,
       llm_retry_max_delay_seconds : Float64 = 8.0,
+      embedding_provider : EmbeddingProvider? = nil,
+      replay_embedding_cache : Bool = false,
     ) : Runtime(M)
       store = SQLiteEventStore.new(path, run_id: run_id)
       events = store.iter_events
@@ -1584,11 +1667,15 @@ module Chronicle
       graph.attach_store(store)
       graph.ids.reseed_from_events(events)
       log = LogAgent(M).new(agent, store: store, max_turns: max_turns)
+      embedding_cache = replay_embedding_cache ? EmbeddingCache.from_events(events) : nil
       runtime = Runtime(M).new(
         store: store, log_agent: log, graph: graph, run_id: run_id,
         llm_retry_max_attempts: llm_retry_max_attempts,
         llm_retry_initial_delay_seconds: llm_retry_initial_delay_seconds,
         llm_retry_max_delay_seconds: llm_retry_max_delay_seconds,
+        embedding_provider: embedding_provider,
+        embedding_cache: embedding_cache,
+        replay_embedding_cache: replay_embedding_cache,
       )
       runtime.resume_from_idle(events)
       runtime.rebuild_pending_approvals_from_log(events)
@@ -2432,15 +2519,18 @@ module Chronicle
       propose = ->(object_type : String, data : String, reason : String) : String {
         propose_object(object_type, data, reason: reason)
       }
+      embed = ->(texts : Array(String), model : String?) : Array(Array(Float64)) {
+        embed(texts, model: model, actor: behavior.name, caused_by: event.id)
+      }
 
       # v1.10 #1: when tracing, thread a ReadRecorder through ctx.view
       # (TracedView) and graph.get_object, then commit one context.read.
       recorder : ContextRead::ReadRecorder? = nil
       view = graph.build_view
-      ctx = Packs::BehaviorContext.new(owner, settings, provider, propose)
+      ctx = Packs::BehaviorContext.new(owner, settings, provider, propose, embed)
       if @trace_context_reads
         recorder = ContextRead::ReadRecorder.new
-        ctx = Packs::BehaviorContext.new(owner, settings, provider, propose,
+        ctx = Packs::BehaviorContext.new(owner, settings, provider, propose, embed,
           view: ContextRead::TracedView.new(view, recorder))
         graph.context_read_recorder=(recorder)
       end
@@ -3019,14 +3109,24 @@ module Chronicle
       llm_retry_max_attempts : Int32 = 3,
       llm_retry_initial_delay_seconds : Float64 = 0.5,
       llm_retry_max_delay_seconds : Float64 = 8.0,
+      embedding_provider : EmbeddingProvider? = nil,
+      replay_embedding_cache : Bool = false,
     ) : self
-      cache = replay_llm_cache ? LLMCache.from_events(store.iter_events) : nil
-      tool_cache = replay_tool_cache ? ToolCache.from_events(store.iter_events) : nil
+      events = store.iter_events
+      cache = replay_llm_cache ? LLMCache.from_events(events) : nil
+      tool_cache = replay_tool_cache ? ToolCache.from_events(events) : nil
+      embedding_cache = replay_embedding_cache ? EmbeddingCache.from_events(events) : nil
       strict_hashes = if replay_strict
-                        store.iter_events.select { |e| e.type == "llm.requested" }.map do |e|
+                        events.select { |e| e.type == "llm.requested" }.map do |e|
                           JSON.parse(e.payload).as_h["request_hash"]?.try(&.as_s) || ""
                         end
                       end
+      direct_embedding = RuntimeReason.direct_embedding_event_ids(events)
+      strict_embedding_hashes = if replay_strict
+                                  events.select { |e| e.type == "embedding.requested" && !direct_embedding.includes?(e.id) }.map do |e|
+                                    JSON.parse(e.payload).as_h["inputs_hash"]?.try(&.as_s) || ""
+                                  end
+                                end
       new(
         store: store, log_agent: log_agent, policy: policy, budget: budget,
         llm_cache: cache, strict_expected_hashes: strict_hashes,
@@ -3034,6 +3134,10 @@ module Chronicle
         llm_retry_max_attempts: llm_retry_max_attempts,
         llm_retry_initial_delay_seconds: llm_retry_initial_delay_seconds,
         llm_retry_max_delay_seconds: llm_retry_max_delay_seconds,
+        embedding_provider: embedding_provider,
+        embedding_cache: embedding_cache,
+        replay_embedding_cache: replay_embedding_cache,
+        strict_expected_embedding_hashes: strict_embedding_hashes,
       )
     end
 
@@ -3707,6 +3811,93 @@ module Chronicle
     private def safe_provider_failure_reason(error : Exception) : String
       return "provider unavailable" if error.is_a?(ProviderNotAvailableError)
       "provider execution failed"
+    end
+
+    # Run one embedding provider call on a cache miss: strict replay is never
+    # allowed to fall through to external embedding I/O, a missing provider
+    # fails loud, and the provider's return is validated + normalized. Errors
+    # are recorded as `embedding.responded` with an `error` payload (never
+    # cached).
+    private def run_embedding_provider(
+      request_event : Event,
+      inputs_hash : String,
+      model : String,
+      texts : Array(String),
+      actor : String,
+    ) : Array(Array(Float64))
+      if @strict_expected_embedding_hashes
+        raise ReplayDivergenceError.new(
+          event_id: request_event.id,
+          expected: "embedding_response=#{inputs_hash}",
+          actual: nil,
+        )
+      end
+
+      provider = @embedding_provider
+      if provider.nil?
+        error = RuntimeError.new("Runtime.embed() requires an embedding_provider= on cache miss")
+        record_embedding_error(request_event, inputs_hash, model, error, actor)
+        raise error
+      end
+
+      begin
+        raw = provider.embed(texts, model)
+        RuntimeReason.validate_embedding_vectors(texts, JSON.parse(raw.to_json))
+      rescue error : Exception
+        record_embedding_error(request_event, inputs_hash, model, error, actor)
+        raise error
+      end
+    end
+
+    # Append one runtime-owned embedding request/response event (upstream
+    # `_emit_embedding_event`).
+    private def record_embedding_event(type : String, payload : String, *, actor : String, caused_by : String?) : Event
+      event = Event.new(
+        schema_version: 1_u16,
+        sequence: next_seq,
+        id: "#{type.gsub(".", "_")}_#{next_seq}",
+        type: type,
+        actor: actor,
+        caused_by: caused_by,
+        frame_id: current_frame_id,
+        timestamp: Time.utc,
+        payload: payload,
+      )
+      @store.append(event)
+      event
+    end
+
+    # Complete a failed embedding request without caching a return (upstream
+    # `_emit_embedding_error`).
+    private def record_embedding_error(request : Event, inputs_hash : String, model : String, error : Exception, actor : String) : Nil
+      record_embedding_event("embedding.responded", JSON.build do |json|
+        json.object do
+          json.field "inputs_hash", inputs_hash
+          json.field "model", model
+          json.field "vectors", nil
+          json.field "cache_hit", false
+          json.field "error" do
+            json.object do
+              json.field "type", error.class.to_s
+              json.field "message", error.message.to_s
+            end
+          end
+        end
+      end, actor: actor, caused_by: request.id)
+    end
+
+    # Strict-replay embedding hash check (upstream `_strict_expected_embedding_hashes`):
+    # pops one recorded `inputs_hash` per runtime-owned embedding request and
+    # raises ReplayDivergenceError (kind embedding_hash_mismatch) on drift.
+    private def assert_embedding_hash!(expected_hashes : Array(String), actual : String, event_id : String) : Nil
+      expected = expected_hashes.shift? || ""
+      if expected != actual
+        raise ReplayDivergenceError.new(
+          event_id: event_id,
+          expected: "embedding_hash=#{expected.empty? ? "<no recorded request>" : expected}",
+          actual: "embedding_hash=#{actual}",
+        )
+      end
     end
 
     private def drive_tools(step : Crig::AgentRunStep) : Nil

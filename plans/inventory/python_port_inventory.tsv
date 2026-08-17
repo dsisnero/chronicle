@@ -229,21 +229,21 @@ llm/cache.py::method::LLMCache.from_events	method	missing	-	auto-generated
 llm/cache.py::method::LLMCache.get	method	missing	-	auto-generated
 llm/cache.py::method::LLMCache.has	method	missing	-	auto-generated
 llm/cache.py::method::LLMCache.record	method	missing	-	auto-generated
-llm/embedding.py::class::EmbeddingProvider	class	missing	-	auto-generated
-llm/embedding.py::class::HashEmbeddingProvider	class	missing	-	auto-generated
-llm/embedding.py::method::EmbeddingProvider.embed	method	missing	-	auto-generated
-llm/embedding.py::method::HashEmbeddingProvider.__init__	method	missing	-	auto-generated
-llm/embedding.py::method::HashEmbeddingProvider._embed_one	method	missing	-	auto-generated
-llm/embedding.py::method::HashEmbeddingProvider.embed	method	missing	-	auto-generated
-llm/embedding_cache.py::class::CachedEmbedding	class	missing	-	auto-generated
-llm/embedding_cache.py::class::EmbeddingCache	class	missing	-	auto-generated
-llm/embedding_cache.py::function::hash_embedding_request	function	missing	-	auto-generated
-llm/embedding_cache.py::method::EmbeddingCache.__init__	method	missing	-	auto-generated
-llm/embedding_cache.py::method::EmbeddingCache.__len__	method	missing	-	auto-generated
-llm/embedding_cache.py::method::EmbeddingCache.from_events	method	missing	-	auto-generated
-llm/embedding_cache.py::method::EmbeddingCache.get	method	missing	-	auto-generated
-llm/embedding_cache.py::method::EmbeddingCache.has	method	missing	-	auto-generated
-llm/embedding_cache.py::method::EmbeddingCache.record	method	missing	-	auto-generated
+llm/embedding.py::class::EmbeddingProvider	class	ported	spec/chronicle/embedding_spec.cr	Chronicle::EmbeddingProvider abstract protocol (default_model + abstract embed(texts, model))
+llm/embedding.py::class::HashEmbeddingProvider	class	ported	spec/chronicle/embedding_spec.cr	Chronicle::HashEmbeddingProvider deterministic double; also implements Crig::Embeddings::EmbeddingModel (max_documents/ndims/embed_texts) so it plugs into Crig vector stores
+llm/embedding.py::method::EmbeddingProvider.embed	method	ported	spec/chronicle/embedding_runtime_spec.cr	EmbeddingProvider#embed(texts, model) -> Array(Array(Float64))
+llm/embedding.py::method::HashEmbeddingProvider.__init__	method	ported	spec/chronicle/embedding_spec.cr	dimensions ctor rejects < 1 (ArgumentError)
+llm/embedding.py::method::HashEmbeddingProvider._embed_one	method	ported	spec/chronicle/embedding_spec.cr	SHA-256 bucket-count L2-normalized vector (embed_one)
+llm/embedding.py::method::HashEmbeddingProvider.embed	method	ported	spec/chronicle/embedding_spec.cr	order-preserving batch embed
+llm/embedding_cache.py::class::CachedEmbedding	class	ported	spec/chronicle/embedding_cache_spec.cr	EmbeddingCache::CachedEmbedding record (vectors, requested_event_id)
+llm/embedding_cache.py::class::EmbeddingCache	class	ported	spec/chronicle/embedding_cache_spec.cr	Chronicle::EmbeddingCache content-keyed replay cache (defensive copies)
+llm/embedding_cache.py::function::hash_embedding_request	function	ported	spec/chronicle/embedding_cache_spec.cr	EmbeddingCache.hash_embedding_request (SHA-256 of sorted-key {model, texts})
+llm/embedding_cache.py::method::EmbeddingCache.__init__	method	ported	spec/chronicle/embedding_cache_spec.cr	by_hash init
+llm/embedding_cache.py::method::EmbeddingCache.__len__	method	ported	spec/chronicle/embedding_cache_spec.cr	EmbeddingCache#size
+llm/embedding_cache.py::method::EmbeddingCache.from_events	method	ported	spec/chronicle/embedding_cache_spec.cr	from_events harvest (skip error/malformed/count-mismatch)
+llm/embedding_cache.py::method::EmbeddingCache.get	method	ported	spec/chronicle/embedding_cache_spec.cr	get returns defensive copies, nil on miss
+llm/embedding_cache.py::method::EmbeddingCache.has	method	ported	spec/chronicle/embedding_cache_spec.cr	has
+llm/embedding_cache.py::method::EmbeddingCache.record	method	ported	spec/chronicle/embedding_cache_spec.cr	record immutable copies
 llm/errors.py::class::LLMBehaviorError	class	ported	src/chronicle/errors.cr	structured error with reason prose
 llm/errors.py::class::MissingProviderError	class	ported	src/chronicle/errors.cr	RegistrationError; structured prose
 llm/errors.py::function::_llm_fallback_prose	function	ported	spec/chronicle/error_prose_spec.cr	llm_prose_fallback (llm_prose dispatch)
@@ -752,7 +752,7 @@ runtime/runtime.py::function::_requeue_unfired	function	missing	-	auto-generated
 runtime/runtime.py::function::_resolve_and_validate_llm_models	function	ported	spec/chronicle/resolve_llm_model_spec.cr	CONTRACT v1.0.2 #1: Chronicle::RuntimeReason.resolve_llm_model + validate_and_resolve_llm_model (a) resolve default on model=nil, (b) cross-provider mismatch via _live._validate_one. Divergence: Crystal behaviors immutable, resolution computed not stamped
 runtime/runtime.py::function::_validate_embedding_vectors	function	ported	spec/chronicle/validate_embedding_vectors_spec.cr	Validate + normalize a provider batch embedding response (upstream _validate_embedding_vectors; ValueError -> ArgumentError)
 runtime/runtime.py::function::_verify_replay	function	missing	-	auto-generated
-runtime/runtime.py::method::Context.embed	method	intentional_divergence	-	embedding provider path is deferred (llm/embedding.py); RuntimeContextRequiredError pattern is ported via propose_object
+runtime/runtime.py::method::Context.embed	method	ported	spec/chronicle/embedding_runtime_spec.cr	BehaviorContext#embed via runtime backref proc; RuntimeContextRequiredError when unbound (upstream Context.embed)
 runtime/runtime.py::method::Context.pack_settings	method	ported	spec/chronicle/context_methods_spec.cr	BehaviorContext#pack_settings (already ported; Form 3 cross-pack lookup)
 runtime/runtime.py::method::Context.propose_object	method	ported	spec/chronicle/context_methods_spec.cr	BehaviorContext#propose_object defers object behind policy approval (RuntimeContextRequiredError when no runtime)
 runtime/runtime.py::method::Runtime.__init__	method	missing	-	auto-generated
@@ -762,8 +762,8 @@ runtime/runtime.py::method::Runtime._budget_remaining	method	missing	-	auto-gene
 runtime/runtime.py::method::Runtime._emit	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_behavior_failed	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_context_read	method	ported	spec/chronicle/context_read_runtime_spec.cr	Runtime#emit_context_read (batched context.read at commit; only when tracing + reads exist)
-runtime/runtime.py::method::Runtime._emit_embedding_error	method	missing	-	auto-generated
-runtime/runtime.py::method::Runtime._emit_embedding_event	method	missing	-	auto-generated
+runtime/runtime.py::method::Runtime._emit_embedding_error	method	ported	spec/chronicle/embedding_runtime_spec.cr	record_embedding_error (embedding.responded error payload, never cached)
+runtime/runtime.py::method::Runtime._emit_embedding_event	method	ported	spec/chronicle/embedding_runtime_spec.cr	record_embedding_event (runtime-owned requested/responded)
 runtime/runtime.py::method::Runtime._emit_idle_or_exhausted	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_lifecycle	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_llm_error_response	method	ported	spec/chronicle/llm_error_shape_spec.cr	record_llm_failed emits the upstream error-shape payload on the llm.failed event: nested error {reason, message, **extras}, retryable, attempt_index/max_attempts, latency_seconds, cost_usd:0, cache_hit:false, behavior/prompt_hash/model; caused_by the request. Divergence: event name stays llm.failed (not llm.responded) and generic-exception message is redacted to the exception class name (provider text never enters the log)
@@ -794,7 +794,7 @@ runtime/runtime.py::method::Runtime.dev_override	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.dev_overrides	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.diff	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.disable_pack	method	missing	-	auto-generated
-runtime/runtime.py::method::Runtime.embed	method	missing	-	auto-generated
+runtime/runtime.py::method::Runtime.embed	method	ported	spec/chronicle/embedding_runtime_spec.cr	Runtime#embed recorded content-keyed path; cache hit/load/fork reuse; strict hash check + offline gate; provider errors recorded not cached; threads through constructor/fork/load
 runtime/runtime.py::method::Runtime.errors	method	ported	spec/chronicle/behavior_failure_spec.cr	Runtime#errors projection over behavior.failed events (CONTRACT v1.0.3 #3)
 runtime/runtime.py::method::Runtime.evaluate_capability_authority	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.export_trace	method	missing	-	auto-generated
