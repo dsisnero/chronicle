@@ -881,6 +881,14 @@ module Chronicle
     @embedding_cache : EmbeddingCache?
     @replay_embedding_cache : Bool = false
     @strict_expected_embedding_hashes : Array(String)? = nil
+    # Native structured-output mode (CONTRACT v1.3 #1): opt-in flag plus an
+    # injectable provider-capability predicate. The resolved per-behavior mode
+    # rides every llm.requested payload and contributes to the prompt hash
+    # only when native (upstream `native_structured_output` +
+    # `_resolve_structured_output_mode`).
+    @native_structured_output : Bool = false
+    @native_capability : Proc(String, Bool)? = nil
+    @structured_output_modes : Hash(String, String) = {} of String => String
 
     # Budget limits for a run. Multi-dimensional hard limits (upstream
     # activegraph.runtime.budget); see `Chronicle::Budget`.
@@ -910,6 +918,8 @@ module Chronicle
       @embedding_cache : EmbeddingCache? = nil,
       @replay_embedding_cache : Bool = false,
       @strict_expected_embedding_hashes : Array(String)? = nil,
+      @native_structured_output : Bool = false,
+      @native_capability : Proc(String, Bool)? = nil,
     )
       # Normalize like upstream: at least one attempt, non-negative initial
       # delay, and the max never below the initial.
@@ -2733,6 +2743,7 @@ module Chronicle
 
       running_messages = [] of Crig::Completion::Message
       final_response = nil
+      so_mode = structured_output_mode(behavior)
 
       Math.max(1, behavior.max_tool_turns).times do |turn_idx|
         payload = JSON.build do |json|
@@ -2757,6 +2768,13 @@ module Chronicle
               json.field "output_schema_name", behavior.output_schema_name
               json.field "output_schema_json", JSON::Any.new(schema_json)
             end
+            # The resolved mode contributes to the prompt hash only when
+            # native — prompt-mode payloads stay byte-identical to pre-v1.3
+            # (upstream `_hash_turn_prompt` adds structured_output_mode only
+            # when native).
+            if so_mode == "native"
+              json.field "structured_output_mode", "native"
+            end
           end
         end
 
@@ -2775,6 +2793,7 @@ module Chronicle
           retry_initial_delay_seconds: @llm_retry_initial_delay_seconds,
           retry_max_delay_seconds: @llm_retry_max_delay_seconds,
           behavior_name: behavior.name,
+          structured_output_mode: so_mode,
         )
         refuse_undeclared_tool_calls(behavior, event, response)
 
@@ -2923,6 +2942,30 @@ module Chronicle
           behavior_name: behavior.name,
           declared_tools: declared,
         )
+      end
+    end
+
+    # Resolve "native" or "prompt" for one LLM behavior (upstream
+    # `_resolve_structured_output_mode`, CONTRACT v1.3 #1). Native requires all
+    # four: the runtime opt-in flag, a pinned model, the provider capability
+    # claim for the resolved model, and the schema passing the offline subset
+    # pre-flight. Memoized per behavior name — the resolved mode is
+    # runtime-local and rides every llm.requested payload.
+    private def structured_output_mode(behavior : Packs::PackBehavior) : String
+      @structured_output_modes[behavior.name]? || begin
+        capability = if model = behavior.model
+                       @native_capability.try(&.call(model)) || false
+                     else
+                       false
+                     end
+        mode = Chronicle::Native.resolve_structured_output_mode(
+          flag: @native_structured_output,
+          model: behavior.model,
+          capability: capability,
+          schema: behavior.output_schema_json,
+        )
+        @structured_output_modes[behavior.name] = mode
+        mode
       end
     end
 
@@ -3339,6 +3382,7 @@ module Chronicle
       retry_initial_delay_seconds : Float64 = 0.0,
       retry_max_delay_seconds : Float64 = 8.0,
       behavior_name : String? = nil,
+      structured_output_mode : String? = nil,
     )
       loop do
         target = current_execution_target || Routing::Target.new("legacy", "default", false)
@@ -3354,7 +3398,7 @@ module Chronicle
         outcome = run_same_target_retry_loop(
           effect, request, caused_by, target, cached,
           max_attempts, retry_initial_delay_seconds, retry_max_delay_seconds,
-          behavior_name,
+          behavior_name, structured_output_mode,
         )
 
         case outcome
@@ -3394,6 +3438,7 @@ module Chronicle
       retry_initial_delay_seconds : Float64,
       retry_max_delay_seconds : Float64,
       behavior_name : String?,
+      structured_output_mode : String?,
     ) : RetryLoopOutcome
       attempt_index = 0
       first_attempt_request_id : String? = nil
@@ -3406,6 +3451,7 @@ module Chronicle
           attempt_index: attempt_index.zero? ? nil : attempt_index,
           max_attempts: max_attempts > 1 ? max_attempts : nil,
           retry_of: attempt_index.zero? ? nil : first_attempt_request_id,
+          structured_output_mode: structured_output_mode,
         )
         first_attempt_request_id ||= request_event.id
 
@@ -3654,6 +3700,7 @@ module Chronicle
       attempt_index : Int32? = nil,
       max_attempts : Int32? = nil,
       retry_of : String? = nil,
+      structured_output_mode : String? = nil,
     ) : Event
       event = Event.new(
         schema_version: 1_u16,
@@ -3670,6 +3717,12 @@ module Chronicle
             json.field "provider", target.try(&.provider)
             json.field "model", target.try(&.model)
             json.field "cache_hit", cache_hit
+            # The resolved structured-output mode rides every request payload
+            # (upstream `_invoke_llm_body` requested_payload), so operators
+            # can see native vs prompt fallback.
+            if structured_output_mode
+              json.field "structured_output_mode", structured_output_mode
+            end
             if attempt_index
               # Same-target retry metadata (upstream `_invoke_llm_body`):
               # attempt_index / max_attempts / retry_of ride the retried

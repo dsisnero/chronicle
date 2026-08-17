@@ -250,12 +250,33 @@ phases).
       tests/test_embedding_replay.py — `spec/chronicle/embedding_spec.cr`,
       `spec/chronicle/embedding_cache_spec.cr`,
       `spec/chronicle/embedding_runtime_spec.cr`.
-- [ ] Native structured output — `llm/native.py` (173) +
-      `runtime.py::_resolve_structured_output_mode`: resolve a behavior's
-      structured-output mode (`native` vs `prompt`) from the provider's
-      `supports_native_structured_output` capability, and forward the
-      `json_schema` output config on native calls. Closes the native-mode half
-      of the schema-typing divergence (the prompt-mode parse path is ported).
+- [x] Native structured output — `llm/native.py` +
+      `runtime.py::_resolve_structured_output_mode` (CONTRACT v1.3 #1):
+      `Chronicle::Native` ports the schema pre-flight — `native_schema_compatible`
+      (root object schema, allowlisted keywords only, every object property
+      required, `additionalProperties` already false, `$ref` targets internal
+      and non-recursive) and `inject_additional_properties_false` (deep copy +
+      `additionalProperties: false` on every object node — the one permitted
+      pure narrowing) — plus the pure `resolve_structured_output_mode(flag,
+      model, capability, schema)` resolver. The runtime takes
+      `native_structured_output:` (opt-in) + `native_capability:` (injectable
+      provider-capability predicate); the memoized per-behavior mode rides
+      every `llm.requested` payload (`structured_output_mode` field) and
+      contributes to the prompt hash ONLY when native — a mode flip changes
+      the cache key, so prompt-mode payloads stay byte-identical to pre-v1.3
+      and a record-vs-replay mode drift surfaces as a cache miss. Divergence:
+      the provider-wire `output_config`/`response_format` forwarding on native
+      calls stays at the provider-adapter boundary (the `LLMProvider#complete`
+      `structured_output_mode:` seam carries it; the Crig executor has no
+      schema field), and the native system prompt does not drop a schema block
+      (the Chronicle prompt-mode path never embeds one). Ported from activegraph
+      tests/test_llm_native_structured_output.py #8 pre-flight +
+      `test_native_mode_end_to_end_and_requested_payload` /
+      `test_flag_on_but_no_capability_resolves_prompt` /
+      `test_flag_on_but_schema_outside_subset_resolves_prompt` /
+      `test_prompt_mode_hashable_has_no_mode_key` —
+      `spec/chronicle/native_structured_output_spec.cr`,
+      `spec/chronicle/native_mode_runtime_spec.cr`.
 - [ ] Provider adapters (Anthropic/OpenAI) — `llm/anthropic.py` (389) +
       `llm/openai.py` (528): `Chronicle::LLMProvider` implementations over the
       `ModelExecutor`/`ProviderRegistry` seam (Crig clients already route
@@ -298,8 +319,10 @@ remaining S/M batch, then the deferred L batch:
    `llm/embedding_cache.py` + `Runtime#embed` / `ctx.embed` (M); uses Crig's
    `EmbeddingModel` seam (`CrigEmbeddingProvider` + the `HashEmbeddingProvider`
    shim); unblocks the diligence pack.
-4. `[ ]` Native structured output mode — `llm/native.py` +
-   `_resolve_structured_output_mode` (M), gated on provider capability.
+4. `[x]` Native structured output mode — `llm/native.py` +
+   `_resolve_structured_output_mode` (M); the runtime resolves + carries the
+   mode and hashes it when native; provider-wire forwarding stays at the
+   adapter boundary.
 5. `[ ]` Provider adapters (Anthropic/OpenAI) — `Chronicle::LLMProvider`
    implementations over the `ModelExecutor` seam (M).
 6. `[ ]` Diligence reference pack — `packs/diligence/*` (M), gated on
@@ -1350,9 +1373,12 @@ globally (CONTRACT v0.9 #3).
   `@[LLMBehavior(output_schema:)` handlers receive a typed
   `JSON::Serializable` value (parsed by `Chronicle::StructuredOutput.parse`,
   the `parse_structured_response` port); untyped handlers receive the raw
-  output string. Native structured-output mode
-  (`_resolve_structured_output_mode`, llm/native.py) is not ported — schema
-  typing is instruction-based (parse-on-response), and the output-schema
+  output string. Native structured-output mode is resolved and carried
+  (`Chronicle::Native` pre-flight + `Runtime(native_structured_output:)` +
+  `native_capability:`), but the provider-wire `output_config` /
+  `response_format` forwarding on native calls stays at the provider-adapter
+  boundary — the `LLMProvider#complete(structured_output_mode:)` seam carries
+  the mode, and the Crig executor has no schema field — and the output-schema
   reminder is folded into the turn-payload hash rather than the prompt text.
 - **Pack tool/behavior short-name lookup** raises
   `Chronicle::Packs::AmbiguousBehaviorError` / `BehaviorNotFoundError`
