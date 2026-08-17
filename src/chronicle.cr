@@ -1,4 +1,5 @@
 require "./chronicle/errors"
+require "./chronicle/structured_output"
 require "./chronicle/clock"
 require "./chronicle/content_hash"
 require "./chronicle/event"

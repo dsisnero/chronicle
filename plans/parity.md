@@ -128,11 +128,33 @@ phases).
       `test_transient_llm_network_error_retries_before_handler_runs` /
       `test_transient_llm_network_error_exhausts_after_max_attempts` —
       `spec/chronicle/llm_retry_loop_spec.cr`.
-- [ ] Structured-output schema typing — `@[LLMBehavior]` handlers currently
-      receive the raw output string; upstream `output_schema=` +
-      `parse_structured_response` / `_resolve_structured_output_mode`
-      (llm/parsing.py, llm/native.py) is not ported. Divergence noted at
-      (1081).
+- [x] Structured-output schema typing — `@[LLMBehavior(output_schema: SomeStruct)]`
+      where `SomeStruct` is a `JSON::Serializable` struct. The DSL generates a
+      handler that runs `Chronicle::StructuredOutput.parse` (upstream
+      `llm/parsing.py::parse_structured_response`, CONTRACT v1.0.1 #5) over the
+      raw provider text — verbatim JSON, else a fenced ```json block, else the
+      first balanced `{..}`/`[..]` span — and hands the handler the TYPED value
+      instead of the raw string (closes the (1081) divergence). Failures map to
+      `LLMBehaviorError` (folded to `behavior.failed`): `llm.parse_error` when
+      no JSON is recoverable, `llm.schema_violation` when the schema rejects
+      it, each carrying `raw_text` / `schema` / `validation_errors` payload
+      extras merged into the `behavior.failed` event (upstream
+      `_emit_behavior_failed`'s `extras=e.payload_extras`). `PackBehavior`
+      carries `output_schema_name` / `output_schema_json` (derived via
+      `Prompt.schema_to_json`), and the LLM-behavior turn payload includes them
+      so a typed request hashes distinctly from an untyped one (upstream
+      `_hash_turn_prompt` includes output_schema). Divergence: upstream
+      validates the schema at decoration time; Crystal enforces
+      `JSON::Serializable` at compile time. Native structured output
+      (`_resolve_structured_output_mode`, llm/native.py) stays deferred.
+      Ported from activegraph tests/test_llm_behavior.py
+      `test_llm_behavior_invokes_handler_with_parsed_output`,
+      tests/test_llm_anthropic.py `test_complete_extracts_json_from_fenced_block`
+      / `test_complete_raises_parse_error_when_no_json` /
+      `test_complete_raises_schema_violation_when_json_valid_but_wrong_shape`,
+      tests/test_llm_failure.py `test_schema_violation_becomes_behavior_failed`
+      — `spec/chronicle/structured_output_spec.cr`,
+      `spec/chronicle/llm_output_schema_spec.cr`.
 - [ ] `llm.responded` error-shape parity — upstream folds provider failures
       into `llm.responded` `{error, retryable, attempt_index}` payloads
       (`_emit_llm_error_response`); Chronicle emits a separate `llm.failed`
@@ -167,7 +189,7 @@ phases).
    (`test_llm_failure.py`) RED → GREEN → ledger (`_invoke_llm_body`,
    `_emit_llm_error_response`) → parity. Chronicle's failed-attempt recording
    stays `llm.failed` (the `_emit_llm_error_response` shape is the next item).
-2. `[ ]` Structured-output schema typing — `@[LLMBehavior(output_schema:)`
+2. `[x]` Structured-output schema typing — `@[LLMBehavior(output_schema:)`
    + `parse_structured_response`; closes the (1081) divergence.
 3. `[ ]` `Runtime#print_graph` / `Runtime#save_state` small parity surfaces.
 4. `[ ]` `ToolContext` external-io-mode threading.
@@ -1204,8 +1226,13 @@ globally (CONTRACT v0.9 #3).
 - **`_pack_local` is enforced at compile time** (only the DSL builds pack
   objects) rather than via a runtime flag on every `Behavior`/`Tool`.
 - **LLM behavior execution dispatch runs through the LLM effect pipeline**;
-  structured-output schema typing is not yet ported, so `@[LLMBehavior]`
-  handlers receive the raw output string.
+  `@[LLMBehavior(output_schema:)` handlers receive a typed
+  `JSON::Serializable` value (parsed by `Chronicle::StructuredOutput.parse`,
+  the `parse_structured_response` port); untyped handlers receive the raw
+  output string. Native structured-output mode
+  (`_resolve_structured_output_mode`, llm/native.py) is not ported — schema
+  typing is instruction-based (parse-on-response), and the output-schema
+  reminder is folded into the turn-payload hash rather than the prompt text.
 - **Pack tool/behavior short-name lookup** raises
   `Chronicle::Packs::AmbiguousBehaviorError` / `BehaviorNotFoundError`
   (Chronicle-specific types) mirroring upstream's `ValueError`/`LookupError`

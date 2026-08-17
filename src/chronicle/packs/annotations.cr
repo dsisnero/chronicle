@@ -225,11 +225,28 @@ module Chronicle
                   temperature: {% if ann[:temperature] %}{{ ann[:temperature] }}{% else %}0.7{% end %},
                   max_tool_turns: {% if ann[:max_tool_turns] %}{{ ann[:max_tool_turns] }}{% else %}6{% end %},
                   tools: {% if ann[:tools] %}{{ ann[:tools] }}{% else %}[] of String{% end %},
+                  output_schema_name: {% if ann[:output_schema] %}::Chronicle::Prompt.schema_name({{ ann[:output_schema] }}){% else %}nil{% end %},
+                  output_schema_json: {% if ann[:output_schema] %}::Chronicle::Prompt.schema_to_json({{ ann[:output_schema] }}){% else %}nil{% end %},
                   llm_handler: ->(event : ::Chronicle::Event, graph : ::Chronicle::GraphProjection, ctx : ::Chronicle::Packs::BehaviorContext, output : String) : Nil {
-                    {% if method.args.any? { |arg| arg.name == :settings } %}
-                      {{ type }}.{{ method.name }}(event, graph, ctx, output, {{ settings_schema }}.from_json(ctx.settings.to_json))
+                    {% if ann[:output_schema] %}
+                      # Structured-output schema typing (upstream llm/parsing.py
+                      # parse_structured_response): the raw provider text is
+                      # extracted + validated into the schema type, and the
+                      # handler receives the typed value. Parse/schema failures
+                      # raise LLMBehaviorError (llm.parse_error /
+                      # llm.schema_violation) folded to behavior.failed.
+                      parsed = ::Chronicle::StructuredOutput.parse(output, {{ ann[:output_schema] }})
+                      {% if method.args.any? { |arg| arg.name == :settings } %}
+                        {{ type }}.{{ method.name }}(event, graph, ctx, parsed, {{ settings_schema }}.from_json(ctx.settings.to_json))
+                      {% else %}
+                        {{ type }}.{{ method.name }}(event, graph, ctx, parsed)
+                      {% end %}
                     {% else %}
-                      {{ type }}.{{ method.name }}(event, graph, ctx, output)
+                      {% if method.args.any? { |arg| arg.name == :settings } %}
+                        {{ type }}.{{ method.name }}(event, graph, ctx, output, {{ settings_schema }}.from_json(ctx.settings.to_json))
+                      {% else %}
+                        {{ type }}.{{ method.name }}(event, graph, ctx, output)
+                      {% end %}
                     {% end %}
                   },
                 ),

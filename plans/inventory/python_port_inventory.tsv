@@ -12,7 +12,7 @@ behaviors/base.py::function::_llm_behavior_fn_placeholder	function	missing	-	aut
 behaviors/base.py::method::Behavior.run	method	missing	-	auto-generated
 behaviors/base.py::method::LLMBehavior.build_prompt	method	missing	-	auto-generated
 behaviors/base.py::method::RelationBehavior.run	method	missing	-	auto-generated
-behaviors/decorators.py::function::_validate_output_schema	function	missing	-	auto-generated
+behaviors/decorators.py::function::_validate_output_schema	function	intentional_divergence	-	upstream raises at decoration when output_schema is a dict/string/BaseModel instance/non-BaseModel; Crystal enforces JSON::Serializable at compile time via the @[LLMBehavior(output_schema:)] DSL generating StructuredOutput.parse(output, Schema) — a non-JSON::Serializable type fails to compile
 behaviors/decorators.py::function::behavior	function	missing	-	auto-generated
 behaviors/decorators.py::function::clear_registry	function	missing	-	auto-generated
 behaviors/decorators.py::function::get_registry	function	missing	-	auto-generated
@@ -278,7 +278,7 @@ llm/openai.py::method::OpenAIProvider.count_tokens	method	missing	-	auto-generat
 llm/openai.py::method::OpenAIProvider.estimate_cost	method	missing	-	auto-generated
 llm/openai.py::method::OpenAIProvider.recognizes_model	method	missing	-	auto-generated
 llm/openai.py::method::OpenAIProvider.supports_native_structured_output	method	missing	-	auto-generated
-llm/parsing.py::function::parse_structured_response	function	missing	-	auto-generated
+llm/parsing.py::function::parse_structured_response	function	ported	spec/chronicle/structured_output_spec.cr, spec/chronicle/llm_output_schema_spec.cr	Chronicle::StructuredOutput.parse/extract_json (verbatim, fenced ```json, first balanced span; llm.parse_error / llm.schema_violation LLMBehaviorError with raw_text/schema/validation_errors extras)
 llm/prompt.py::class::AssembledPrompt	class	ported	spec/chronicle/prompt_spec.cr	Prompt::AssembledPrompt struct with to_hashable/canonical_json/hash
 llm/prompt.py::function::_canonical	function	ported	spec/chronicle/prompt_spec.cr	Prompt.canonical_json sorted-key emitter (spaced/compact)
 llm/prompt.py::function::_event_summary	function	ported	spec/chronicle/prompt_spec.cr	Prompt.event_summary (adapted to Chronicle flat payload shapes)

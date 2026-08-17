@@ -77,6 +77,8 @@ module Chronicle
       getter tools : Array(String)
       getter pack_owner : String?
       getter activate_after : Int32?
+      getter output_schema_name : String?
+      getter output_schema_json : Hash(String, JSON::Any)?
 
       getter handler : Proc(Event, GraphProjection, BehaviorContext, Nil)?
       getter relation_handler : Proc(GraphRelation, Event, GraphProjection, BehaviorContext, Nil)?
@@ -103,6 +105,8 @@ module Chronicle
         @kind : PackBehaviorKind = PackBehaviorKind::Behavior,
         @pack_owner : String? = nil,
         @activate_after : Int32? = nil,
+        @output_schema_name : String? = nil,
+        @output_schema_json : Hash(String, JSON::Any)? = nil,
       )
       end
 
@@ -129,6 +133,8 @@ module Chronicle
           kind: @kind,
           pack_owner: pack.name,
           activate_after: @activate_after,
+          output_schema_name: @output_schema_name,
+          output_schema_json: @output_schema_json,
         )
         copy
       end

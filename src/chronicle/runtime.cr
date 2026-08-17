@@ -2542,6 +2542,14 @@ module Chronicle
                 running_messages.each { |message| serialize_running_message(message, json) }
               end
             end
+            # Structured-output schema (upstream `_hash_turn_prompt` includes
+            # output_schema): a typed request hashes distinctly from an
+            # untyped one, so a cached response can never be served across a
+            # schema boundary.
+            if schema_json = behavior.output_schema_json
+              json.field "output_schema_name", behavior.output_schema_name
+              json.field "output_schema_json", JSON::Any.new(schema_json)
+            end
           end
         end
 
@@ -2808,14 +2816,32 @@ module Chronicle
           # v1.0.3 #3: the More: doc-page URL for the failure reason (falls
           # back to the generic execution-error page for exception.* catches).
           json.field "doc_url", RuntimeReason.doc_url_for_reason(reason || "exception.#{error.class}")
-          # Same-target retry-exhaustion metadata (upstream `_emit_behavior_failed`
-          # extras): attempts / max_attempts / retry_exhausted. Only present when
-          # a transient failure consumed its whole retry budget.
-          extras.each do |key, value|
+          behavior_failed_extras(error, extras).each do |key, value|
             json.field key, value
           end
         end
       end)
+    end
+
+    # Structured-failure extras merged into the behavior.failed payload: the
+    # LLMBehaviorError / ToolError payload_extras (upstream
+    # `_emit_behavior_failed` merges `extras=e.payload_extras`; e.g.
+    # llm.schema_violation's raw_text / schema / validation_errors) plus the
+    # same-target retry-exhaustion metadata (attempts / max_attempts /
+    # retry_exhausted). Explicit extras win over payload_extras, and fields
+    # already emitted by the fixed payload are never duplicated.
+    private def behavior_failed_extras(error : Exception, extras : Hash(String, JSON::Any)) : Hash(String, JSON::Any)
+      payload_extras = case error
+                       when LLMBehaviorError
+                         error.as(LLMBehaviorError).payload_extras
+                       when ToolError
+                         error.as(ToolError).payload_extras
+                       else
+                         {} of String => JSON::Any
+                       end
+      reserved = Set{"behavior", "event_id", "trigger_event_id", "exception_type", "error_class", "message", "reason", "tool", "traceback", "doc_url"}
+      merged = payload_extras.merge(extras)
+      merged.reject { |key, _value| reserved.includes?(key) }
     end
 
     private def drive_loop(user_message : Event, max_steps : Int32?) : Nil
