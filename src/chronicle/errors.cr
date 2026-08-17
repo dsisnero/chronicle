@@ -152,6 +152,24 @@ module Chronicle
   class InvalidRuntimeConfiguration < ConfigurationError
     DOC_SLUG = "invalid-runtime-configuration"
 
+    # Generic structured constructor for non-provider configuration errors
+    # (e.g. save_state redirect / missing-path). The upstream class also
+    # raises InvalidRuntimeConfiguration for these.
+    def initialize(
+      summary : String,
+      *,
+      what_failed : String? = nil,
+      why : String? = nil,
+      how_to_fix : String? = nil,
+      context : Hash(String, JSON::Any)? = nil,
+    )
+      @behavior_name = nil
+      @model = nil
+      @provider_class = nil
+      @claimed_by = nil
+      super(summary, what_failed: what_failed, why: why, how_to_fix: how_to_fix, context: context)
+    end
+
     def initialize(*, behavior_name : String, model : String, provider_class : String, claimed_by : String)
       @behavior_name = behavior_name
       @model = model

@@ -1391,6 +1391,123 @@ module Chronicle
       run_until_idle
     end
 
+    # Render the attached graph in the upstream console format
+    # (runtime.py:3137). Chronicle's core is Sans-IO, so the text is returned
+    # as a String; the CLI / caller prints it. Each object renders its id,
+    # a `" <label>"` suffix when the data carries a `title` or `text` field,
+    # and a ` (<status>)` suffix when it carries a `status` field; relations
+    # render as `source --type--> target`.
+    def print_graph : String
+      graph = @graph
+      raise GraphProjectionError.new("print_graph requires an attached graph") unless graph
+      String.build do |io|
+        io << "graph:\n"
+        io << "  objects (#{graph.all_objects.size}):\n"
+        graph.all_objects.each do |obj|
+          data = JSON.parse(obj.data).as_h?
+          label = object_graph_label(data)
+          status = data.try { |hash| hash["status"]?.try(&.as_s?) }
+          status_s = (status.nil? || status.empty?) ? "" : " (#{status})"
+          io << "    #{obj.id}#{label.empty? ? "" : " #{label.inspect}"}#{status_s}\n"
+        end
+        io << "  relations (#{graph.all_relations.size}):\n"
+        graph.all_relations.each do |relation|
+          io << "    #{relation.from_id} --#{relation.type}--> #{relation.to_id}\n"
+        end
+      end
+    end
+
+    # Persist the event log (upstream Runtime.save_state, CONTRACT v0.5 #5).
+    #
+    # - With a SQLite store already attached: flush (no path needed). If
+    #   `path` is given it must match the attached store's path.
+    # - Without a durable store: late-bind a SQLite store at `path` and append
+    #   all in-memory events to it.
+    #
+    # Returns the path the events were written to.
+    def save_state(path : String? = nil) : String
+      store = @store
+      if store.is_a?(SQLiteEventStore)
+        attached_path = store.db_path
+        if path && path != attached_path
+          raise InvalidRuntimeConfiguration.new(
+            "save_state(path=#{path.inspect}) — runtime already persisting to #{attached_path.inspect}",
+            what_failed: (
+              "runtime.save_state(path=#{path.inspect}) was called, but this runtime " \
+              "is already persisting to #{attached_path.inspect}. Save targets are " \
+              "pinned at runtime construction; save_state cannot redirect."
+            ),
+            why: (
+              "A runtime's store is its source of truth for the event log. Redirecting " \
+              "save mid-run would split the log across two stores — replay would only " \
+              "see one half. The framework refuses the redirect to keep the audit trail " \
+              "consistent."
+            ),
+            how_to_fix: (
+              "To save to the originally-attached store, omit the `path=` argument — " \
+              "`save_state()` flushes whatever store is attached:\n" \
+              "    rt.save_state()\n" \
+              "To move a run to a different store, use the migrate path after the run " \
+              "completes."
+            ),
+            context: {
+              "requested_path" => JSON::Any.new(path),
+              "attached_path"  => JSON::Any.new(attached_path),
+            },
+          )
+        end
+        # SQLite autocommit means the log is already durable; nothing to flush.
+        return attached_path
+      end
+
+      if path.nil?
+        raise InvalidRuntimeConfiguration.new(
+          "save_state() requires path= when no store is attached",
+          what_failed: (
+            "runtime.save_state() was called without a `path=` argument, but this " \
+            "runtime has no durable store attached. Without either, save_state has " \
+            "nowhere to write."
+          ),
+          why: (
+            "save_state() is the bridge between an in-memory runtime and a durable " \
+            "store. It needs either a pre-attached store (from Runtime construction) " \
+            "or an explicit `path=` argument naming a SQLite file. Defaulting to a " \
+            "temp file would silently lose runs the next time the process exited."
+          ),
+          how_to_fix: (
+            "Either attach a store at construction time, or pass a path explicitly:\n" \
+            "    rt.save_state(path='/path/to/run.db')\n" \
+            "For ephemeral runs that should not persist, omit save_state() — the " \
+            "in-memory graph is the run's lifetime."
+          ),
+          context: {"requested_path" => JSON::Any.new(nil)},
+        )
+      end
+
+      events = store.iter_events
+      sqlite = SQLiteEventStore.new(path, run_id: @run_id)
+      sqlite.upsert_run(
+        created_at: RuntimeReason.now_iso,
+        goal: RuntimeReason.first_goal(events),
+        frame_id: current_frame_id,
+      )
+      events.each { |event| sqlite.append(event) }
+      @store = sqlite
+      if graph = @graph
+        graph.attach_store(sqlite)
+      end
+      path
+    end
+
+    # The object data's render label: its `title` field, else its `text`
+    # field, else "" (upstream print_graph's `o.data.get("title") or
+    # o.data.get("text") or ""`, with empty strings treated as absent).
+    private def object_graph_label(data : Hash(String, JSON::Any)?) : String
+      candidate = data.try { |hash| hash["title"]?.try(&.as_s?) }
+      candidate = data.try { |hash| hash["text"]?.try(&.as_s?) } if candidate.nil? || candidate.empty?
+      candidate || ""
+    end
+
     # Branch this run at `at_event` into an independent new run (CONTRACT
     # v0.5 #9). Requires a SQLite-backed store. Copies events up to and
     # including `at_event` into a fresh run_id, replays them into a new graph,

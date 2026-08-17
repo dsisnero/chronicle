@@ -80,11 +80,27 @@ phases).
 - [x] `Runtime#errors` projection — `BehaviorFailure` value struct (406).
 - [x] LLM retry helpers (pure) — `transient_llm_reason?` / `llm_retry_delay_seconds`
       (429).
-- [ ] `Runtime#print_graph` — `Runtime#print_graph` (runtime.py:3137) —
-      deferred: no console renderer surface ported yet.
-- [ ] `Runtime#save_state` — `Runtime#save_state(path)` (runtime.py:3152) —
-      deferred: fork/load currently reconstruct state from the log; a
-      snapshot sidecar is pending.
+- [x] `Runtime#print_graph` — `Runtime#print_graph` (runtime.py:3137) renders
+      the attached graph in upstream's console format — `graph:` header,
+      `objects (N):` rows as `<id>" <title-or-text-label>" (<status>)`, and
+      `relations (N):` rows as `<source> --<type>--> <target>`. Sans-IO: the
+      text is returned as a String; the caller prints it (no console I/O in
+      the core). Empty title/text/status fields are omitted like upstream.
+      — `spec/chronicle/print_graph_spec.cr`.
+- [x] `Runtime#save_state` — `Runtime#save_state(path)` (runtime.py:3152,
+      CONTRACT v0.5 #5): with a SQLite store attached it flushes and returns
+      the store path (a mismatched `path=` raises
+      `InvalidRuntimeConfiguration` — save targets are pinned at construction);
+      without a durable store it late-binds a SQLite store at `path=` and
+      appends every in-memory event (returning the path), and `save_state()`
+      with no path and no durable store raises `InvalidRuntimeConfiguration`.
+      The late-bound store records the run's goal and current frame_id.
+      Ported from activegraph tests/test_persistence.py
+      (`test_late_bound_save_writes_in_memory_events_to_sqlite`,
+      `test_save_state_without_store_requires_path`,
+      `test_save_state_path_must_match_attached_store`,
+      `test_save_then_load_produces_identical_graph`) —
+      `spec/chronicle/save_state_spec.cr`.
 - [ ] `EventQueue` — `runtime/queue.py` value object (bounded FIFO used by
       upstream dispatch) — Chronicle's dispatch drains directly from the
       store, so this is a parity shape, not a runtime gap.
@@ -191,7 +207,7 @@ phases).
    stays `llm.failed` (the `_emit_llm_error_response` shape is the next item).
 2. `[x]` Structured-output schema typing — `@[LLMBehavior(output_schema:)`
    + `parse_structured_response`; closes the (1081) divergence.
-3. `[ ]` `Runtime#print_graph` / `Runtime#save_state` small parity surfaces.
+3. `[x]` `Runtime#print_graph` / `Runtime#save_state` small parity surfaces.
 4. `[ ]` `ToolContext` external-io-mode threading.
 5. `[ ]` `EventQueue` parity shape.
 
