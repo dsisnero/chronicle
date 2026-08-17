@@ -214,10 +214,18 @@ phases).
 
 ### S — next batch (small: renderers, narrow runtime surfaces)
 
-- [ ] CLI renderers — `cli/renderers.py` (97-line module): the remaining
-      `chronicle-cli` renderer surfaces beyond the already-ported
-      `trace`/`diff`/`log inspect` (the CONTRACT #18 line renderers live in
-      the core `Trace`; this is the quickstart/result renderer surface).
+- [x] CLI renderers — `cli/renderers.py` (97-line module):
+      `Chronicle::Renderers` — `memo_company_name` (memo `company_id` →
+      company name, with `<unknown>` / raw-id fallbacks) and
+      `memo_section_lines` (the quickstart/operator memo section: summary /
+      key claims with evidence ids / open contradictions or their explicit
+      note / risks with related-claim + severity clauses), plus the private
+      `wrap_indented` word-wraper. Sans-IO: the renderers return lines
+      (`Array(String)`); the CLI / caller writes them. Divergence: upstream's
+      `print_memo_section` writes to a stream and renders contradiction dicts
+      via Python repr; Chronicle returns lines and renders contradictions as
+      compact JSON. Ported from activegraph cli/renderers.py —
+      `spec/chronicle/cli_renderers_spec.cr`.
 - [ ] Scheduler wall-clock extension — `runtime/scheduler.py` (206-line
       module) `schedule`/`loop`: the runtime API for wall-clock delayed and
       periodic behavior runs. The event-sequence `activate_after` tick is
@@ -338,8 +346,8 @@ phases).
 The S and M core batches above are complete; this is the ordered plan for the
 remaining S/M batch, then the deferred L batch:
 
-1. `[ ]` CLI renderers + quickstart — port `cli/renderers.py` (S) then
-   `cli/quickstart.py` (M) renderer surfaces onto `chronicle-cli`.
+1. `[x]` CLI renderers — `Chronicle::Renderers` memo renderer lines (S);
+   `cli/quickstart.py` demo surface stays M-pending on top of it.
 2. `[ ]` Scheduler wall-clock extension — `runtime/scheduler.py`
    `schedule`/`loop` (S), on top of the ported `activate_after` event tick.
 3. `[x]` Embedding provider protocol + cache — `llm/embedding.py` +
