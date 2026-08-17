@@ -2684,6 +2684,7 @@ module Chronicle
           retry_max_attempts: @llm_retry_max_attempts,
           retry_initial_delay_seconds: @llm_retry_initial_delay_seconds,
           retry_max_delay_seconds: @llm_retry_max_delay_seconds,
+          behavior_name: behavior.name,
         )
         refuse_undeclared_tool_calls(behavior, event, response)
 
@@ -3233,6 +3234,7 @@ module Chronicle
       retry_max_attempts : Int32 = 1,
       retry_initial_delay_seconds : Float64 = 0.0,
       retry_max_delay_seconds : Float64 = 8.0,
+      behavior_name : String? = nil,
     )
       loop do
         target = current_execution_target || Routing::Target.new("legacy", "default", false)
@@ -3248,6 +3250,7 @@ module Chronicle
         outcome = run_same_target_retry_loop(
           effect, request, caused_by, target, cached,
           max_attempts, retry_initial_delay_seconds, retry_max_delay_seconds,
+          behavior_name,
         )
 
         case outcome
@@ -3286,6 +3289,7 @@ module Chronicle
       max_attempts : Int32,
       retry_initial_delay_seconds : Float64,
       retry_max_delay_seconds : Float64,
+      behavior_name : String?,
     ) : RetryLoopOutcome
       attempt_index = 0
       first_attempt_request_id : String? = nil
@@ -3307,7 +3311,9 @@ module Chronicle
           return RetryLoopOutcome::Succeeded.new(response)
         end
 
+        call_t0 = 0.0_f64
         begin
+          call_t0 = RuntimeReason.monotonic
           result = edge_worker.execute(ModelEffectInvocation.new(ModelEffectRequest.new(request_event.id, effect, target), request))
           response = Crig::Completion::CompletionResponse(String).new(
             result.choice,
@@ -3319,7 +3325,14 @@ module Chronicle
           @llm_cache.try(&.record(effect.content_hash, EffectResult.new(effect.content_hash, true, response_cache_payload(response))))
           return RetryLoopOutcome::Succeeded.new(response)
         rescue ex : Exception
-          failed_event = record_llm_failed(request_event, target, ex)
+          latency_seconds = RuntimeReason.monotonic - call_t0
+          failed_event = record_llm_failed(
+            request_event, target, ex,
+            behavior_name: behavior_name,
+            attempt_index: attempt_index,
+            max_attempts: max_attempts,
+            latency_seconds: latency_seconds,
+          )
           if retryable_provider_failure?(ex) && attempt_index + 1 < max_attempts
             delay = RuntimeReason.llm_retry_delay_seconds(
               attempt_index: attempt_index,
@@ -3596,11 +3609,28 @@ module Chronicle
       event
     end
 
+    # Record a failed LLM attempt. Carries the upstream `_emit_llm_error_response`
+    # error shape (CONTRACT v1.0.1 / llm/parsing.py): a nested `error` object
+    # `{reason, message, **extras}`, `retryable`, `attempt_index` /
+    # `max_attempts`, `latency_seconds`, `cost_usd: "0"`, `cache_hit: false`,
+    # plus the behavior / prompt_hash / model so trace consumers can
+    # reconstruct the attempt exactly like an upstream error-shaped
+    # `llm.responded`. Chronicle emits this on a separate `llm.failed` event
+    # (naming divergence); the legacy top-level fields (`error_class`, `reason`
+    # via `safe_provider_failure_reason`, `provider`) are retained for
+    # back-compat.
     private def record_llm_failed(
       request_event : Event,
       target : Routing::Target?,
       error : Exception,
+      behavior_name : String? = nil,
+      attempt_index : Int32? = nil,
+      max_attempts : Int32? = nil,
+      latency_seconds : Float64? = nil,
     ) : Event
+      model = target.try(&.model)
+      error_object = llm_failure_error_object(error, model)
+      request_hash = JSON.parse(request_event.payload).as_h["request_hash"]?.try(&.as_s?)
       event = Event.new(
         schema_version: 1_u16,
         sequence: next_seq,
@@ -3613,14 +3643,65 @@ module Chronicle
           json.object do
             json.field "error_class", error.class.to_s
             json.field "reason", safe_provider_failure_reason(error)
-            json.field "retryable", error.is_a?(RetryableProviderError)
+            json.field "retryable", retryable_provider_failure?(error)
             json.field "provider", target.try(&.provider)
-            json.field "model", target.try(&.model)
+            json.field "model", model
+            if behavior_name
+              json.field "behavior", behavior_name
+            end
+            json.field "prompt_hash", request_hash
+            json.field "cache_hit", false
+            json.field "error" do
+              json.object do
+                error_object.each do |key, value|
+                  json.field key, value
+                end
+              end
+            end
+            json.field "cost_usd", "0"
+            if attempt_index
+              json.field "attempt_index", attempt_index
+              json.field "max_attempts", max_attempts
+            end
+            if latency_seconds
+              json.field "latency_seconds", latency_seconds
+            end
           end
         end,
       )
       @store.append(event)
       event
+    end
+
+    # The upstream `_emit_llm_error_response` error object: `{reason, message,
+    # **extras}`. LLMBehaviorError / ToolError use their structured reason and
+    # payload extras; any generic exception folds to `llm.network_error` (the
+    # transient fold) with the model extra, matching upstream's generic
+    # `except Exception` catch. Divergence: the generic-exception `message` is
+    # redacted to the exception class name — provider exception text (which
+    # can carry credentials / raw client identifiers) never enters the event
+    # log (Chronicle's redaction invariant).
+    private def llm_failure_error_object(error : Exception, model : String?) : Hash(String, JSON::Any)
+      case error
+      when LLMBehaviorError
+        e = error.as(LLMBehaviorError)
+        {
+          "reason"  => JSON::Any.new(e.reason),
+          "message" => JSON::Any.new(e.message || ""),
+        }.merge(e.payload_extras)
+      when ToolError
+        e = error.as(ToolError)
+        {
+          "reason"  => JSON::Any.new(e.reason),
+          "message" => JSON::Any.new(e.message || ""),
+        }.merge(e.payload_extras)
+      else
+        {
+          "reason"  => JSON::Any.new("llm.network_error"),
+          "message" => JSON::Any.new(error.class.to_s),
+          "model"   => JSON::Any.new(model),
+        }
+      end
     end
 
     private def safe_provider_failure_reason(error : Exception) : String

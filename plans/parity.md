@@ -189,12 +189,22 @@ phases).
       tests/test_llm_failure.py `test_schema_violation_becomes_behavior_failed`
       — `spec/chronicle/structured_output_spec.cr`,
       `spec/chronicle/llm_output_schema_spec.cr`.
-- [ ] `llm.responded` error-shape parity — upstream folds provider failures
-      into `llm.responded` `{error, retryable, attempt_index}` payloads
-      (`_emit_llm_error_response`); Chronicle emits a separate `llm.failed`
-      event. The retry loop now records per-attempt `llm.failed` events, and
-      the `llm.network_error` fold lands on `behavior.failed` (1299), but the
-      `llm.responded` error shape is still a divergence.
+- [x] `llm.responded` error-shape parity — `record_llm_failed` now emits the
+      upstream `_emit_llm_error_response` error shape on the failed-attempt
+      event: a nested `error` object `{reason, message, **extras}` (structured
+      LLMBehaviorError/ToolError reasons + payload_extras; generic exceptions
+      fold to `llm.network_error`), `retryable` (using the transient-reason /
+      generic fold, matching upstream), `attempt_index` / `max_attempts`,
+      `latency_seconds`, `cost_usd: "0"`, `cache_hit: false`, plus `behavior` /
+      `prompt_hash` / `model`, `caused_by` the request. The retry loop threads
+      attempt_index/max_attempts/latency and the behavior name into the
+      recorder. Divergences (documented): the event name stays `llm.failed`
+      (upstream folds errors into `llm.responded`), and the generic-exception
+      `message` is redacted to the exception class name — provider exception
+      text (which can carry credentials / raw client identifiers) never enters
+      the event log. Ported from activegraph runtime.py
+      `_emit_llm_error_response` + tests/test_llm_failure.py —
+      `spec/chronicle/llm_error_shape_spec.cr`.
 
 ### L — large (provider/platform edges, external backends)
 
@@ -1297,6 +1307,13 @@ globally (CONTRACT v0.9 #3).
   network/rate-limit) is identical; the full-runtime "not retried" integration
   tests stay at the platform-edge `ModelExecutor`/`RetryableProviderError`
   boundary, which Chronicle already handles.
+- **Provider exception text never enters the event log.** Upstream's
+  `_emit_llm_error_response` puts `message=str(e)` (raw provider exception
+  text) into the failed-attempt payload; Chronicle's `llm.failed` error object
+  redacts the generic-exception `message` to the exception class name —
+  provider credentials / raw client identifiers must never be durable.
+  Structured `LLMBehaviorError`/`ToolError` messages (framework-authored)
+  pass through.
 - **Prompt `_event_summary` reads Chronicle's flat payload shapes.** Upstream
   `object.created`/`relation.created` payloads nest under `object`/`relation`;
   Chronicle stores them flat (`id`, `from_id`, `to_id`, `type`). The view-block

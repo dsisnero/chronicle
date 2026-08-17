@@ -766,7 +766,7 @@ runtime/runtime.py::method::Runtime._emit_embedding_error	method	missing	-	auto-
 runtime/runtime.py::method::Runtime._emit_embedding_event	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_idle_or_exhausted	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_lifecycle	method	missing	-	auto-generated
-runtime/runtime.py::method::Runtime._emit_llm_error_response	method	intentional_divergence	record_llm_failed (runtime.cr)	upstream folds failed attempts into llm.responded {error, retryable, attempt_index, max_attempts, latency_seconds, cost_usd:0} via _emit_llm_error_response; Chronicle records failed attempts as separate llm.failed events (retryable/caused_by retained). The llm.responded error-shape parity is a separate pending item
+runtime/runtime.py::method::Runtime._emit_llm_error_response	method	ported	spec/chronicle/llm_error_shape_spec.cr	record_llm_failed emits the upstream error-shape payload on the llm.failed event: nested error {reason, message, **extras}, retryable, attempt_index/max_attempts, latency_seconds, cost_usd:0, cache_hit:false, behavior/prompt_hash/model; caused_by the request. Divergence: event name stays llm.failed (not llm.responded) and generic-exception message is redacted to the exception class name (provider text never enters the log)
 runtime/runtime.py::method::Runtime._emit_llm_event	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_pattern_matched	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_tool_event	method	missing	-	auto-generated
