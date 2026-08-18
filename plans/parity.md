@@ -329,9 +329,21 @@ phases).
       and `risk_identifier` are out of scope (fixtures are scripted in the
       spec; a production user swaps real tool bodies). Ported from activegraph
       packs/diligence/* — `spec/chronicle/diligence_pack_spec.cr`.
-- [ ] CLI quickstart — `cli/quickstart.py` (477): the `chronicle-cli
-      quickstart` demo surface and its result renderers (builds on the CLI
-      renderers S item).
+- [x] CLI quickstart — `cli/quickstart.py` fixture mode:
+      `Chronicle::Quickstart.fixture_mode_lines` runs the diligence reference
+      pack against a scripted provider (no API key, no network) and returns
+      the transcript lines — header (pack/company/provider), the canonical
+      CONTRACT #18 trace from the event log, the first memo rendered in full
+      via `Chronicle::Renderers` (+ a mention of any others), and the
+      what-just-happened / try-next prose. Sans-IO: the transcript is
+      returned; the CLI / caller writes it. Divergence: upstream runs three
+      fixture companies; the Chronicle demo runs one (memo bar, trace, and
+      prose unchanged), and the interactive mode (`run_interactive_mode` —
+      behavior-file scaffolding + REPL) is platform-edge CLI work, not
+      ported. Ported from activegraph cli/quickstart.py run_fixture_mode —
+      `spec/chronicle/quickstart_spec.cr`. Also fixed `fmt_behavior_started`
+      to tolerate a null `triggering_object_id` (the diligence run exposed the
+      pre-existing `JSON::Any(nil).as_s` crash).
 
 ### L — next batch (large: external backends, deferred)
 
@@ -353,8 +365,9 @@ phases).
 The S and M core batches above are complete; this is the ordered plan for the
 remaining S/M batch, then the deferred L batch:
 
-1. `[x]` CLI renderers — `Chronicle::Renderers` memo renderer lines (S);
-   `cli/quickstart.py` demo surface stays M-pending on top of it.
+1. `[x]` CLI renderers + quickstart — `Chronicle::Renderers` memo renderer
+   lines (S) + `Chronicle::Quickstart.fixture_mode_lines` transcript (M);
+   the interactive quickstart mode stays at the CLI boundary.
 2. `[x]` Scheduler — covered: `runtime/scheduler.py` is the event-count
    `activate_after` scheduler (fully ported in `Chronicle::Packs`); there is
    no upstream wall-clock `schedule`/`loop` API (wall-clock is out of scope

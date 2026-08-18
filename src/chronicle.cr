@@ -67,6 +67,7 @@ require "./chronicle/view"
 require "./chronicle/frame"
 require "./chronicle/sqlite_event_store"
 require "./chronicle/store_url"
+require "./chronicle/quickstart"
 require "./chronicle/cli"
 
 # Log-primary primitives for deterministic agent execution.

@@ -58,11 +58,11 @@ cli/main.py::function::cmd_replay	function	missing	-	auto-generated
 cli/main.py::function::main	function	missing	-	auto-generated
 cli/quickstart.py::function::_default_prompt	function	missing	-	auto-generated
 cli/quickstart.py::function::_prepare_interactive_subdir	function	missing	-	auto-generated
-cli/quickstart.py::function::_print_try_next	function	missing	-	auto-generated
-cli/quickstart.py::function::_print_what_just_happened	function	missing	-	auto-generated
+cli/quickstart.py::function::_print_try_next	function	ported	spec/chronicle/quickstart_spec.cr	Quickstart#try_next prose section
+cli/quickstart.py::function::_print_what_just_happened	function	ported	spec/chronicle/quickstart_spec.cr	Quickstart#what_just_happened prose section
 cli/quickstart.py::function::_run_user_behavior	function	missing	-	auto-generated
 cli/quickstart.py::function::cmd_quickstart	function	missing	-	auto-generated
-cli/quickstart.py::function::run_fixture_mode	function	missing	-	auto-generated
+cli/quickstart.py::function::run_fixture_mode	function	ported	spec/chronicle/quickstart_spec.cr	Chronicle::Quickstart.fixture_mode_lines returns the transcript (header, CONTRACT #18 trace, memo via Renderers, what-just-happened, try-next); Sans-IO lines, caller writes. Divergence: one company (upstream three fixture companies)
 cli/quickstart.py::function::run_interactive_mode	function	missing	-	auto-generated
 cli/renderers.py::function::_wrap_indented	function	ported	spec/chronicle/cli_renderers_spec.cr	Renderers.wrap_indented (word-wrap prose to a width with a leading indent)
 cli/renderers.py::function::company_name_for_memo	function	ported	spec/chronicle/cli_renderers_spec.cr	Renderers.memo_company_name (memo company_id -> company name; <unknown> / raw id fallbacks)

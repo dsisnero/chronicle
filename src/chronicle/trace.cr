@@ -152,7 +152,7 @@ module Chronicle
 
     private def fmt_behavior_started(payload : Hash(String, JSON::Any)) : String
       name = payload["behavior"]?.try(&.as_s) || "?"
-      triggering_id = payload["triggering_object_id"]?.try(&.as_s)
+      triggering_id = payload["triggering_object_id"]?.try(&.as_s?)
       if triggering_id
         "#{format_tag("behavior.started")}#{name}  (matched #{triggering_id})"
       else
