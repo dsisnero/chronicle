@@ -736,7 +736,7 @@ runtime/runtime.py::function::_is_lifecycle	function	ported	spec/chronicle/is_li
 runtime/runtime.py::function::_is_promote_block	function	ported	spec/chronicle/promote_block_spec.cr	RuntimeReason.promote_block? (promote.applied marker + promote:-actor deltas; CONTRACT v1.3 #4)
 runtime/runtime.py::function::_is_transient_llm_reason	function	ported	spec/chronicle/llm_retry_spec.cr	RuntimeReason.transient_llm_reason? (llm.network_error/rate_limited transient; CONTRACT v1.3 #3)
 runtime/runtime.py::function::_llm_retry_delay_seconds	function	ported	spec/chronicle/llm_retry_spec.cr	RuntimeReason.llm_retry_delay_seconds (retry_after honored/clamped; exponential backoff capped at maximum)
-runtime/runtime.py::function::_materialize_snapshot	function	missing	-	auto-generated
+runtime/runtime.py::function::_materialize_snapshot	function	ported	spec/chronicle/retention_spec.cr	Chronicle::Retention.materialize_snapshot (fetch blob by state hash, verify, project objects/relations into a fresh graph store, reseed id counters); Runtime.load replays the post-snapshot suffix on top
 runtime/runtime.py::function::_maybe_object_id	function	ported	spec/chronicle/maybe_object_id_spec.cr	RuntimeReason.maybe_object_id (top-level id for Chronicle flat payloads; upstream nested object.id); behavior.started carries triggering_object_id
 runtime/runtime.py::function::_monotonic	function	ported	spec/chronicle/now_iso_spec.cr	RuntimeReason.monotonic (elapsed seconds since module-load Time.instant base; upstream _monotonic)
 runtime/runtime.py::function::_most_recent_run_id	function	ported	spec/chronicle/most_recent_run_id_spec.cr	RuntimeReason.most_recent_run_id(path) via SQLiteEventStore.list_runs (last run id; nil for empty)

@@ -1673,7 +1673,16 @@ module Chronicle
     ) : Runtime(M)
       store = SQLiteEventStore.new(path, run_id: run_id)
       events = store.iter_events
-      graph = GraphProjection.replay(events)
+      graph = if events.first?.try(&.type) == "runtime.snapshot"
+                # Compacted run (CONTRACT v1.5 #2): materialize the snapshot
+                # blob into a fresh projection, then replay the post-snapshot
+                # suffix. Id counters were primed from the snapshot payload.
+                base = Chronicle::Retention.materialize_snapshot(events[0], store)
+                events[1..].each { |event| base.apply(event) }
+                base
+              else
+                GraphProjection.replay(events)
+              end
       graph.attach_store(store)
       graph.ids.reseed_from_events(events)
       log = LogAgent(M).new(agent, store: store, max_turns: max_turns)

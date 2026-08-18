@@ -227,6 +227,9 @@ module Chronicle
       begin
         events = store.iter_events
         graph = GraphProjection.replay(events)
+        # Replay does not advance the id counters (recorded events carry their
+        # ids); reseed so the snapshot payload captures the run's real counters.
+        graph.ids.reseed_from_events(events)
         blob = canonical_state_blob(graph)
         digest = state_hash_of(blob)
         covered = events.size
@@ -284,6 +287,63 @@ module Chronicle
       ensure
         store.close
       end
+    end
+
+    # Rebuild a compacted run's base state from its runtime.snapshot blob
+    # (upstream `_materialize_snapshot`, CONTRACT v1.5 #2). The blob is
+    # fetched from the sidecar by the event's state hash and verified
+    # (fail-loud on corruption), then projected into a fresh graph store. Id
+    # counters recorded at compact time prime the generator so fresh mints
+    # can't collide with archived history.
+    def materialize_snapshot(snapshot_event : Event, store : SQLiteEventStore) : GraphProjection
+      payload = JSON.parse(snapshot_event.payload).as_h
+      expected = payload["state_hash"]?.try(&.as_s) || ""
+      blob = store.get_snapshot(expected)
+      if blob.nil?
+        raise SnapshotIntegrityError.new(
+          run_id: store.run_id, expected: expected,
+          detail: "the snapshot blob is missing from the sidecar table.",
+        )
+      end
+      if state_hash_of(blob) != expected
+        raise SnapshotIntegrityError.new(
+          run_id: store.run_id, expected: expected,
+          detail: "the stored blob does not hash to the recorded state hash.",
+        )
+      end
+
+      state = JSON.parse(blob).as_h
+      gstore = InMemoryGraphStore.new
+      state["objects"]?.try(&.as_a?).try(&.each do |raw_object|
+        obj = raw_object.as_h
+        gstore.put_object(GraphObject.new(
+          id: obj["id"].as_s,
+          type: obj["type"].as_s,
+          data: obj["data"]?.try(&.as_s?) || obj["data"]?.try(&.to_json) || "{}",
+          version: obj["version"]?.try(&.as_i).try(&.to_i64) || 1_i64,
+          provenance: parse_provenance(obj["provenance"]?),
+        ))
+      end)
+      state["relations"]?.try(&.as_a?).try(&.each do |raw_relation|
+        rel = raw_relation.as_h
+        gstore.put_relation(GraphRelation.new(
+          id: rel["id"].as_s,
+          type: rel["type"].as_s,
+          from_id: rel["from_id"]?.try(&.as_s) || rel["source"]?.try(&.as_s) || "",
+          to_id: rel["to_id"]?.try(&.as_s) || rel["target"]?.try(&.as_s) || "",
+          provenance: parse_provenance(rel["provenance"]?),
+        ))
+      end)
+
+      graph = GraphProjection.new(store: gstore)
+      if counters = payload["id_counters"]?.try(&.as_h?)
+        graph.ids.reseed_from_snapshot(counters.to_h { |key, value| {key, value.as_i} })
+      end
+      graph
+    end
+
+    private def parse_provenance(value : JSON::Any?) : Provenance
+      value.nil? ? Provenance.new(created_by: "event") : Provenance.from_json(value.to_json)
     end
 
     # A snapshot blob does not hash-match its runtime.snapshot event —

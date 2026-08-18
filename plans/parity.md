@@ -352,26 +352,26 @@ phases).
 - [ ] Postgres / FalkorDB GraphStore pushdown — `store/postgres.py`,
       `store/falkordb.py` (any backend passing the conformance suite is
       interchangeable).
-- [ ] Retention / compaction — `store/retention.py` (368): offline snapshot
-      sidecar + archive-tier compaction. **Pin set + retire + compact +
-      verify + SQLite tier done** (CONTRACT v1.5 #2): `Chronicle::Retention`
-      — `pins` (promoted-from / live-lineage / pending-approvals /
-      proposed-patches — the pin set dominates policy), `state_hash_of`,
-      `canonical_state_blob` (objects+relations sorted by id, compact
-      canonical JSON, provenance included), `RetentionPinnedError`,
-      `SnapshotIntegrityError`, `retire`, `compact` (pins gate →
-      `runtime.snapshot` event + `put_snapshot` + `archive_prefix` in
-      crash-safe order, returning the snapshot event id; id_counters via
-      `IDGen.snapshot_counters`), and `verify_snapshot` (replays
+- [x] Retention / compaction — `store/retention.py` + `_materialize_snapshot`
+      fully ported (CONTRACT v1.5 #2): `Chronicle::Retention` — `pins`
+      (promoted-from / live-lineage / pending-approvals / proposed-patches —
+      the pin set dominates policy), `state_hash_of`, `canonical_state_blob`
+      (objects+relations sorted by id, compact canonical JSON, provenance
+      included), `RetentionPinnedError`, `SnapshotIntegrityError`, `retire`,
+      `compact` (pins gate → `runtime.snapshot` event + `put_snapshot` +
+      `archive_prefix` in crash-safe order, returning the snapshot event id;
+      id_counters via `IDGen.snapshot_counters`), `verify_snapshot` (replays
       `iter_archived` and compares the canonical state hash to the snapshot
-      event). Plus the `SQLiteEventStore` archive/snapshot tier
-      (`events_archive` + `snapshots` tables, `put_snapshot` /
-      `get_snapshot` / `archive_prefix` / `archive_run` / `iter_archived` /
-      `has_archived` / `seq_of`) and `IDGen.snapshot_counters` /
-      `reseed_from_snapshot` — `spec/chronicle/retention_spec.cr`.
-      Remaining: `Runtime.load` snapshot reconstruction (a compacted run's
-      hot log is snapshot-only; load must materialize the blob and reseed
-      the id counters).
+      event), and `materialize_snapshot` (fetch blob by state hash, verify
+      fail-loud, project objects/relations into a fresh graph store, reseed
+      id counters). `Runtime.load` detects a leading `runtime.snapshot` and
+      materializes the blob before replaying the post-snapshot suffix, so a
+      compacted run loads to identical state and stays appendable. Plus the
+      `SQLiteEventStore` archive/snapshot tier (`events_archive` +
+      `snapshots` tables, `put_snapshot` / `get_snapshot` / `archive_prefix` /
+      `archive_run` / `iter_archived` / `has_archived` / `seq_of`) and
+      `IDGen.snapshot_counters` / `reseed_from_snapshot` —
+      `spec/chronicle/retention_spec.cr`.
 - [ ] Sandbox executor/conformance — `sandbox/*` (`_child`, `executor`,
       `conformance`).
 - [ ] Prometheus / OTel / migration — `observability/prometheus.py`,

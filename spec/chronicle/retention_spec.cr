@@ -227,5 +227,32 @@ describe Chronicle::Retention do
         File.delete(db) if db && File.exists?(db)
       end
     end
+
+    describe "Runtime.load snapshot reconstruction" do
+      it "loads a compacted run from its snapshot blob and matches the pre-compact state" do
+        db = retention_db_path("load")
+        store = Chronicle::SQLiteEventStore.new(db, run_id: "parent")
+        graph = Chronicle::GraphProjection.empty.attach_store(store)
+        graph.add_object("task", %({"title":"a"}))
+        graph.add_object("task", %({"title":"b"}))
+        graph.add_relation("task#1", "task#2", "depends_on")
+        objects_before = graph.all_objects.to_h { |obj| {obj.id, obj.data} }
+        relations_before = graph.all_relations.to_h { |rel| {rel.id, rel.type} }
+
+        Chronicle::Retention.compact(db, "parent")
+
+        loaded = Chronicle::Runtime(PackModel).load(
+          db, run_id: "parent", agent: Crig::Agent(PackModel).new(model: PackModel.new, preamble: ""))
+        loaded_graph = loaded.graph.not_nil!
+        loaded_graph.all_objects.to_h { |obj| {obj.id, obj.data} }.should eq(objects_before)
+        loaded_graph.all_relations.to_h { |rel| {rel.id, rel.type} }.should eq(relations_before)
+
+        # Stays appendable: new mints don't collide with archived ids.
+        fresh = loaded_graph.add_object("task", %({"title":"c"}))
+        fresh.id.should eq("task#3")
+      ensure
+        File.delete(db) if db && File.exists?(db)
+      end
+    end
   end
 end
