@@ -381,14 +381,14 @@ observability/otel.py::method::OpenTelemetryMetrics.available	method	missing	-	a
 observability/otel.py::method::OpenTelemetryMetrics.counter	method	missing	-	auto-generated
 observability/otel.py::method::OpenTelemetryMetrics.gauge	method	missing	-	auto-generated
 observability/otel.py::method::OpenTelemetryMetrics.histogram	method	missing	-	auto-generated
-observability/prometheus.py::class::PrometheusMetrics	class	missing	-	auto-generated
+observability/prometheus.py::class::PrometheusMetrics	class	ported	spec/chronicle/prometheus_spec.cr	Chronicle::PrometheusMetrics (in-memory Metrics impl recording counters/gauges/histogram sums+counts; Sans-IO)
 observability/prometheus.py::function::_require_client	function	missing	-	auto-generated
 observability/prometheus.py::method::PrometheusMetrics.__init__	method	missing	-	auto-generated
 observability/prometheus.py::method::PrometheusMetrics._creation_lock	method	missing	-	auto-generated
 observability/prometheus.py::method::PrometheusMetrics.available	method	missing	-	auto-generated
-observability/prometheus.py::method::PrometheusMetrics.counter	method	missing	-	auto-generated
-observability/prometheus.py::method::PrometheusMetrics.gauge	method	missing	-	auto-generated
-observability/prometheus.py::method::PrometheusMetrics.histogram	method	missing	-	auto-generated
+observability/prometheus.py::method::PrometheusMetrics.counter	method	ported	spec/chronicle/prometheus_spec.cr	counter accumulates per canonical label set
+observability/prometheus.py::method::PrometheusMetrics.gauge	method	ported	spec/chronicle/prometheus_spec.cr	gauge stores latest value per label set
+observability/prometheus.py::method::PrometheusMetrics.histogram	method	ported	spec/chronicle/prometheus_spec.cr	histogram accumulates sum + count per label set
 observability/status.py::class::BehaviorInfo	class	ported	spec/chronicle/status_spec.cr	BehaviorInfo value struct
 observability/status.py::class::BudgetSnapshot	class	ported	spec/chronicle/status_spec.cr	BudgetSnapshot value struct
 observability/status.py::class::EventSummary	class	ported	spec/chronicle/status_spec.cr	EventSummary value struct
