@@ -384,9 +384,17 @@ phases).
       `LocalSubprocessTrialExecutor` (subprocess), the `_child` runner, and
       the conformance suite stay at the platform edge (process spawning is
       not Sans-IO).
-- [ ] Prometheus / OTel / migration — `observability/prometheus.py`,
-      `observability/otel.py`, `observability/migration.py` (external
-      backends; the `Metrics` protocol + `Logging` schema are ported).
+- [ ] Prometheus / OTel / migration — **migration done** (SQLite→SQLite,
+      CONTRACT v0.8 #5): `Chronicle::Migration` — `RunReport` / `Report`
+      (`ok?` / `failures`), `migrate` (per-run transactional copy with
+      idempotent INSERT OR IGNORE, `only_run_ids` + `on_progress`, a bad run
+      doesn't block the others), and `SQLiteEventStore.migrate_run` (the
+      single-transaction writer returning newly-written rows) —
+      `spec/chronicle/migration_spec.cr`. Postgres destinations and
+      `skip_corrupted` stay deferred. The Prometheus / OTel backends
+      (`observability/prometheus.py`, `observability/otel.py`) stay deferred
+      (external servers; the `Metrics` protocol + `Logging` schema are
+      ported).
 
 ### Next up (concrete plan order)
 

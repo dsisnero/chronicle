@@ -356,17 +356,17 @@ observability/metrics.py::method::Metrics.histogram	method	ported	spec/chronicle
 observability/metrics.py::method::NoOpMetrics.counter	method	ported	spec/chronicle/metrics_spec.cr	NoOpMetrics#counter
 observability/metrics.py::method::NoOpMetrics.gauge	method	ported	spec/chronicle/metrics_spec.cr	NoOpMetrics#gauge
 observability/metrics.py::method::NoOpMetrics.histogram	method	ported	spec/chronicle/metrics_spec.cr	NoOpMetrics#histogram
-observability/migration.py::class::MigrationReport	class	missing	-	auto-generated
-observability/migration.py::class::MigrationRunReport	class	missing	-	auto-generated
+observability/migration.py::class::MigrationReport	class	ported	spec/chronicle/migration_spec.cr	Chronicle::Migration::Report (source_url/dest_url/runs; ok?/failures)
+observability/migration.py::class::MigrationRunReport	class	ported	spec/chronicle/migration_spec.cr	Chronicle::Migration::RunReport (run_id/status/events_migrated/error/skipped_events)
 observability/migration.py::class::_StoreFacade	class	missing	-	auto-generated
 observability/migration.py::function::_iter_events_skip_corrupted	function	missing	-	auto-generated
 observability/migration.py::function::_iter_postgres_skip_corrupted	function	missing	-	auto-generated
 observability/migration.py::function::_iter_sqlite_skip_corrupted	function	missing	-	auto-generated
-observability/migration.py::function::_migrate_one_run	function	missing	-	auto-generated
-observability/migration.py::function::_resolve	function	missing	-	auto-generated
+observability/migration.py::function::_migrate_one_run	function	ported	spec/chronicle/migration_spec.cr	migrate_one_run (read source events -> SQLiteEventStore.migrate_run -> ok/failed report)
+observability/migration.py::function::_resolve	function	ported	spec/chronicle/migration_spec.cr	resolve_path via Chronicle.parse_store_url (sqlite only; postgres raises IncompatibleRuntimeState)
 observability/migration.py::function::_write_run_postgres	function	missing	-	auto-generated
-observability/migration.py::function::_write_run_sqlite	function	missing	-	auto-generated
-observability/migration.py::function::migrate	function	missing	-	auto-generated
+observability/migration.py::function::_write_run_sqlite	function	ported	spec/chronicle/migration_spec.cr	SQLiteEventStore.migrate_run (one transaction; INSERT OR IGNORE; counts new rows; idempotent)
+observability/migration.py::function::migrate	function	ported	spec/chronicle/migration_spec.cr	Chronicle::Migration.migrate: SQLite->SQLite per-run transactional copy with idempotent INSERT OR IGNORE; only_run_ids + on_progress; bad run does not block others. Postgres and skip_corrupted deferred
 observability/migration.py::method::MigrationReport.failures	method	missing	-	auto-generated
 observability/migration.py::method::MigrationReport.ok	method	missing	-	auto-generated
 observability/migration.py::method::_StoreFacade.list_runs	method	missing	-	auto-generated

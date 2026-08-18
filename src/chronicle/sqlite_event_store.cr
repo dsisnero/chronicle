@@ -321,6 +321,38 @@ module Chronicle
       records
     end
 
+    # Migrate one run's lineage + events into `path` in a single transaction
+    # with idempotent INSERT OR IGNORE (upstream migration `_write_run_sqlite`).
+    # Re-running after a partial failure inserts only the missing rows.
+    # Returns the number of events newly written.
+    def self.migrate_run(path : String, rec : RunRecord, events : Array(Event)) : Int32
+      conn = DB.open("sqlite3://#{path}")
+      begin
+        ensure_schema(conn)
+        conn.exec("PRAGMA busy_timeout = 5000")
+        n = 0
+        conn.transaction do |tx|
+          tx.connection.exec(
+            "INSERT INTO runs (run_id, parent_run_id, forked_at_event_id, label, created_at, goal, frame_id) " \
+            "VALUES (?, ?, ?, ?, ?, NULL, NULL) ON CONFLICT(run_id) DO NOTHING",
+            rec.run_id, rec.parent_run_id, rec.forked_at_event_id, rec.label, rec.created_at,
+          )
+          events.each do |event|
+            result = tx.connection.exec(
+              "INSERT OR IGNORE INTO events (id, type, actor, payload, caused_by, timestamp, run_id) " \
+              "VALUES (?, ?, ?, ?, ?, ?, ?)",
+              event.id, event.type, event.actor, event.payload, event.caused_by, event.timestamp.to_rfc3339, rec.run_id,
+            )
+            n += 1 if result.rows_affected > 0
+          end
+          tx.commit
+        end
+        n
+      ensure
+        conn.close
+      end
+    end
+
     # File-level helper: copy events from parent_run_id up to and including
     # at_event_id into new_run_id and record the fork's lineage (CONTRACT
     # v0.5 #11: copy rows, no row-sharing). Returns the number of events
