@@ -392,7 +392,11 @@ phases).
       counts) + `Chronicle::Prometheus.render` (the text exposition v0.0.4 —
       `# HELP`/`# TYPE` from the standard table, samples per label set,
       histograms as `_sum`/`_count`/`+Inf` bucket). The scrape HTTP endpoint
-      and the OTel adapter stay at the platform edge (external servers).
+      stays at the platform edge. **OTel marked intentional_divergence**: the
+      upstream adapter is a thin wrapper over the external `opentelemetry-sdk`
+      (instrument factory) with no Sans-IO logic — the `Metrics` protocol is
+      the seam and a host wires their own meter to it (no Crystal OTel shard
+      here).
 
 ### Next up (concrete plan order)
 
