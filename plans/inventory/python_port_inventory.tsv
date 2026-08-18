@@ -832,10 +832,10 @@ runtime/scheduler.py::method::InvalidActivateAfter.__init__	method	ported	spec/c
 runtime/view_builder.py::const::DEFAULT_RECENT_EVENTS	const	missing	-	auto-generated
 runtime/view_builder.py::function::_resolve_event_path	function	ported	spec/chronicle/resolve_event_path_spec.cr	Resolve dotted event.<path> expression for view around= anchors (upstream _resolve_event_path)
 runtime/view_builder.py::function::build_view	function	missing	-	auto-generated
-sandbox/__init__.py::class::PackSource	class	missing	-	auto-generated
+sandbox/__init__.py::class::PackSource	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::PackSource (root_dir / expected_bundle_hash / manifest_required?)
 sandbox/__init__.py::class::SandboxStartupError	class	missing	-	auto-generated
-sandbox/__init__.py::class::TrialLimits	class	missing	-	auto-generated
-sandbox/__init__.py::class::TrialReport	class	missing	-	auto-generated
+sandbox/__init__.py::class::TrialLimits	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialLimits (wall_clock/max_rss_bytes/max_events/max_llm_calls/env_passthrough; max_llm_calls=0 is structural key-freedom)
+sandbox/__init__.py::class::TrialReport	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialReport (outcome/fork_run_id/events_appended/behavior_failures/detail/exit_code/warnings)
 sandbox/__init__.py::const::TRIAL_OUTCOMES	const	missing	-	auto-generated
 sandbox/__init__.py::function::_child_code_paths	function	missing	-	auto-generated
 sandbox/__init__.py::function::_child_env	function	missing	-	auto-generated
@@ -860,14 +860,14 @@ sandbox/conformance.py::method::TrialExecutorConformance.make_executor	method	mi
 sandbox/conformance.py::method::TrialExecutorConformance.make_serialized_specification	method	missing	-	auto-generated
 sandbox/executor.py::class::LocalSubprocessTrialExecutor	class	missing	-	auto-generated
 sandbox/executor.py::class::RecordingTrialExecutor	class	missing	-	auto-generated
-sandbox/executor.py::class::TrialArtifactReference	class	missing	-	auto-generated
-sandbox/executor.py::class::TrialBudgetUse	class	missing	-	auto-generated
-sandbox/executor.py::class::TrialEventLogReference	class	missing	-	auto-generated
+sandbox/executor.py::class::TrialArtifactReference	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialArtifactReference (name/uri/media_type/digest)
+sandbox/executor.py::class::TrialBudgetUse	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialBudgetUse (events_appended/behavior_failures/limits)
+sandbox/executor.py::class::TrialEventLogReference	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialEventLogReference (store_path/run_id)
 sandbox/executor.py::class::TrialExecutor	class	missing	-	auto-generated
-sandbox/executor.py::class::TrialFailureDetails	class	missing	-	auto-generated
-sandbox/executor.py::class::TrialIsolationGuarantees	class	missing	-	auto-generated
-sandbox/executor.py::class::TrialResult	class	missing	-	auto-generated
-sandbox/executor.py::class::TrialSpecification	class	missing	-	auto-generated
+sandbox/executor.py::class::TrialFailureDetails	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialFailureDetails (kind/message/exit_code)
+sandbox/executor.py::class::TrialIsolationGuarantees	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialIsolationGuarantees + LOCAL_SUBPROCESS_ISOLATION
+sandbox/executor.py::class::TrialResult	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialResult (status/budget_use/artifacts/event_log/failure/isolation/detail/exit_code/warnings) with from_report/to_report
+sandbox/executor.py::class::TrialSpecification	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialSpecification (versioned JSON; to_json canonical, from_json validates schema_version/required fields/pack sources/limits/extra packs)
 sandbox/executor.py::const::LOCAL_SUBPROCESS_ISOLATION	const	missing	-	auto-generated
 sandbox/executor.py::function::_limits_payload	function	missing	-	auto-generated
 sandbox/executor.py::function::_pack_source_payload	function	missing	-	auto-generated

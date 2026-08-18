@@ -372,8 +372,18 @@ phases).
       `archive_run` / `iter_archived` / `has_archived` / `seq_of`) and
       `IDGen.snapshot_counters` / `reseed_from_snapshot` —
       `spec/chronicle/retention_spec.cr`.
-- [ ] Sandbox executor/conformance — `sandbox/*` (`_child`, `executor`,
-      `conformance`).
+- [ ] Sandbox executor/conformance — `sandbox/*`. **Value types done**
+      (CONTRACT v1.8 #9–#12): `Chronicle::Sandbox` — `PackSource`,
+      `TrialLimits` (structural key-freedom via `max_llm_calls=0`),
+      `TrialReport`, `TrialIsolationGuarantees` + `LOCAL_SUBPROCESS_ISOLATION`,
+      `TrialSpecification` (versioned canonical JSON with schema-version /
+      required-field / pack-source validation), `TrialBudgetUse`,
+      `TrialArtifactReference`, `TrialEventLogReference`,
+      `TrialFailureDetails`, and `TrialResult` (`from_report` / `to_report`
+      legacy-report lift) — `spec/chronicle/sandbox_spec.cr`. The
+      `LocalSubprocessTrialExecutor` (subprocess), the `_child` runner, and
+      the conformance suite stay at the platform edge (process spawning is
+      not Sans-IO).
 - [ ] Prometheus / OTel / migration — `observability/prometheus.py`,
       `observability/otel.py`, `observability/migration.py` (external
       backends; the `Metrics` protocol + `Logging` schema are ported).
