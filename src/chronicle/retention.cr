@@ -194,5 +194,132 @@ module Chronicle
         store.close
       end
     end
+
+    # The snapshot blob: full projected state, canonical JSON (upstream
+    # `_canonical_state_blob`). Provenance is INCLUDED — the snapshot must
+    # reconstruct state faithfully. Determinism comes from sorted ids and
+    # sorted keys; the state hash is computed over exactly these bytes.
+    def canonical_state_blob(graph : GraphProjection) : String
+      objects = graph.all_objects
+        .map { |obj| JSON.parse(obj.to_json) }
+        .sort_by!(&.["id"].as_s)
+      relations = graph.all_relations
+        .map { |relation| JSON.parse(relation.to_json) }
+        .sort_by!(&.["id"].as_s)
+      state = {
+        "objects"   => JSON::Any.new(objects),
+        "relations" => JSON::Any.new(relations),
+      }
+      Prompt.canonical_json(JSON::Any.new(state))
+    end
+
+    # Snapshot `run_id` and archive its pre-snapshot prefix (upstream
+    # `compact`). Refuses pinned runs and emits the snapshot event, stores the
+    # blob, then moves the prefix to the archive (crash-safe order, idempotent).
+    # Returns the snapshot event id. Offline operation, per-run.
+    def compact(path : String, run_id : String) : String
+      reasons = pins(path, run_id)
+      unless reasons.empty?
+        raise RetentionPinnedError.new(run_id: run_id, operation: "compact", reasons: reasons)
+      end
+
+      store = SQLiteEventStore.new(path, run_id: run_id)
+      begin
+        events = store.iter_events
+        graph = GraphProjection.replay(events)
+        blob = canonical_state_blob(graph)
+        digest = state_hash_of(blob)
+        covered = events.size
+        last_id = events.last?.try(&.id)
+
+        seq = store.count + 1
+        snapshot_event = Event.new(
+          schema_version: 1_u16,
+          sequence: seq.to_u64,
+          id: "runtime_snapshot_#{seq}",
+          type: "runtime.snapshot",
+          actor: "runtime",
+          caused_by: nil,
+          timestamp: Time.utc,
+          payload: JSON.build do |json|
+            json.object do
+              json.field "state_hash", digest
+              json.field "covers_through", last_id
+              json.field "events_covered", covered
+              json.field "id_counters", graph.ids.snapshot_counters
+            end
+          end,
+        )
+        store.append(snapshot_event)
+        store.put_snapshot(digest, blob, created_at: RuntimeReason.now_iso)
+        store.archive_prefix(store.seq_of(snapshot_event.id), archived_at: RuntimeReason.now_iso)
+        snapshot_event.id
+      ensure
+        store.close
+      end
+    end
+
+    # Replay the archived prefix and prove it reproduces the snapshot
+    # (upstream `verify_snapshot`). Returns True on match; raises
+    # SnapshotIntegrityError on mismatch; raises LookupError when the run has
+    # no snapshot.
+    def verify_snapshot(path : String, run_id : String) : Bool
+      store = SQLiteEventStore.new(path, run_id: run_id)
+      begin
+        snapshot_event = store.iter_events.find { |event| event.type == "runtime.snapshot" }
+        if snapshot_event.nil?
+          raise KeyError.new("run #{run_id.inspect} has no runtime.snapshot event")
+        end
+        expected = JSON.parse(snapshot_event.payload).as_h["state_hash"]?.try(&.as_s) || ""
+
+        scratch = GraphProjection.replay(store.iter_archived)
+        actual = state_hash_of(canonical_state_blob(scratch))
+        if actual != expected
+          raise SnapshotIntegrityError.new(
+            run_id: run_id, expected: expected,
+            detail: "archived prefix replays to #{actual}, event pins #{expected}.",
+          )
+        end
+        true
+      ensure
+        store.close
+      end
+    end
+
+    # A snapshot blob does not hash-match its runtime.snapshot event —
+    # corruption, refused loudly at load (CONTRACT v1.5 #2).
+    class SnapshotIntegrityError < StorageError
+      DOC_SLUG = "snapshot-integrity-error"
+
+      getter run_id : String
+      getter expected : String
+
+      def initialize(@run_id : String, @expected : String, detail : String)
+        super(
+          "snapshot integrity failure in run #{@run_id.inspect}",
+          what_failed: (
+            "Loading run #{@run_id.inspect}: the snapshot referenced by its " \
+            "runtime.snapshot event failed verification. #{detail}"
+          ),
+          why: (
+            "A compacted run's projected state is reconstructed from the " \
+            "snapshot blob; the state hash recorded in the event is what " \
+            "keeps the blob honest. A mismatch means the sidecar was " \
+            "corrupted or tampered with, and replaying from it would " \
+            "silently produce wrong state."
+          ),
+          how_to_fix: (
+            "Verify the archived prefix is intact and rebuild the snapshot " \
+            "from it. If the archive replays clean, re-compact; if not, " \
+            "restore the store file from backup."
+          ),
+          context: {"run_id" => JSON::Any.new(run_id), "expected_hash" => JSON::Any.new(expected)},
+        )
+      end
+
+      def self.doc_slug : String
+        DOC_SLUG
+      end
+    end
   end
 end

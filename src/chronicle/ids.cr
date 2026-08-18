@@ -68,6 +68,28 @@ module Chronicle
       end
     end
 
+    # The current counters as a hash, for the runtime.snapshot payload
+    # (CONTRACT v1.5 #2) so a load from the snapshot can reseed past them.
+    def snapshot_counters : Hash(String, Int32)
+      {
+        "object"   => @object_counter,
+        "event"    => @event_counter,
+        "relation" => @relation_counter,
+        "patch"    => @patch_counter,
+        "frame"    => @frame_counter,
+      }
+    end
+
+    # Set counters from a snapshot's `id_counters` payload.
+    def reseed_from_snapshot(counters : Hash(String, Int32)) : self
+      @object_counter = Math.max(@object_counter, counters["object"]? || 0)
+      @event_counter = Math.max(@event_counter, counters["event"]? || 0)
+      @relation_counter = Math.max(@relation_counter, counters["relation"]? || 0)
+      @patch_counter = Math.max(@patch_counter, counters["patch"]? || 0)
+      @frame_counter = Math.max(@frame_counter, counters["frame"]? || 0)
+      self
+    end
+
     # Set counters past the highest id seen in `events` so subsequent
     # object()/event()/... continue monotonically from where the loaded log
     # ended. Forks call this too, which is why two forks at the same point

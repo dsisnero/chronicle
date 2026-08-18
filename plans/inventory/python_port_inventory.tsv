@@ -1062,16 +1062,16 @@ store/postgres.py::method::_TxCtx.__enter__	method	missing	-	auto-generated
 store/postgres.py::method::_TxCtx.__exit__	method	missing	-	auto-generated
 store/postgres.py::method::_TxCtx.__init__	method	missing	-	auto-generated
 store/retention.py::class::RetentionPinnedError	class	ported	spec/chronicle/retention_spec.cr	Chronicle::Retention::RetentionPinnedError (structured StorageError with run_id/operation/reasons)
-store/retention.py::class::SnapshotIntegrityError	class	missing	-	auto-generated
-store/retention.py::function::_canonical_state_blob	function	missing	-	auto-generated
+store/retention.py::class::SnapshotIntegrityError	class	ported	spec/chronicle/retention_spec.cr	Chronicle::Retention::SnapshotIntegrityError (structured StorageError with run_id/expected)
+store/retention.py::function::_canonical_state_blob	function	ported	spec/chronicle/retention_spec.cr	Retention.canonical_state_blob (objects+relations sorted by id, compact canonical JSON, provenance included)
 store/retention.py::function::_now_iso	function	missing	-	auto-generated
-store/retention.py::function::compact	function	missing	-	auto-generated
+store/retention.py::function::compact	function	ported	spec/chronicle/retention_spec.cr	Retention.compact: pins gate -> runtime.snapshot event + put_snapshot + archive_prefix (crash-safe order); returns snapshot event id; id_counters via IDGen.snapshot_counters
 store/retention.py::function::pins	function	ported	spec/chronicle/retention_spec.cr	Chronicle::Retention.pins: promoted-from / live-lineage / pending-approvals / proposed-patches pin set (CONTRACT v1.5 #2); the pin set dominates retention policy
 store/retention.py::function::retire	function	missing	-	auto-generated
 store/retention.py::function::state_hash_of	function	ported	spec/chronicle/retention_spec.cr	Chronicle::Retention.state_hash_of (sha256: prefixed digest over the canonical blob)
-store/retention.py::function::verify_snapshot	function	missing	-	auto-generated
+store/retention.py::function::verify_snapshot	function	ported	spec/chronicle/retention_spec.cr	Retention.verify_snapshot: replays iter_archived into a projection and compares the canonical state hash to the snapshot event (SnapshotIntegrityError on mismatch)
 store/retention.py::method::RetentionPinnedError.__init__	method	ported	spec/chronicle/retention_spec.cr	structured construction (what_failed/why/how_to_fix/context)
-store/retention.py::method::SnapshotIntegrityError.__init__	method	missing	-	auto-generated
+store/retention.py::method::SnapshotIntegrityError.__init__	method	ported	spec/chronicle/retention_spec.cr	structured construction
 store/serde.py::class::NonSerializableEventError	class	ported	spec/chronicle/serde_spec.cr	encode-side strict-serialization error; compile-time guaranteed for JSON::Any/String payloads
 store/serde.py::function::_default	function	intentional_divergence	-	Python value->JSON adapter (Decimal/datetime/set). N/A in Crystal: JSON::Any/String payloads are JSON by construction.
 store/serde.py::function::_find_non_serializable	function	intentional_divergence	-	Python walker to locate a non-JSON value. N/A in Crystal: compile-time type safety replaces the runtime walk.

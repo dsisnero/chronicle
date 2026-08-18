@@ -168,5 +168,64 @@ describe Chronicle::Retention do
         File.delete(db) if db && File.exists?(db)
       end
     end
+
+    describe ".compact" do
+      it "snapshots a run and archives its prefix (hot log is snapshot-only)" do
+        db = retention_db_path("compact")
+        store = Chronicle::SQLiteEventStore.new(db, run_id: "parent")
+        graph = Chronicle::GraphProjection.empty.attach_store(store)
+        graph.add_object("task", %({"title":"a"}))
+        graph.add_object("task", %({"title":"b"}))
+
+        snapshot_id = Chronicle::Retention.compact(db, "parent")
+        hot = store.iter_events
+        hot.map(&.type).should eq(["runtime.snapshot"])
+        hot[0].id.should eq(snapshot_id)
+        store.has_archived.should be_true
+        JSON.parse(hot[0].payload).as_h["state_hash"].as_s.starts_with?("sha256:").should be_true
+      ensure
+        File.delete(db) if db && File.exists?(db)
+      end
+
+      it "refuses a pinned run with RetentionPinnedError" do
+        db = retention_db_path("compact_pinned")
+        parent = Chronicle::SQLiteEventStore.new(db, run_id: "parent")
+        parent.append(retention_event("e1", "goal.created"))
+        child = Chronicle::SQLiteEventStore.new(db, run_id: "child")
+        child.upsert_run(created_at: Time.utc.to_rfc3339, parent_run_id: "parent")
+        child.append(retention_event("c1", "object.created"))
+
+        expect_raises(Chronicle::Retention::RetentionPinnedError) do
+          Chronicle::Retention.compact(db, "parent")
+        end
+      ensure
+        File.delete(db) if db && File.exists?(db)
+      end
+    end
+
+    describe ".verify_snapshot" do
+      it "replays the archived prefix and proves it reproduces the snapshot" do
+        db = retention_db_path("verify")
+        store = Chronicle::SQLiteEventStore.new(db, run_id: "parent")
+        graph = Chronicle::GraphProjection.empty.attach_store(store)
+        graph.add_object("task", %({"title":"a"}))
+        graph.add_object("task", %({"title":"b"}))
+
+        Chronicle::Retention.compact(db, "parent")
+        Chronicle::Retention.verify_snapshot(db, "parent").should be_true
+      ensure
+        File.delete(db) if db && File.exists?(db)
+      end
+
+      it "raises a LookupError when the run has no snapshot" do
+        db = retention_db_path("verify_missing")
+        store = Chronicle::SQLiteEventStore.new(db, run_id: "parent")
+        store.append(retention_event("e1", "goal.created"))
+
+        expect_raises(Exception) { Chronicle::Retention.verify_snapshot(db, "parent") }
+      ensure
+        File.delete(db) if db && File.exists?(db)
+      end
+    end
   end
 end
