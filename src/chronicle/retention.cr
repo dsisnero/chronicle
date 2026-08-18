@@ -6,10 +6,10 @@ module Chronicle
   # (CONTRACT v1.5 #2, phase 1 of the compaction design). Ported from
   # activegraph store/retention.py.
   #
-  # This module owns the pure / read-only surfaces: the pin set (`pins`), the
-  # snapshot blob helpers, and the structured errors. The SQLite archive/
-  # snapshot mutations (`compact` / `retire` / `verify_snapshot`) extend
-  # SQLiteEventStore and are layered on top.
+  # The pin set (`pins`) dominates retention policy unconditionally;
+  # `retire` archives a whole closed unpinned run. The SQLite
+  # snapshot/archive mutations live on SQLiteEventStore; the snapshot
+  # reconstruction on load is layered on top.
   module Retention
     extend self
 
@@ -175,6 +175,24 @@ module Chronicle
         store.close
       end
       {(proposed_approvals - granted).to_a.sort, proposed_patches.keys.sort!}
+    end
+
+    # Archive an entire closed, unpinned run (upstream `retire`). Returns rows
+    # moved. The typical subject is a rejected fork trial that was never
+    # promoted; pinned runs refuse with the full reason list. Offline
+    # operation, per-run: no live runtime may be attached to `run_id` itself.
+    def retire(path : String, run_id : String) : Int32
+      reasons = pins(path, run_id)
+      unless reasons.empty?
+        raise RetentionPinnedError.new(run_id: run_id, operation: "retire", reasons: reasons)
+      end
+
+      store = SQLiteEventStore.new(path, run_id: run_id)
+      begin
+        store.archive_run(archived_at: RuntimeReason.now_iso)
+      ensure
+        store.close
+      end
     end
   end
 end

@@ -353,14 +353,17 @@ phases).
       `store/falkordb.py` (any backend passing the conformance suite is
       interchangeable).
 - [ ] Retention / compaction — `store/retention.py` (368): offline snapshot
-      sidecar + archive-tier compaction. **Pin set done** (CONTRACT v1.5 #2):
-      `Chronicle::Retention.pins` (promoted-from / live-lineage /
-      pending-approvals / proposed-patches — the pin set dominates policy),
-      `state_hash_of`, and `RetentionPinnedError` —
-      `spec/chronicle/retention_spec.cr`. Remaining: the SQLite snapshot +
-      `events_archive` tables, `put_snapshot` / `archive_prefix` /
-      `archive_run` / `iter_archived`, `Runtime.load` snapshot
-      reconstruction, and `compact` / `retire` / `verify_snapshot`.
+      sidecar + archive-tier compaction. **Pin set + retire + SQLite tier
+      done** (CONTRACT v1.5 #2): `Chronicle::Retention.pins` (promoted-from /
+      live-lineage / pending-approvals / proposed-patches — the pin set
+      dominates policy), `state_hash_of`, `RetentionPinnedError`,
+      `Retention.retire` (pins gate → `archive_run`), and the
+      `SQLiteEventStore` archive/snapshot tier (`events_archive` +
+      `snapshots` tables, `put_snapshot` / `get_snapshot` /
+      `archive_prefix` / `archive_run` / `iter_archived` / `has_archived` /
+      `seq_of`) — `spec/chronicle/retention_spec.cr`. Remaining:
+      `compact` (snapshot event + blob + prefix archive) and
+      `verify_snapshot`, plus `Runtime.load` snapshot reconstruction.
 - [ ] Sandbox executor/conformance — `sandbox/*` (`_child`, `executor`,
       `conformance`).
 - [ ] Prometheus / OTel / migration — `observability/prometheus.py`,

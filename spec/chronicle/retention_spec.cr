@@ -95,4 +95,78 @@ describe Chronicle::Retention do
       File.delete(db) if db && File.exists?(db)
     end
   end
+
+  describe "archive + snapshot tier" do
+    it "round-trips snapshot blobs by state hash" do
+      db = retention_db_path("snapshot")
+      store = Chronicle::SQLiteEventStore.new(db, run_id: "parent")
+      store.put_snapshot("sha256:abc", %({"objects":[]}), created_at: "2026-01-01T00:00:00Z")
+      store.get_snapshot("sha256:abc").should eq(%({"objects":[]}))
+      store.get_snapshot("sha256:missing").should be_nil
+    ensure
+      File.delete(db) if db && File.exists?(db)
+    end
+
+    it "archives a prefix and iterates the archived events in order" do
+      db = retention_db_path("prefix")
+      store = Chronicle::SQLiteEventStore.new(db, run_id: "parent")
+      store.append(retention_event("e1", "goal.created"))
+      store.append(retention_event("e2", "object.created"))
+      store.append(retention_event("e3", "object.created"))
+
+      moved = store.archive_prefix(3_i64, archived_at: "2026-01-01T00:00:00Z")
+      moved.should eq(2)
+      store.has_archived.should be_true
+      store.iter_archived.map(&.id).should eq(["e1", "e2"])
+      store.iter_events.map(&.id).should eq(["e3"])
+
+      # Idempotent: re-running moves nothing.
+      store.archive_prefix(3_i64, archived_at: "2026-01-01T00:00:00Z").should eq(0)
+    ensure
+      File.delete(db) if db && File.exists?(db)
+    end
+
+    it "resolves the seq of an event id" do
+      db = retention_db_path("seq")
+      store = Chronicle::SQLiteEventStore.new(db, run_id: "parent")
+      store.append(retention_event("e1", "goal.created"))
+      store.seq_of("e1").should eq(1_i64)
+      expect_raises(Chronicle::EventNotFoundError) { store.seq_of("missing") }
+    ensure
+      File.delete(db) if db && File.exists?(db)
+    end
+
+    describe ".retire" do
+      it "archives an entire unpinned run and returns rows moved" do
+        db = retention_db_path("retire")
+        store = Chronicle::SQLiteEventStore.new(db, run_id: "parent")
+        store.append(retention_event("e1", "goal.created"))
+        store.append(retention_event("e2", "object.created"))
+
+        moved = Chronicle::Retention.retire(db, "parent")
+        moved.should eq(2)
+        store.has_archived.should be_true
+        store.iter_events.empty?.should be_true
+        store.iter_archived.map(&.id).should eq(["e1", "e2"])
+      ensure
+        File.delete(db) if db && File.exists?(db)
+      end
+
+      it "refuses a pinned run with RetentionPinnedError" do
+        db = retention_db_path("retire_pinned")
+        parent = Chronicle::SQLiteEventStore.new(db, run_id: "parent")
+        parent.append(retention_event("e1", "goal.created"))
+        child = Chronicle::SQLiteEventStore.new(db, run_id: "child")
+        child.upsert_run(created_at: Time.utc.to_rfc3339, parent_run_id: "parent")
+        child.append(retention_event("c1", "object.created"))
+
+        error = expect_raises(Chronicle::Retention::RetentionPinnedError) do
+          Chronicle::Retention.retire(db, "parent")
+        end
+        error.reasons.any? { |reason| reason.starts_with?("live-lineage:") }.should be_true
+      ensure
+        File.delete(db) if db && File.exists?(db)
+      end
+    end
+  end
 end

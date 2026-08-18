@@ -57,6 +57,28 @@ module Chronicle
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
       )")
+      # v1.5 compaction (CONTRACT v1.5 #2): the archive tier and the snapshot
+      # sidecar. Additive IF NOT EXISTS tables — old runtimes reading a new
+      # file simply never touch them, so schema_version stays "1".
+      conn.exec("CREATE TABLE IF NOT EXISTS events_archive (
+        seq INTEGER,
+        id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        actor TEXT,
+        payload TEXT NOT NULL,
+        frame_id TEXT,
+        caused_by TEXT,
+        timestamp TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        archived_at TEXT NOT NULL,
+        UNIQUE(id, run_id)
+      )")
+      conn.exec("CREATE INDEX IF NOT EXISTS idx_archive_run ON events_archive(run_id, seq)")
+      conn.exec("CREATE TABLE IF NOT EXISTS snapshots (
+        state_hash TEXT PRIMARY KEY,
+        blob TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )")
     end
 
     def initialize(@db_path : String, @run_id : String)
@@ -195,6 +217,83 @@ module Chronicle
         end
       end
       record
+    end
+
+    # v1.5 compaction (CONTRACT v1.5 #2): snapshot + archive tier. Ported
+    # from activegraph.store.sqlite.SQLiteEventStore.
+
+    # Store a snapshot blob keyed by its state hash (idempotent).
+    def put_snapshot(state_hash : String, blob : String, *, created_at : String) : Nil
+      @db.exec(
+        "INSERT OR REPLACE INTO snapshots(state_hash, blob, created_at) VALUES (?, ?, ?)",
+        state_hash, blob, created_at,
+      )
+    end
+
+    # The snapshot blob for `state_hash`, or nil.
+    def get_snapshot(state_hash : String) : String?
+      @db.query_one?("SELECT blob FROM snapshots WHERE state_hash = ?", state_hash, as: String)
+    end
+
+    # Move this run's rows with seq < `before_seq` to the archive tier, in one
+    # transaction. Idempotent (re-running moves nothing). Returns rows moved.
+    def archive_prefix(before_seq : Int64, *, archived_at : String) : Int32
+      moved = 0_i64
+      @db.transaction do |tx|
+        result = tx.connection.exec(
+          "INSERT OR IGNORE INTO events_archive " \
+          "(seq, id, type, actor, payload, frame_id, caused_by, timestamp, run_id, archived_at) " \
+          "SELECT seq, id, type, actor, payload, frame_id, caused_by, timestamp, run_id, ? FROM events " \
+          "WHERE run_id = ? AND seq < ?",
+          archived_at, @run_id, before_seq,
+        )
+        moved = result.rows_affected
+        tx.connection.exec(
+          "DELETE FROM events WHERE run_id = ? AND seq < ?",
+          @run_id, before_seq,
+        )
+        tx.commit
+      end
+      moved.to_i
+    end
+
+    # Move ALL of this run's rows to the archive tier (retire).
+    def archive_run(*, archived_at : String) : Int32
+      archive_prefix(Int64::MAX, archived_at: archived_at)
+    end
+
+    # This run's archived events, in original seq order.
+    def iter_archived : Array(Event)
+      events = [] of Event
+      @db.query("SELECT seq, id, type, actor, payload, caused_by, timestamp FROM events_archive WHERE run_id = ? ORDER BY seq", @run_id) do |result_set|
+        result_set.each do
+          seq = result_set.read(Int64).to_u64
+          id = result_set.read(String)
+          type = result_set.read(String)
+          actor = result_set.read(String)
+          payload = result_set.read(String)
+          caused_by = result_set.read(String?)
+          ts = Time::Format::RFC_3339.parse(result_set.read(String))
+          events << Event.new(
+            schema_version: 1_u16, sequence: seq, id: id,
+            type: type, actor: actor, caused_by: caused_by,
+            timestamp: ts, payload: payload,
+          )
+        end
+      end
+      events
+    end
+
+    # True when any of this run's events sit in the archive tier.
+    def has_archived : Bool
+      @db.query_one?("SELECT 1 FROM events_archive WHERE run_id = ? LIMIT 1", @run_id, as: Int32).is_a?(Int32)
+    end
+
+    # The `seq` of an event id in this run (upstream `_seq_of`). Raises
+    # EventNotFoundError for an unknown id.
+    def seq_of(event_id : String) : Int64
+      @db.query_one?("SELECT seq FROM events WHERE id = ? AND run_id = ?", event_id, @run_id, as: Int64) ||
+        raise EventNotFoundError.new("event #{event_id.inspect} not found in run #{@run_id.inspect}")
     end
 
     # File-level helper: every run's lineage row, in created order.

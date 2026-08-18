@@ -1086,22 +1086,22 @@ store/sqlite.py::function::_ensure_schema	function	missing	-	auto-generated
 store/sqlite.py::function::_row_to_event	function	missing	-	auto-generated
 store/sqlite.py::function::_row_to_run	function	missing	-	auto-generated
 store/sqlite.py::method::SQLiteEventStore.__init__	method	missing	-	auto-generated
-store/sqlite.py::method::SQLiteEventStore._seq_of	method	missing	-	auto-generated
+store/sqlite.py::method::SQLiteEventStore._seq_of	method	ported	spec/chronicle/retention_spec.cr	SQLiteEventStore#seq_of (EventNotFoundError on unknown id)
 store/sqlite.py::method::SQLiteEventStore.append	method	missing	-	auto-generated
-store/sqlite.py::method::SQLiteEventStore.archive_prefix	method	missing	-	auto-generated
-store/sqlite.py::method::SQLiteEventStore.archive_run	method	missing	-	auto-generated
+store/sqlite.py::method::SQLiteEventStore.archive_prefix	method	ported	spec/chronicle/retention_spec.cr	SQLiteEventStore#archive_prefix (one BEGIN IMMEDIATE txn; idempotent; returns rows moved)
+store/sqlite.py::method::SQLiteEventStore.archive_run	method	ported	spec/chronicle/retention_spec.cr	SQLiteEventStore#archive_run (archive all — retire)
 store/sqlite.py::method::SQLiteEventStore.close	method	missing	-	auto-generated
 store/sqlite.py::method::SQLiteEventStore.count	method	missing	-	auto-generated
 store/sqlite.py::method::SQLiteEventStore.fork_run	method	missing	-	auto-generated
 store/sqlite.py::method::SQLiteEventStore.get_event	method	missing	-	auto-generated
 store/sqlite.py::method::SQLiteEventStore.get_run	method	missing	-	auto-generated
-store/sqlite.py::method::SQLiteEventStore.get_snapshot	method	missing	-	auto-generated
-store/sqlite.py::method::SQLiteEventStore.has_archived	method	missing	-	auto-generated
-store/sqlite.py::method::SQLiteEventStore.iter_archived	method	missing	-	auto-generated
+store/sqlite.py::method::SQLiteEventStore.get_snapshot	method	ported	spec/chronicle/retention_spec.cr	SQLiteEventStore#get_snapshot (blob by state hash, nil on miss)
+store/sqlite.py::method::SQLiteEventStore.has_archived	method	ported	spec/chronicle/retention_spec.cr	SQLiteEventStore#has_archived
+store/sqlite.py::method::SQLiteEventStore.iter_archived	method	ported	spec/chronicle/retention_spec.cr	SQLiteEventStore#iter_archived (archived events in seq order)
 store/sqlite.py::method::SQLiteEventStore.iter_events	method	missing	-	auto-generated
 store/sqlite.py::method::SQLiteEventStore.list_runs	method	missing	-	auto-generated
 store/sqlite.py::method::SQLiteEventStore.most_recent_run_id	method	missing	-	auto-generated
-store/sqlite.py::method::SQLiteEventStore.put_snapshot	method	missing	-	auto-generated
+store/sqlite.py::method::SQLiteEventStore.put_snapshot	method	ported	spec/chronicle/retention_spec.cr	SQLiteEventStore#put_snapshot (INSERT OR REPLACE, idempotent)
 store/sqlite.py::method::SQLiteEventStore.truncate_after	method	missing	-	auto-generated
 store/sqlite.py::method::SQLiteEventStore.upsert_run	method	missing	-	auto-generated
 store/url.py::class::InvalidStoreURL	class	missing	-	auto-generated
