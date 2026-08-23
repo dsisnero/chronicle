@@ -137,26 +137,12 @@ module Chronicle
     # (v0.8), mirroring upstream `_open_sqlite_store`. A bare path is treated
     # as a SQLite path directly; anything containing `://` is parsed with
     # `parse_store_url` and dispatched by scheme (sqlite → its resolved
-    # `sqlite_path`). A postgres URL raises `IncompatibleRuntimeState` —
-    # the Postgres backend is deferred (the `EventStore` protocol is the
-    # path for adding it).
-    def open_sqlite_store(path_or_url : String, run_id : String) : SQLiteEventStore
+    # `sqlite_path`). A Postgres URL is dispatched to PostgresEventStore via
+    # the common URL factory. The legacy method name stays for backwards
+    # compatibility with callers that pass bare SQLite paths.
+    def open_sqlite_store(path_or_url : String, run_id : String) : EventStore
       if path_or_url.includes?("://")
-        parsed = Chronicle.parse_store_url(path_or_url)
-        case parsed.scheme
-        when "sqlite"
-          if sqlite_path = parsed.sqlite_path
-            SQLiteEventStore.new(sqlite_path, run_id: run_id)
-          else
-            raise IncompatibleRuntimeState.new(
-              "sqlite URL #{path_or_url.inspect} has no resolvable path"
-            )
-          end
-        else
-          raise IncompatibleRuntimeState.new(
-            "postgres store URLs are not supported yet; use a bare SQLite path or a sqlite:/// URL"
-          )
-        end
+        Chronicle.open_store(path_or_url, run_id: run_id)
       else
         SQLiteEventStore.new(path_or_url, run_id: run_id)
       end

@@ -743,7 +743,7 @@ runtime/runtime.py::function::_most_recent_run_id	function	ported	spec/chronicle
 runtime/runtime.py::function::_non_replayable_llm_attempt_event_ids	function	ported	spec/chronicle/non_replayable_llm_ids_spec.cr	RuntimeReason.non_replayable_llm_attempt_event_ids (llm.failed + its caused_by request id; upstream reads llm.responded with error)
 runtime/runtime.py::function::_normalize_sink_configs	function	ported	spec/chronicle/sink_config_spec.cr	Runtime(sinks:) normalizes SinkConfig (default name from class, duplicate rejection before attach)
 runtime/runtime.py::function::_now_iso	function	ported	spec/chronicle/now_iso_spec.cr	RuntimeReason.now_iso (Time.utc.to_rfc3339); single source of truth for ToolRecorded/RecordingLLMProvider recorded_at
-runtime/runtime.py::function::_open_sqlite_store	function	ported	spec/chronicle/open_sqlite_store_spec.cr	RuntimeReason.open_sqlite_store(path_or_url, run_id) opens a SQLite store by bare path or sqlite:/// URL (parse_store_url dispatch); postgres URL raises IncompatibleRuntimeState (backend deferred)
+runtime/runtime.py::function::_open_sqlite_store	function	ported	spec/chronicle/open_sqlite_store_spec.cr	RuntimeReason.open_sqlite_store retains bare SQLite compatibility and dispatches URLs through Chronicle.open_store (SQLite or Postgres)
 runtime/runtime.py::function::_promote_data_diff	function	ported	spec/chronicle/promote_data_diff_spec.cr	Per-field {old,new} diff for promote replace-patch; wired into patch.applied payload (upstream _promote_data_diff)
 runtime/runtime.py::function::_rebuild_pending_approvals	function	ported	spec/chronicle/rebuild_pending_approvals_spec.cr	Reconstruct pending approvals from log (proposed minus granted) + advance id counter; wired into load/fork (upstream _rebuild_pending_approvals)
 runtime/runtime.py::function::_recorded_wall_stop	function	ported	spec/chronicle/recorded_wall_stop_spec.cr	RuntimeReason.recorded_wall_stop (validated (sequence, max_seconds) boundary from runtime.budget_exhausted; ReplayDivergenceError on malformed)
@@ -1029,38 +1029,38 @@ store/memory.py::method::InMemoryEventStore.count	method	missing	-	auto-generate
 store/memory.py::method::InMemoryEventStore.get_event	method	missing	-	auto-generated
 store/memory.py::method::InMemoryEventStore.iter_events	method	missing	-	auto-generated
 store/memory.py::method::InMemoryEventStore.truncate_after	method	missing	-	auto-generated
-store/postgres.py::class::PostgresEventStore	class	missing	-	auto-generated
-store/postgres.py::class::_ConnectionSource	class	missing	-	auto-generated
-store/postgres.py::class::_CursorCtx	class	missing	-	auto-generated
-store/postgres.py::class::_TxCtx	class	missing	-	auto-generated
-store/postgres.py::const::SCHEMA_VERSION	const	missing	-	auto-generated
-store/postgres.py::function::_ensure_schema	function	missing	-	auto-generated
-store/postgres.py::function::_require_psycopg	function	missing	-	auto-generated
-store/postgres.py::function::_row_to_event	function	missing	-	auto-generated
-store/postgres.py::function::_row_to_run	function	missing	-	auto-generated
-store/postgres.py::method::PostgresEventStore.__init__	method	missing	-	auto-generated
-store/postgres.py::method::PostgresEventStore._seq_of	method	missing	-	auto-generated
-store/postgres.py::method::PostgresEventStore.append	method	missing	-	auto-generated
-store/postgres.py::method::PostgresEventStore.close	method	missing	-	auto-generated
-store/postgres.py::method::PostgresEventStore.count	method	missing	-	auto-generated
-store/postgres.py::method::PostgresEventStore.fork_run	method	missing	-	auto-generated
-store/postgres.py::method::PostgresEventStore.get_event	method	missing	-	auto-generated
-store/postgres.py::method::PostgresEventStore.get_run	method	missing	-	auto-generated
-store/postgres.py::method::PostgresEventStore.iter_events	method	missing	-	auto-generated
-store/postgres.py::method::PostgresEventStore.list_runs	method	missing	-	auto-generated
-store/postgres.py::method::PostgresEventStore.most_recent_run_id	method	missing	-	auto-generated
-store/postgres.py::method::PostgresEventStore.truncate_after	method	missing	-	auto-generated
-store/postgres.py::method::PostgresEventStore.upsert_run	method	missing	-	auto-generated
-store/postgres.py::method::_ConnectionSource.__init__	method	missing	-	auto-generated
-store/postgres.py::method::_ConnectionSource.close	method	missing	-	auto-generated
-store/postgres.py::method::_ConnectionSource.cursor	method	missing	-	auto-generated
-store/postgres.py::method::_ConnectionSource.transaction	method	missing	-	auto-generated
-store/postgres.py::method::_CursorCtx.__enter__	method	missing	-	auto-generated
-store/postgres.py::method::_CursorCtx.__exit__	method	missing	-	auto-generated
-store/postgres.py::method::_CursorCtx.__init__	method	missing	-	auto-generated
-store/postgres.py::method::_TxCtx.__enter__	method	missing	-	auto-generated
-store/postgres.py::method::_TxCtx.__exit__	method	missing	-	auto-generated
-store/postgres.py::method::_TxCtx.__init__	method	missing	-	auto-generated
+store/postgres.py::class::PostgresEventStore	class	ported	spec/chronicle/postgres_event_store_spec.cr	Chronicle::PostgresEventStore DB/pg implementation
+store/postgres.py::class::_ConnectionSource	class	ported	spec/chronicle/postgres_event_store_spec.cr	DB::Database owns URL-backed connection lifecycle
+store/postgres.py::class::_CursorCtx	class	ported	spec/chronicle/postgres_event_store_spec.cr	crystal-db query blocks provide scoped cursor lifecycle
+store/postgres.py::class::_TxCtx	class	ported	spec/chronicle/postgres_event_store_spec.cr	DB::Database#transaction provides commit/rollback lifecycle
+store/postgres.py::const::SCHEMA_VERSION	const	ported	spec/chronicle/postgres_event_store_spec.cr	PostgresEventStore::SCHEMA_VERSION
+store/postgres.py::function::_ensure_schema	function	ported	spec/chronicle/postgres_event_store_spec.cr	PostgresEventStore.ensure_schema
+store/postgres.py::function::_require_psycopg	function	ported	spec/chronicle/postgres_event_store_spec.cr	direct pg shard dependency in shard.yml
+store/postgres.py::function::_row_to_event	function	ported	spec/chronicle/postgres_event_store_spec.cr	PostgresEventStore.read_event
+store/postgres.py::function::_row_to_run	function	ported	spec/chronicle/postgres_event_store_spec.cr	PostgresEventStore.read_run
+store/postgres.py::method::PostgresEventStore.__init__	method	ported	spec/chronicle/postgres_event_store_spec.cr	URL/open/schema/run initialization
+store/postgres.py::method::PostgresEventStore._seq_of	method	ported	spec/chronicle/postgres_event_store_spec.cr	PostgresEventStore#seq_of
+store/postgres.py::method::PostgresEventStore.append	method	ported	spec/chronicle/postgres_event_store_spec.cr	JSONB plus byte-stable payload append
+store/postgres.py::method::PostgresEventStore.close	method	ported	spec/chronicle/postgres_event_store_spec.cr	idempotent DB close
+store/postgres.py::method::PostgresEventStore.count	method	ported	spec/chronicle/postgres_event_store_spec.cr	per-run count
+store/postgres.py::method::PostgresEventStore.fork_run	method	ported	spec/chronicle/postgres_event_store_spec.cr	transactional copied-event fork
+store/postgres.py::method::PostgresEventStore.get_event	method	ported	spec/chronicle/postgres_event_store_spec.cr	per-run event lookup
+store/postgres.py::method::PostgresEventStore.get_run	method	ported	spec/chronicle/postgres_event_store_spec.cr	lineage record lookup
+store/postgres.py::method::PostgresEventStore.iter_events	method	ported	spec/chronicle/postgres_event_store_spec.cr	ordered/bounded per-run iteration
+store/postgres.py::method::PostgresEventStore.list_runs	method	ported	spec/chronicle/postgres_event_store_spec.cr	URL-level ordered lineage list
+store/postgres.py::method::PostgresEventStore.most_recent_run_id	method	ported	spec/chronicle/postgres_event_store_spec.cr	last active event then creation ordering
+store/postgres.py::method::PostgresEventStore.truncate_after	method	ported	spec/chronicle/postgres_event_store_spec.cr	per-run tail deletion
+store/postgres.py::method::PostgresEventStore.upsert_run	method	ported	spec/chronicle/postgres_event_store_spec.cr	COALESCE-preserving run metadata upsert
+store/postgres.py::method::_ConnectionSource.__init__	method	ported	spec/chronicle/postgres_event_store_spec.cr	DB.open URL connection factory
+store/postgres.py::method::_ConnectionSource.close	method	ported	spec/chronicle/postgres_event_store_spec.cr	PostgresEventStore#close
+store/postgres.py::method::_ConnectionSource.cursor	method	ported	spec/chronicle/postgres_event_store_spec.cr	crystal-db query block
+store/postgres.py::method::_ConnectionSource.transaction	method	ported	spec/chronicle/postgres_event_store_spec.cr	crystal-db transaction block
+store/postgres.py::method::_CursorCtx.__enter__	method	ported	spec/chronicle/postgres_event_store_spec.cr	crystal-db query block entry
+store/postgres.py::method::_CursorCtx.__exit__	method	ported	spec/chronicle/postgres_event_store_spec.cr	crystal-db query block exit
+store/postgres.py::method::_CursorCtx.__init__	method	ported	spec/chronicle/postgres_event_store_spec.cr	crystal-db managed cursor state
+store/postgres.py::method::_TxCtx.__enter__	method	ported	spec/chronicle/postgres_event_store_spec.cr	crystal-db transaction entry
+store/postgres.py::method::_TxCtx.__exit__	method	ported	spec/chronicle/postgres_event_store_spec.cr	crystal-db commit/rollback exit
+store/postgres.py::method::_TxCtx.__init__	method	ported	spec/chronicle/postgres_event_store_spec.cr	crystal-db managed transaction state
 store/retention.py::class::RetentionPinnedError	class	ported	spec/chronicle/retention_spec.cr	Chronicle::Retention::RetentionPinnedError (structured StorageError with run_id/operation/reasons)
 store/retention.py::class::SnapshotIntegrityError	class	ported	spec/chronicle/retention_spec.cr	Chronicle::Retention::SnapshotIntegrityError (structured StorageError with run_id/expected)
 store/retention.py::function::_canonical_state_blob	function	ported	spec/chronicle/retention_spec.cr	Retention.canonical_state_blob (objects+relations sorted by id, compact canonical JSON, provenance included)
@@ -1106,10 +1106,10 @@ store/sqlite.py::method::SQLiteEventStore.truncate_after	method	missing	-	auto-g
 store/sqlite.py::method::SQLiteEventStore.upsert_run	method	missing	-	auto-generated
 store/url.py::class::InvalidStoreURL	class	missing	-	auto-generated
 store/url.py::class::StoreURL	class	missing	-	auto-generated
-store/url.py::const::POSTGRES_SCHEMES	const	missing	-	auto-generated
-store/url.py::const::SQLITE_SCHEMES	const	missing	-	auto-generated
+store/url.py::const::POSTGRES_SCHEMES	const	ported	spec/chronicle/store_url_spec.cr	Chronicle::POSTGRES_SCHEMES
+store/url.py::const::SQLITE_SCHEMES	const	ported	spec/chronicle/store_url_spec.cr	Chronicle::SQLITE_SCHEMES
 store/url.py::function::_invalid_url	function	missing	-	auto-generated
-store/url.py::function::open_store	function	missing	-	auto-generated
+store/url.py::function::open_store	function	ported	spec/chronicle/open_sqlite_store_spec.cr	Chronicle.open_store URL dispatcher (SQLite/Postgres)
 store/url.py::function::parse_store_url	function	missing	-	auto-generated
 tools/base.py::class::Tool	class	ported	spec/chronicle/tool_input_schema_spec.cr	input_schema validation (validate_input! -> ToolError tool.invalid_input)
 tools/base.py::method::Tool.to_definition	method	missing	-	auto-generated

@@ -51,6 +51,22 @@ module Chronicle
     end
   end
 
+  # Open the durable EventStore selected by a validated connection URL.
+  # Postgres is required directly by Chronicle, so dispatch is explicit rather
+  # than relying on a caller to select a driver.
+  def self.open_store(url : String, run_id : String) : EventStore
+    parsed = parse_store_url(url)
+    case parsed.scheme
+    when "sqlite"
+      path = parsed.sqlite_path || raise InvalidStoreURL.new("sqlite URL #{url.inspect} has no resolvable path")
+      SQLiteEventStore.new(path, run_id: run_id)
+    when "postgres"
+      PostgresEventStore.new(parsed.raw, run_id: run_id)
+    else
+      raise InvalidStoreURL.new("unhandled store URL scheme #{parsed.scheme.inspect}")
+    end
+  end
+
   private def self.sqlite_path(url : String, uri : URI) : String
     path = uri.path || ""
     if (host = uri.host) && !host.empty?

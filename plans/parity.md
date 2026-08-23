@@ -445,11 +445,16 @@ sequence of future implementation phases.
    before execution, and the child loads the fixed `PACK` constant in a fresh
    Crystal process. This is a compile-time Crystal analogue of upstream's
    dynamic Python pack import; it never evaluates an unpinned ambient file.
-2. [ ] **Postgres event-store backend** — add `PostgresEventStore` behind the
-   existing `EventStore` protocol, URL construction, schema/bootstrap and
-   transaction semantics, then run the existing event-store conformance suite
-   against a disposable Postgres instance. This feature owns the `pg` shard;
-   it does not add graph-query pushdown.
+2. [x] **Postgres event-store backend** — **done**: `PostgresEventStore` uses
+   the direct `pg` shard behind `EventStore`, with PostgreSQL schema/bootstrap
+   (`BIGSERIAL`, `JSONB`, `TIMESTAMPTZ`), duplicate-ID translation, run
+   metadata, URL dispatch (`Chronicle.open_store`), most-recent-run lookup,
+   and transactional copied-row forks. It preserves Chronicle's byte-stable
+   event payload alongside JSONB for native queryability. The shared
+   `EventStoreConformance` suite plus backend-specific fork/lineage tests run
+   against a disposable PostgreSQL 16 cluster when `CHRONICLE_POSTGRES_URL` is
+   set; the full suite ran with that integration URL (1,128 examples green).
+   This feature owns the `pg` shard; it does not add graph-query pushdown.
 3. [ ] **Postgres graph-store backend and query pushdown** — add a separate
    `GraphStore` implementation for Postgres and push down the query operations
    already covered by `GraphStoreConformance`. It depends on phase 2 and must
@@ -1551,6 +1556,12 @@ globally (CONTRACT v0.9 #3).
   portable rlimit adapter; it is never silently claimed. The selected static
   source-pack ABI supports one pinned candidate pack; `extra_packs` is rejected
   explicitly until a collision-free Crystal constant ABI is designed.
+- **Postgres connection and payload seams:** the Crystal adapter accepts a
+  Postgres URL and delegates connection/cursor/transaction pooling to
+  `crystal-db`; it does not expose Python's borrowed-connection or psycopg-pool
+  constructor shapes. PostgreSQL `JSONB` is retained for native querying, with
+  a `payload_raw` companion column to preserve Chronicle's byte-stable event
+  payload contract (JSONB text rendering itself normalizes whitespace/order).
   Chronicle raises `Chronicle::PatternTypeError` (analogous to Python's `TypeError`).
   Nil operands still evaluate to no-match. Residual: Python compares arrays
   lexicographically; Chronicle raises for array operands. Equality ops use
