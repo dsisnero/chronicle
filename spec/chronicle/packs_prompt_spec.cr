@@ -1,7 +1,7 @@
 require "../spec_helper"
 
 # Prompt loading specs. Ported from activegraph tests/test_packs.py
-# (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 describe Chronicle::Packs::PackPrompt do
   it "computes a content hash from a body" do
     p = Chronicle::Packs::PackPrompt.from_body(name: "x", version: "1.0.0", body: "hello")

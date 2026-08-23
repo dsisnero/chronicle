@@ -2,7 +2,7 @@ require "../spec_helper"
 require "./packs_dsl_spec"
 
 # Entry-point-style discovery. Ported from activegraph's `discover()` /
-# `load_by_name()` / `clear_discovery_cache()` (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# `load_by_name()` / `clear_discovery_cache()` (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 describe Chronicle::Packs do
   before_each do
     Chronicle::Packs::Registry.clear

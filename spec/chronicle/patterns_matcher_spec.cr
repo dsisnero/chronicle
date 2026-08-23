@@ -1,7 +1,7 @@
 require "../spec_helper"
 
 # Cypher subset matcher specs. Ported from activegraph
-# tests/test_pattern_matcher.py (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# tests/test_pattern_matcher.py (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 # Uses a bare GraphProjection instead of the full runtime — the matcher is pure
 # over (event, graph).
 

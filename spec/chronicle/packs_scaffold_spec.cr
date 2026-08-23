@@ -1,7 +1,7 @@
 require "../spec_helper"
 
 # Pack scaffolding. Ported from activegraph tests/test_pack_scaffold.py
-# (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 describe Chronicle::Packs::Scaffold do
   it "normalizes kebab-case to snake for the module name" do
     pack_name, module_name = Chronicle::Packs::Scaffold.normalize_pack_name("my-pack")

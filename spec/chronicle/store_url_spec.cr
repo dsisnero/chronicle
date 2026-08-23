@@ -1,7 +1,7 @@
 require "../spec_helper"
 
 # StoreURL parsing specs. Ported from activegraph tests/test_store_url.py
-# (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 
 describe Chronicle do
   describe ".parse_store_url" do

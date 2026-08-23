@@ -1,7 +1,7 @@
 require "../spec_helper"
 
 # LLM replay cache wiring specs. Ported from activegraph llm/cache.py +
-# runtime replay_llm_cache/replay_strict (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# runtime replay_llm_cache/replay_strict (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 
 class CacheMockModel
   include Crig::Completion::CompletionModel

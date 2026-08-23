@@ -2,7 +2,7 @@ require "../spec_helper"
 require "./sink_conformance"
 
 # Sink specs. Ported from activegraph sinks/base.py + sinks/conformance.py
-# (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed), adapted to the
+# (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616), adapted to the
 # Sans-IO core (bounded queue drained by flush_sinks, no worker threads).
 # TestingSink runs the reusable SinkConformance suite.
 

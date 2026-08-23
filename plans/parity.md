@@ -8,7 +8,7 @@ described in [The Log is the Agent](https://arxiv.org/html/2605.21997v1).
 ## Source of Truth
 
 - **Upstream**: https://github.com/yoheinakajima/activegraph (Python)
-- **Pinned revision**: `8aedb1866cf5dce056af97529152ffd6f468a1ed`
+- **Pinned revision**: `148e12c2969f18fa12a1a3c2e75f3affd9aa0616` (v1.10.0)
   (checkout at `vendor/activegraph/`)
 - **Design reference**: arXiv paper 2605.21997v1
 - **DeepWiki**: https://deepwiki.com/yoheinakajima/activegraph
@@ -40,30 +40,32 @@ SKILL=/Users/dominic/.agents/skills/cross-language-crystal-parity
 "${SKILL}/scripts/check_test_parity.sh" . plans/inventory/python_test_parity.tsv vendor/activegraph/activegraph python
 ```
 
-Current state: `check_source_parity` (1210 symbols) and `check_test_parity`
-(42 tests) pass. `check_port_inventory` lists ~1170 untracked symbols — the
-ledger is curated, so expand it per phase below. `plan_with_chiasmus.sh` and
-`check_completion_gate.sh` need `chiasmus-plan`/`chiasmus-complete`, which are
-not released yet — treat their absence as a tooling gap, not a porting signal.
-The feature-size roadmap (S / M / L, below) tracks what remains and the
-concrete next-up order. **S and M core are complete and committed** (the
-event-sourcing core, runtime execution surface, LLM layer, tools, packs,
-sinks/observability, frames, CLI/trace, and both GraphStore backends); the
-remaining S/M batch targets the provider/platform seams (embedding, native
-structured output, CLI quickstart) and the L batch targets external backends
-(Postgres, sandbox, observability backends, retention).
+Current state: all three checks pass against v1.10.0 — 1,210 source symbols,
+42 tests, and 1,210 ledger entries. The ledger contains 505 `ported` and 40
+`intentional_divergence` entries; its 665 `missing` entries are all
+auto-generated discovery coverage, not a curated work queue. `plan_with_chiasmus.sh`
+and `check_completion_gate.sh` need `chiasmus-plan`/`chiasmus-complete`, which
+are not released yet — treat their absence as a tooling gap, not a porting
+signal. The roadmap below is the curated plan for the remaining external and
+platform-edge features.
 
 [cross-language-crystal-parity]: /Users/dominic/.agents/skills/cross-language-crystal-parity/SKILL.md
 
 ---
 
-## Feature-size roadmap (S / M / L)
+## Release reconciliation and feature-sized roadmap
 
-The phases below are sized so each feature is branch-sized and
-user-visible (per the cross-language-crystal-parity skill's feature slicing
-rules). `[x]` = green and committed; `[ ]` = pending; `[-]` = intentionally
-deferred (documented in the Intentional Divergence / deferred rows of the
-phases).
+The v1.10.0 vendor refresh changes the pinned source from an untagged
+post-release README commit to the `v1.10.0` release commit. The removed commit
+changes only upstream `README.md`; the source and test manifests remain at
+1,210 and 42 entries respectively. All three parity checks pass against this
+pin.
+
+The completed feature records below are implementation history. The **Next
+delivery phases** section is the canonical remaining-work sequence: each phase
+is one user-visible feature, one inventory update, and one atomic commit. The
+broad coverage sections later in this document are reference ledgers, not a
+sequence of future implementation phases.
 
 ### S — small (helpers, value objects, narrow surfaces)
 
@@ -210,8 +212,21 @@ phases).
       the event log. Ported from activegraph runtime.py
       `_emit_llm_error_response` + tests/test_llm_failure.py —
       `spec/chronicle/llm_error_shape_spec.cr`.
+- [x] Success-path `llm.responded` metadata — `record_llm_responded` now
+      records `cache_hit` + `latency_seconds` on the live responded payload
+      (upstream `_emit_llm_event("llm.responded", turn_response.to_dict() |
+      {...})` where `LLMResponse.to_dict` includes both), so the CONTRACT #18
+      trace line renders `cache_hit=true` for cache-served responses and omits
+      cost/latency (matching upstream `test_trace_marks_cache_hit_lines`).
+      The retry loop threads `cache_hit` (true on the cache path, false on the
+      live path) and measures latency with `RuntimeReason.monotonic` around
+      the worker call. Divergence: `cost_usd` stays at the provider boundary —
+      the Crig `ModelExecutor`/`ModelEffectWorker` seam exposes no cost, so
+      the responded payload carries tokens + cache_hit + latency only. Ported
+      from activegraph runtime.py `_emit_llm_event` + tests/test_llm_trace.py
+      — `spec/chronicle/responded_payload_spec.cr`.
 
-### S — next batch (small: renderers, narrow runtime surfaces)
+### Additional completed small features
 
 - [x] CLI renderers — `cli/renderers.py` (97-line module):
       `Chronicle::Renderers` — `memo_company_name` (memo `company_id` →
@@ -239,7 +254,7 @@ phases).
       wall-clock extension is not ported" note was a misread of that decision.
       — `spec/chronicle/activate_after_spec.cr`.
 
-### M — next batch (medium: provider/platform seams spanning one module)
+### Additional completed medium features
 
 - [x] Embedding provider protocol + cache — `llm/embedding.py` +
       `llm/embedding_cache.py` (CONTRACT v1.8 #6): `Chronicle::EmbeddingProvider`
@@ -345,13 +360,8 @@ phases).
       to tolerate a null `triggering_object_id` (the diligence run exposed the
       pre-existing `JSON::Any(nil).as_s` crash).
 
-### L — next batch (large: external backends, deferred)
+### Completed larger features
 
-- [ ] Postgres event store — `store/postgres.py` (needs `pg` shard + live
-      server; the `EventStore` protocol is the path for adding it).
-- [ ] Postgres / FalkorDB GraphStore pushdown — `store/postgres.py`,
-      `store/falkordb.py` (any backend passing the conformance suite is
-      interchangeable).
 - [x] Retention / compaction — `store/retention.py` + `_materialize_snapshot`
       fully ported (CONTRACT v1.5 #2): `Chronicle::Retention` — `pins`
       (promoted-from / live-lineage / pending-approvals / proposed-patches —
@@ -372,7 +382,7 @@ phases).
       `archive_run` / `iter_archived` / `has_archived` / `seq_of`) and
       `IDGen.snapshot_counters` / `reseed_from_snapshot` —
       `spec/chronicle/retention_spec.cr`.
-- [ ] Sandbox executor/conformance — `sandbox/*`. **Value types done**
+- [x] Sandbox value types and executor conformance — `sandbox/*`. **Value types done**
       (CONTRACT v1.8 #9–#12): `Chronicle::Sandbox` — `PackSource`,
       `TrialLimits` (structural key-freedom via `max_llm_calls=0`),
       `TrialReport`, `TrialIsolationGuarantees` + `LOCAL_SUBPROCESS_ISOLATION`,
@@ -380,11 +390,23 @@ phases).
       required-field / pack-source validation), `TrialBudgetUse`,
       `TrialArtifactReference`, `TrialEventLogReference`,
       `TrialFailureDetails`, and `TrialResult` (`from_report` / `to_report`
-      legacy-report lift) — `spec/chronicle/sandbox_spec.cr`. The
-      `LocalSubprocessTrialExecutor` (subprocess), the `_child` runner, and
-      the conformance suite stay at the platform edge (process spawning is
-      not Sans-IO).
-- [ ] Prometheus / OTel / migration — **migration + Prometheus exposition
+      legacy-report lift) — `spec/chronicle/sandbox_spec.cr`. **Executor
+      protocol + conformance done** (CONTRACT v1.8 #11–#12):
+      `TRIAL_OUTCOMES` (closed five-outcome set), the `TrialExecutor`
+      abstract class (`isolation_guarantees` + `execute`), the
+      `RecordingTrialExecutor` deterministic double (records parsed +
+      serialized specs, pops fixtures in order, `RuntimeError` when
+      exhausted, none-test-double isolation default), and the reusable
+      `TrialExecutorConformance.define_tests` mixin (isolation declared,
+      canonical spec round-trip, provider-neutral result shape +
+      `to_report` lift, malformed-spec fail-fast) — run against the
+      recording double — `spec/chronicle/trial_executor_spec.cr`,
+      `spec/chronicle/trial_executor_conformance.cr`. The
+      `LocalSubprocessTrialExecutor` (subprocess), the `_child` runner,
+      `preflight`/`run_forked_trial`, and the platform-edge env/limit
+      helpers stay at the platform edge (process spawning is not
+      Sans-IO).
+- [x] Migration and Prometheus exposition — **migration + Prometheus exposition
       done**: migration (SQLite→SQLite, CONTRACT v0.8 #5) in
       `Chronicle::Migration` + `SQLiteEventStore.migrate_run`; Prometheus
       (CONTRACT v0.8 #10) in `Chronicle::PrometheusMetrics` (in-memory
@@ -392,48 +414,42 @@ phases).
       counts) + `Chronicle::Prometheus.render` (the text exposition v0.0.4 —
       `# HELP`/`# TYPE` from the standard table, samples per label set,
       histograms as `_sum`/`_count`/`+Inf` bucket). The scrape HTTP endpoint
-      stays at the platform edge. **OTel marked intentional_divergence**: the
+      stays at the platform edge. **OTel is an intentional divergence**: the
       upstream adapter is a thin wrapper over the external `opentelemetry-sdk`
       (instrument factory) with no Sans-IO logic — the `Metrics` protocol is
       the seam and a host wires their own meter to it (no Crystal OTel shard
       here).
 
-### Next up (concrete plan order)
+### Next delivery phases (canonical order)
 
-The S and M core batches above are complete; this is the ordered plan for the
-remaining S/M batch, then the deferred L batch:
+1. [ ] **Local subprocess trial executor** — implement
+   `LocalSubprocessTrialExecutor`, the `_child` protocol, serialized pack-source
+   loading, preflight, limits/environment handling, and an end-to-end
+   conformance run. Keep this a platform-edge adapter around the already-green
+   `TrialExecutor` contract; no runtime or routing changes belong in this
+   feature.
+2. [ ] **Postgres event-store backend** — add `PostgresEventStore` behind the
+   existing `EventStore` protocol, URL construction, schema/bootstrap and
+   transaction semantics, then run the existing event-store conformance suite
+   against a disposable Postgres instance. This feature owns the `pg` shard;
+   it does not add graph-query pushdown.
+3. [ ] **Postgres graph-store backend and query pushdown** — add a separate
+   `GraphStore` implementation for Postgres and push down the query operations
+   already covered by `GraphStoreConformance`. It depends on phase 2 and must
+   pass the full graph-store conformance suite; do not combine it with FalkorDB.
+4. [ ] **FalkorDB graph-store backend and query pushdown** — add the FalkorDB
+   adapter, connection/configuration seam, and Cypher pushdown with the same
+   graph-store conformance coverage. It is independently releasable from the
+   Postgres backend.
 
-1. `[x]` CLI renderers + quickstart — `Chronicle::Renderers` memo renderer
-   lines (S) + `Chronicle::Quickstart.fixture_mode_lines` transcript (M);
-   the interactive quickstart mode stays at the CLI boundary.
-2. `[x]` Scheduler — covered: `runtime/scheduler.py` is the event-count
-   `activate_after` scheduler (fully ported in `Chronicle::Packs`); there is
-   no upstream wall-clock `schedule`/`loop` API (wall-clock is out of scope
-   per CONTRACT v0.7 #13).
-3. `[x]` Embedding provider protocol + cache — `llm/embedding.py` +
-   `llm/embedding_cache.py` + `Runtime#embed` / `ctx.embed` (M); uses Crig's
-   `EmbeddingModel` seam (`CrigEmbeddingProvider` + the `HashEmbeddingProvider`
-   shim); unblocks the diligence pack.
-4. `[x]` Native structured output mode — `llm/native.py` +
-   `_resolve_structured_output_mode` (M); the runtime resolves + carries the
-   mode and hashes it when native; provider-wire forwarding stays at the
-   adapter boundary.
-5. `[x]` Provider adapters (Anthropic/OpenAI) — covered, no port needed: the
-   router executes through Crig via `ModelExecutor`/`ProviderRegistry` + the
-   provider factories; the `LLMProvider` protocol stays the standalone
-   recorded-fixture seam (not wired into the runtime path). Ledger rows marked
-   `intentional_divergence`.
-6. `[x]` Diligence reference pack — `Chronicle::Packs::Diligence` runnable
-   reference on the pack DSL (object/relation types, settings, plain/LLM/
-   pattern behaviors, tool, policy); spec drives the full flow with a
-   scripted provider.
-7. `[-]` L deferred (ordered): Postgres event store → Postgres/FalkorDB
-   GraphStore pushdown → retention/compaction → sandbox conformance →
-   Prometheus/OTel/migration.
+The following are not pending core parity phases: retention/compaction,
+migration, and Prometheus text exposition are complete; the Prometheus HTTP
+endpoint, interactive quickstart, and OTel SDK adapter are host/application
+integration work and remain intentional platform boundaries.
 
 ---
 
-## Phase 0 — Foundations (done)
+## Coverage reference — Foundations (complete)
 
 The event-sourcing core, graph projection, graph-store seam, and Cypher
 pattern layer are ported and green.
@@ -486,7 +502,7 @@ pattern layer are ported and green.
 - [x] Session store, telemetry, effect artifacts, tool cache/permissions, approval,
       content hashing — `spec/chronicle/*_spec.cr`
 
-## Phase 1 — Graph write/emit surface (top structural drift)
+## Coverage reference — Graph write/emit surface (complete)
 
 The single largest drift finding: `activegraph.core.graph.Graph` maps to
 `Chronicle::GraphProjection`, but the Crystal side has only the read surface.
@@ -518,7 +534,7 @@ From `plans/generated/parity/python/parity.tsv`:
 - [x] Provenance stamping invariant: behaviors may not inject `provenance` via
       data (raise `Chronicle::ReservedFieldError`) — `core/graph.py`
 
-## Phase 2 — Persistence backends
+## Coverage reference — Persistence backends
 
 - [x] `Chronicle::EventStore` interface + `MemoryEventStore` + `SQLiteEventStore`
       (append/iter_events/get_event/count/truncate_after/close); appends reject
@@ -527,11 +543,11 @@ From `plans/generated/parity/python/parity.tsv`:
       Memory + SQLite backends — `spec/chronicle/event_store_conformance.cr`
 - [x] Store URL parsing — `Chronicle.parse_store_url`/`StoreURL`/`InvalidStoreURL`
       (sqlite:///, sqlite:////, postgres://, postgresql://) — `spec/chronicle/store_url_spec.cr`
-- [-] Postgres event store — deferred (needs `pg` shard + live server; the
-      `EventStore` protocol is the path for adding it)
-- [-] Retention/compaction (`store/retention.py`) — deferred: offline snapshot +
-      archive-tier compaction depends on a snapshot sidecar and `causal_chain`,
-      both not yet ported
+- [ ] Postgres event store — next delivery phase 2 (needs `pg` shard + a
+      disposable live server; the `EventStore` protocol is the path for adding it)
+- [x] Retention/compaction (`store/retention.py`) — complete; see the
+      `Retention / compaction` feature record above for snapshot, archive-tier,
+      integrity, and load/replay coverage.
 - [x] `EventLog` gains `count`/`get_event`/`iter_events`/`truncate_after`
       conveniences, mirroring the upstream `EventStore` protocol (append,
       iterate, count, lookup, truncate-after — CONTRACT v0.5 #2) on the
@@ -557,7 +573,7 @@ From `plans/generated/parity/python/parity.tsv`:
       runtime error. Ported from activegraph store/serde.py + store/errors.py +
       test_serde.py — `spec/chronicle/serde_spec.cr`.
 
-## Phase 3 — Runtime execution surface
+## Coverage reference — Runtime execution surface (complete)
 
 `activegraph.runtime.runtime.Runtime` maps to `Chronicle::LogAgent`; the drift
 list shows the Crystal side is missing most of the run loop and effect emission.
@@ -586,7 +602,24 @@ From `parity.tsv` (`missing_contains` on Runtime):
       is N/A — cost accumulates as Float64 (upstream Decimal; CONTRACT v0.6
       #9 intent preserved for realistic magnitudes) and is mirrored as a
       String. Ported from activegraph runtime/budget.py —
-      `spec/chronicle/budget_spec.cr`.
+      `spec/chronicle/budget_spec.cr`. Per-call consumption closed: behavior
+      dispatch (`invoke_pack_behavior`) now consumes one `max_behavior_calls`
+      unit per invocation (plain / relation / LLM), and the LLM path consumes
+      one `max_llm_calls` unit per LLM behavior invocation (upstream
+      `_invoke` at runtime.py:1390 and `_invoke_llm` at 1505–1506), so those
+      dimensions actually trip `budget_exhausted?` and stop the run with a
+      `runtime.budget_exhausted` marker. Divergence: the upstream pre-call
+      COST gate (runtime.py `_invoke_llm_body` — `count_tokens` +
+      `estimate_cost` when `max_cost_usd` is set and the cache is missed,
+      failing the behavior with `budget.cost_exhausted` + estimated_cost_usd /
+      budget_remaining_usd extras BEFORE any provider call) stays at the
+      provider-adapter boundary: Chronicle's runtime executes through the
+      Crig `ModelExecutor`/`ModelEffectWorker` seam, which exposes no
+      token-count/cost-estimation interface (the `LLMProvider` protocol with
+      `count_tokens`/`estimate_cost` remains the standalone recorded-fixture
+      seam, per the provider-adapters divergence). Ported from activegraph
+      tests/test_llm_budget.py `test_max_llm_calls_dimension_consumed_per_call`
+      — `spec/chronicle/budget_call_spec.cr`.
 - [x] Tool lookup — `get_tool(name)` — `spec/chronicle/runtime_phase3_spec.cr`
 - [x] Approvals — `pending_approvals` / `approve` / `add_pending_approval` —
       `runtime/runtime.py` — `spec/chronicle/runtime_phase3_spec.cr`
@@ -1029,7 +1062,7 @@ From `parity.tsv` (`missing_contains` on Runtime):
       keyword-only overload alongside Chronicle's prompt-driven
       `run_quantum(prompt, steps)`.
 
-## Phase 4 — LLM layer + replay cache
+## Coverage reference — LLM layer + replay cache (complete)
 
 - [x] Content-addressed store — `Chronicle::EffectArtifactStore`/`LLMCache` base
       — `spec/chronicle/effect_artifact_spec.cr`, `llm_cache_spec.cr`
@@ -1139,7 +1172,7 @@ From `parity.tsv` (`missing_contains` on Runtime):
       `ModelExecutor` path, already covered) —
       `spec/chronicle/wire_spec.cr`.
 
-## Phase 5 — Tools
+## Coverage reference — Tools (complete)
 
 - [x] Tool base + registry — `Chronicle::Tool` (name, description, callable),
       `Chronicle::ToolRegistry` (@tool-style snapshot/clear) — `tools/base.py`,
@@ -1184,12 +1217,12 @@ From `parity.tsv` (`missing_contains` on Runtime):
       Decimal helpers are N/A (args are JSON strings); fixture file I/O lives
       at the platform edge (`tool_recorded.cr` is an I/O-boundary path).
 
-## Phase 6 — Sinks + observability
+## Coverage reference — Sinks + observability (complete core)
 
 - [x] Sink base + bounded FIFO + overflow policy — `Chronicle::Sink`, `SinkHandle`,
       `OverflowPolicy` (drop_newest/drop_oldest/fail_sink), `SinkState`,
       `DeliveryContext`, `SinkStatus` — `sinks/base.py` — `spec/chronicle/sinks_spec.cr`
-- [x] Graph sink surface (completes Phase 1) — `GraphProjection#add_sink`/
+- [x] Graph sink surface (completes the graph write/emit coverage) — `GraphProjection#add_sink`/
       `remove_sink`/`flush_sinks`/`sink_statuses`; `emit` offers to sinks before
       listeners — `sinks/dispatch.py`
 - [x] Testing sink + JSONL sink — `Chronicle::TestingSink`, `Chronicle::JSONLSink` —
@@ -1205,6 +1238,13 @@ From `parity.tsv` (`missing_contains` on Runtime):
       subscribed_to/pattern/activate_after), and `recent_events`
       (`EventSummary` tail), plus `to_h` matching upstream `status_to_dict`.
       Ported from activegraph.observability.status — `spec/chronicle/status_spec.cr`.
+      State transitions pinned against upstream test_runtime_status.py:
+      `exhausted` when the run trips a budget dimension (e.g.
+      `max_behavior_calls: 0` — now reachable since dispatch consumes the
+      per-call dimensions), `idle` after a clean drain, `stopped` pre-run, and
+      the log-derived state SURVIVES the save/load round trip (a fresh
+      runtime over the same store derives the same state) —
+      `spec/chronicle/status_state_spec.cr`.
       Metrics/logging/prometheus/otel dashboards stay deferred — `observability/*`.
 - [x] Metrics protocol + standard table — `Chronicle::Metrics` abstract
       protocol (CONTRACT v0.8 #8–#10): three non-throwing methods
@@ -1251,7 +1291,7 @@ From `parity.tsv` (`missing_contains` on Runtime):
       activegraph sinks/conformance.py (CONTRACT v1.8 #5) —
       `spec/chronicle/sink_conformance.cr`, `spec/chronicle/sinks_spec.cr`.
 
-## Phase 7 — Packs + policy
+## Coverage reference — Packs + policy (complete)
 
 The pack system is ported with Crystal annotations standing in for Python's
 pack-aware decorators: a pack module `include Chronicle::Packs::DSL`, annotates
@@ -1291,6 +1331,20 @@ globally (CONTRACT v0.9 #3).
       through matching pack behaviors (typed-settings injection Form 1,
       `ctx.settings` Form 2, `ctx.pack_settings` Form 3, `where` predicates)
       — `runtime/runtime.py` — `spec/chronicle/packs_dsl_spec.cr`
+- [x] `ctx.matches` pattern bindings — `BehaviorContext.matches` carries the
+      pattern matcher's bindings for the current invocation (CONTRACT v0.7
+      #12): the registry returns `pattern_matches` in its match triples and
+      the runtime threads them into the context, so a pattern-based behavior
+      fired once per event can iterate its bindings (each a `Chronicle::Match`
+      with node/rel-name → id `bindings`). Pattern-only behaviors (empty `on`)
+      still fire on every matching NON-lifecycle event; the registry's
+      `lifecycle?` suppression now covers `pattern.*` markers (upstream
+      `_on_event` suppresses `pattern.*` from enqueue so a pattern behavior
+      never re-fires on its own `pattern.matched` marker). Ported from
+      activegraph tests/test_pattern_subscriptions.py
+      (`test_ctx_matches_carries_bindings` /
+      `test_pattern_only_fires_on_non_lifecycle_events`) —
+      `spec/chronicle/ctx_matches_spec.cr`.
 - [x] Discovery registry — `Chronicle::Packs::Registry` (`discover` /
       `load_by_name` / `clear_discovery_cache`, `PackNotFoundError`); the
       Crystal analogue of the `activegraph.packs` entry-point group —
@@ -1351,7 +1405,7 @@ globally (CONTRACT v0.9 #3).
       activegraph.packs.loader._warn_on_manifest_violations —
       `spec/chronicle/manifest_warning_spec.cr`.
 
-## Phase 8 — Frames wiring
+## Coverage reference — Frames wiring (complete)
 
 - [x] `Chronicle::Frame` value + `FrameStack` — `spec/chronicle/frame_spec.cr`
 - [x] `frame_id : String?` on `Chronicle::Event` envelope (canonical_json +
@@ -1367,11 +1421,30 @@ globally (CONTRACT v0.9 #3).
       lists all events flatly; `events_in_frame` is the grouping surface) —
       `spec/chronicle/trace_frames_spec.cr`.
 
-## Phase 9 — Sandbox + CLI + trace printer
+## Coverage reference — Sandbox contracts, CLI, and trace printer
 
 - [x] Trace causal chain — `Chronicle::Trace.causal_chain(events, graph, object_id)`
-      walks `caused_by` back to the goal with cycle detection — `trace/causal.py`
-      — `spec/chronicle/trace_spec.cr`
+      walks `caused_by` back to the goal with cycle detection, now with the
+      upstream LLM/tool weave (CONTRACT v0.6 #15, v0.7 #19): the first line
+      carries the object label (`"title"`/`"text"`); objects created inside an
+      `@[LLMBehavior]` handler carry `llm_request_event_id` +
+      `tool_request_event_ids` in provenance (stamped via the projection's
+      per-execution `provenance_stamp=` seam, mirroring `context_read_recorder=`),
+      and `causal_chain` weaves the `llm.requested`/`llm.responded` block
+      (model + `cost=$X.XXX` / `(cache_hit)` tail via `_fmt_money`) and each
+      `tool.requested`/`tool.responded` block (tool name + error/cache/cost
+      tail) before the ancestry walk. The successful request id rides the
+      retry-loop `Succeeded` outcome (`request_event_id`), and `invoke_tool`
+      collects the tool.requested ids during the turn loop.
+      `Provenance`/`ProvenanceStamp` + payload round-trip keep serialization
+      byte-identical when no stamp is active. Divergence: upstream's
+      `BehaviorGraph` wrapper is replaced by the projection seam (handlers
+      receive the raw `GraphProjection`); patches are not stamped (Chronicle's
+      `patch_object` writes directly to the store without an event).
+      Ported from activegraph trace/causal.py + runtime/behavior_graph.py +
+      tests/test_llm_causal.py + tests/test_causal_cross_tool.py —
+      `spec/chronicle/causal_weave_spec.cr`,
+      `spec/chronicle/provenance_stamp_spec.cr`, `spec/chronicle/trace_spec.cr`
 - [x] CLI trace command — `chronicle-cli trace --file <log> --object <id>` renders
       the causal chain from a recorded log — `trace/printer.py` —
       `spec/chronicle/cli_spec.cr`
@@ -1386,8 +1459,12 @@ globally (CONTRACT v0.9 #3).
       name the failing method frame rather than embedding the source line.
       Ported from activegraph Runtime.trace + trace/printer.py Trace +
       test_trace_accessors.py — `spec/chronicle/trace_accessors_spec.cr`.
-- [-] Sandbox executor/conformance (`_child`, `executor`, `conformance`) —
-      deferred — `sandbox/*`
+- [x] Sandbox executor protocol + conformance — `TRIAL_OUTCOMES`, the
+      `TrialExecutor` protocol, the `RecordingTrialExecutor` double, and the
+      reusable `TrialExecutorConformance` mixin (see the L-batch sandbox
+      row). `LocalSubprocessTrialExecutor` (`_child`, `executor`,
+      `conformance` subprocess runner) stays deferred at the platform edge
+      — `sandbox/*`
 - [x] CONTRACT #18 trace line rendering — `Chronicle::Trace.format_event(event)`
       renders each event type as a CONTRACT #18 line: the `[tag]` column is
       left-aligned and padded to `TAG_COL = 26` (`format_tag`), with formatters
@@ -1403,6 +1480,14 @@ globally (CONTRACT v0.9 #3).
       handling (rollup stays a faithful no-op). Ported from activegraph
       trace/printer.py `format_event` + formatters —
       `spec/chronicle/trace_lines_spec.cr`.
+- [x] `runtime.snapshot` trace line — `Chronicle::Trace.format_event` gained
+      the CONTRACT v1.5 #2 compaction-boundary formatter (upstream
+      `_fmt_runtime_snapshot`): one `[runtime.snapshot]` line rendering
+      `<N> event(s) compacted (state <hash-prefix>…)` from the
+      `runtime.snapshot` event payload's `state_hash` / `events_covered`
+      fields (the hash is truncated to its first 19 chars like upstream,
+      with a `…` suffix; a missing state_hash renders the count alone) —
+      `spec/chronicle/trace_snapshot_line_spec.cr`.
 - [x] Trace facade `lines` rendering — `Chronicle::TraceFacade#lines(replayed_ids)`
       walks the event log in order and renders CONTRACT #18 lines, with replay
       events rendered as `[replay.event] <id> <type> <summary>` (CONTRACT v0.5
@@ -1425,16 +1510,17 @@ globally (CONTRACT v0.9 #3).
       `spec/chronicle/cli_spec.cr`. `cli/quickstart.py` renderers stay
       deferred.
 
-## Phase 10 — External GraphStore backends (stretch)
+## Coverage reference — GraphStore backends
 
 - [x] SQLite-backed `GraphStore` — `Chronicle::SQLiteGraphStore` stores entities as
       JSON::Serializable rows and passes the full conformance suite —
       `spec/chronicle/graph_store_sqlite_spec.cr`
 - [x] `graph_store=` injection seam — `GraphProjection.new(store:)` already
-      accepts any `GraphStore` (Phase 5)
-- [-] Postgres / FalkorDB GraphStore pushdown — deferred — `store/postgres.py`,
-      `store/falkordb.py` (any backend passing the conformance suite is
-      interchangeable)
+      accepts any `GraphStore`.
+- [ ] Postgres graph-store backend and query pushdown — next delivery phase 3;
+      `store/postgres.py`, after the Postgres event-store backend is green.
+- [ ] FalkorDB graph-store backend and query pushdown — next delivery phase 4;
+      `store/falkordb.py`, independently conformance-tested.
 
 ---
 
@@ -1535,6 +1621,35 @@ globally (CONTRACT v0.9 #3).
   rather than Python's `indent=2`. LLM data types are plain
   `JSON::Serializable` structs; upstream's `to_dict`/`_parsed_to_jsonable`
   dataclass/dict helpers are replaced by the structs' own `to_json`.
+
+- **Sandbox executor protocol is an abstract class, not a runtime-checkable
+  Protocol.** Upstream `TrialExecutor` is a Python `Protocol` (structural
+  typing); Chronicle defines `Chronicle::Sandbox::TrialExecutor` as an
+  `abstract class` with `isolation_guarantees` + `execute`, and the
+  `RecordingTrialExecutor` double subclasses it (the codebase's
+  `EmbeddingProvider`/`LLMProvider` convention). `TrialExecutorConformance`
+  is a `define_tests` macro mixin (like `GraphStoreConformance`/
+  `SinkConformance`/`EventStoreConformance`) fed fresh executor +
+  specification factory expressions, where upstream subclasses the mixin
+  and overrides `make_executor`/`make_serialized_specification`. Only the
+  `LocalSubprocessTrialExecutor` and the `_child` runner remain at the
+  platform edge (process spawning is not Sans-IO); `TrialSpecification`/
+  `TrialResult` gained value `==` (upstream dataclass equality).
+
+- **LLM/tool provenance stamping uses a projection seam, not a
+  `BehaviorGraph` wrapper.** Upstream wraps the graph in a `BehaviorGraph`
+  that threads `llm_request_event_id`/`tool_request_event_ids` into every
+  `add_object`/`add_relation`/`patch_object`/`propose_patch` call made by an
+  `@llm_behavior` handler (CONTRACT v0.6 #15, v0.7 #19). Chronicle handlers
+  receive the raw `GraphProjection`, so the runtime sets a per-execution
+  `provenance_stamp=` (mirroring the `context_read_recorder=` seam) before
+  invoking the handler and clears it after; `add_object`/`add_relation` embed
+  an optional `provenance` sub-object in the emitted payload only when the
+  stamp is active (pre-existing payloads stay byte-identical), and `apply`
+  rebuilds the full `Provenance`. Divergence: patches are NOT stamped
+  (Chronicle's `patch_object` writes directly to the store without emitting an
+  event, so the ids cannot ride a durable patch.applied payload); the object/
+  relation surface is what `causal_chain` reads.
 
 - [x] Error hierarchy + structured format — `Chronicle::ActiveGraphError`
       root with the locked message format (CONTRACT v1.0 #3/#4: the error

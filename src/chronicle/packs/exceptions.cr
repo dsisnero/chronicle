@@ -1,5 +1,5 @@
 # Pack exception hierarchy. Ported from activegraph/packs/__init__.py
-# (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 module Chronicle
   module Packs
     # Root pack error. Mirrors activegraph.errors.PackError.

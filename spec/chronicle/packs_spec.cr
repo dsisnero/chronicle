@@ -1,7 +1,7 @@
 require "../spec_helper"
 
 # Pack + policy specs. Ported from activegraph packs/__init__.py (Pack, PackPolicy)
-# and policy.py (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# and policy.py (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 
 module PackSpecHelper
   extend self

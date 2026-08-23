@@ -2,7 +2,7 @@ require "json"
 
 # Tool abstraction and registry. Ported from activegraph
 # activegraph/tools/base.py, tools/decorators.py, tools/graph_query.py
-# (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 module Chronicle
   # The external-I/O permission mode for a tool invocation. Ported from
   # activegraph ToolContext.external_io_mode: forbid (default, fail closed),

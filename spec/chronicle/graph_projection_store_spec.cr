@@ -1,7 +1,7 @@
 require "../spec_helper"
 
 # GraphProjection ↔ GraphStore delegation specs. Mirrors the Graph-side checks
-# from activegraph tests/test_graph_store.py (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# from activegraph tests/test_graph_store.py (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 
 module GraphProjectionStoreSpecHelper
   extend self

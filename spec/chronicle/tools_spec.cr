@@ -2,7 +2,7 @@ require "../spec_helper"
 
 # Tool abstraction + graph_query tool + runtime tool invocation specs.
 # Ported from activegraph tools/base.py, tools/decorators.py, tools/graph_query.py,
-# tools/cache.py (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# tools/cache.py (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 
 module ToolSpecHelper
   extend self

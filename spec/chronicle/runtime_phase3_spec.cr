@@ -2,7 +2,7 @@ require "../spec_helper"
 
 # Phase 3 — Runtime execution surface specs. Ported from activegraph
 # runtime/runtime.py bounded-run, budget, approval, authority, and trace
-# surfaces (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# surfaces (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 
 class Phase3Model
   include Crig::Completion::CompletionModel

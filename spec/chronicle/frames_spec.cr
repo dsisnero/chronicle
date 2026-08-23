@@ -2,7 +2,7 @@ require "../spec_helper"
 
 # Frames wiring specs: frame_id on the event envelope, codec round-trip, and
 # Runtime push/pop frame lifecycle. Ported from activegraph frame.py + CONTRACT
-# (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 
 class FrameModel
   include Crig::Completion::CompletionModel

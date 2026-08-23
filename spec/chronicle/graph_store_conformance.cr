@@ -1,7 +1,7 @@
 require "../spec_helper"
 
 # Reusable GraphStore contract suite. Ported from activegraph
-# activegraph/store/graph_conformance.py (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# activegraph/store/graph_conformance.py (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 # A backend gets full coverage by invoking `GraphStoreConformance.define_tests`
 # with an expression that yields a fresh, empty store inside each test.
 

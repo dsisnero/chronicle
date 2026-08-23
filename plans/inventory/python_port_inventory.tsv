@@ -394,7 +394,7 @@ observability/status.py::class::BudgetSnapshot	class	ported	spec/chronicle/statu
 observability/status.py::class::EventSummary	class	ported	spec/chronicle/status_spec.cr	EventSummary value struct
 observability/status.py::class::FrameSnapshot	class	ported	spec/chronicle/status_spec.cr	FrameSnapshot value struct
 observability/status.py::class::RuntimeStatus	class	ported	spec/chronicle/status_spec.cr	Typed RuntimeStatus struct with copy_with (CONTRACT v0.8 #11)
-observability/status.py::function::_asdict_with_tuples	function	missing	-	auto-generated
+observability/status.py::function::_asdict_with_tuples	function	ported	spec/chronicle/status_state_spec.cr	N/A — RuntimeStatus#to_h builds the documented JSON schema directly (no dataclass-asdict tuple post-processing)
 observability/status.py::function::status_to_dict	function	ported	spec/chronicle/status_spec.cr	RuntimeStatus#to_h
 packs/__init__.py::class::DiscoveredPack	class	missing	-	auto-generated
 packs/__init__.py::class::EmptySettings	class	missing	-	auto-generated
@@ -562,16 +562,16 @@ runtime/authority.py::function::evaluate_action_authority	function	ported	spec/c
 runtime/authority.py::function::validate_ceiling	function	ported	spec/chronicle/authority_spec.cr	Validate ceiling against closed set; ValueError -> ArgumentError
 runtime/authority.py::method::AuthorityDecision.auto_approved	method	ported	spec/chronicle/authority_spec.cr	decision == auto_approve
 runtime/behavior_graph.py::class::BehaviorGraph	class	ported	spec/chronicle/behavior_runner_spec.cr	Behavior subscription and scheduling
-runtime/behavior_graph.py::class::Counters	class	missing	-	auto-generated
-runtime/behavior_graph.py::method::BehaviorGraph.__init__	method	missing	-	auto-generated
-runtime/behavior_graph.py::method::BehaviorGraph.add_object	method	missing	-	auto-generated
-runtime/behavior_graph.py::method::BehaviorGraph.add_relation	method	missing	-	auto-generated
-runtime/behavior_graph.py::method::BehaviorGraph.emit	method	missing	-	auto-generated
-runtime/behavior_graph.py::method::BehaviorGraph.get_object	method	missing	-	auto-generated
-runtime/behavior_graph.py::method::BehaviorGraph.get_relation	method	missing	-	auto-generated
-runtime/behavior_graph.py::method::BehaviorGraph.patch_object	method	missing	-	auto-generated
-runtime/behavior_graph.py::method::BehaviorGraph.propose_patch	method	missing	-	auto-generated
-runtime/behavior_graph.py::method::Counters.__init__	method	missing	-	auto-generated
+runtime/behavior_graph.py::class::Counters	class	ported	spec/chronicle/causal_weave_spec.cr	N/A — Chronicle records objects_created/relations_created on behavior.completed from graph all_objects/all_relations size deltas
+runtime/behavior_graph.py::method::BehaviorGraph.__init__	method	ported	spec/chronicle/causal_weave_spec.cr	Chronicle::GraphProjection provenance_stamp= seam (ProvenanceStamp with llm_request_event_id/tool_request_event_ids), set/cleared by the runtime around each LLM handler call
+runtime/behavior_graph.py::method::BehaviorGraph.add_object	method	ported	spec/chronicle/causal_weave_spec.cr	GraphProjection#add_object emits an optional provenance sub-object when the stamp is active; apply/provenance_for rebuilds the full Provenance (llm_request_event_id/tool_request_event_ids)
+runtime/behavior_graph.py::method::BehaviorGraph.add_relation	method	ported	spec/chronicle/causal_weave_spec.cr	GraphProjection#add_relation emits the same provenance sub-object when the stamp is active
+runtime/behavior_graph.py::method::BehaviorGraph.emit	method	ported	spec/chronicle/causal_weave_spec.cr	N/A — Chronicle handlers emit via the raw projection (emit already stamps the frame/envelope); BehaviorGraph is not ported as a wrapper
+runtime/behavior_graph.py::method::BehaviorGraph.get_object	method	ported	spec/chronicle/causal_weave_spec.cr	N/A — Chronicle passes the raw GraphProjection to handlers (no wrapper); context reads are traced via the context_read_recorder= seam instead
+runtime/behavior_graph.py::method::BehaviorGraph.get_relation	method	ported	spec/chronicle/causal_weave_spec.cr	N/A — same as get_object; no wrapper
+runtime/behavior_graph.py::method::BehaviorGraph.patch_object	method	ported	spec/chronicle/causal_weave_spec.cr	N/A — Chronicle patch_object writes directly to the store without emitting an event, so the LLM/tool stamp does not ride patch.applied (divergence: only object/relation creation is stamped)
+runtime/behavior_graph.py::method::BehaviorGraph.propose_patch	method	ported	spec/chronicle/causal_weave_spec.cr	N/A — same as patch_object; patches are not stamped
+runtime/behavior_graph.py::method::Counters.__init__	method	ported	spec/chronicle/causal_weave_spec.cr	N/A — same
 runtime/budget.py::class::Budget	class	ported	spec/chronicle/budget_spec.cr	Multi-dimensional hard limits (KNOWN_LIMITS); Chronicle::Budget
 runtime/budget.py::const::KNOWN_LIMITS	const	ported	spec/chronicle/budget_spec.cr	Eight limit dimensions
 runtime/budget.py::function::_as_decimal	function	ported	spec/chronicle/budget_spec.cr	N/A in Crystal (Float64); cost tracked as Float64 + String mirror
@@ -716,15 +716,15 @@ runtime/registration_errors.py::method::InvalidToolRegistration.__init__	method	
 runtime/registration_errors.py::method::ToolNotFoundError.__init__	method	missing	-	auto-generated
 runtime/registry.py::class::Registry	class	ported	spec/chronicle/registry_spec.cr	Match events to behaviors (CONTRACT #10)
 runtime/registry.py::function::_collect_string_values	function	missing	-	auto-generated
-runtime/registry.py::function::_is_lifecycle	function	missing	-	auto-generated
+runtime/registry.py::function::_is_lifecycle	function	ported	spec/chronicle/ctx_matches_spec.cr	Chronicle::Registry.lifecycle? (private): behavior./relation_behavior./runtime./llm./tool./pattern./embedding./dev. suppression for pattern-only behaviors (upstream registry _is_lifecycle + runtime _on_event pattern.* suppression)
 runtime/registry.py::function::_matching_relations	function	missing	-	auto-generated
 runtime/registry.py::function::_walk	function	missing	-	auto-generated
 runtime/registry.py::method::Registry.__init__	method	missing	-	auto-generated
 runtime/registry.py::method::Registry.all	method	missing	-	auto-generated
 runtime/registry.py::method::Registry.index_of	method	missing	-	auto-generated
-runtime/registry.py::method::Registry.match	method	missing	-	auto-generated
+runtime/registry.py::method::Registry.match	method	ported	spec/chronicle/ctx_matches_spec.cr	Chronicle::Registry.match (returns RegistryMatch triples incl. pattern_matches); runtime threads them into ctx.matches (CONTRACT v0.7 #12)
 runtime/runtime.py::class::BehaviorFailure	class	ported	spec/chronicle/behavior_failure_spec.cr	BehaviorFailure value struct (behavior/event_id/reason/exception_type/message/failed_event_id)
-runtime/runtime.py::class::Context	class	missing	-	auto-generated
+runtime/runtime.py::class::Context	class	ported	spec/chronicle/ctx_matches_spec.cr	Chronicle::Packs::BehaviorContext.matches (Array(Chronicle::Match) pattern bindings, CONTRACT v0.7 #12); dispatch threads RegistryMatch#pattern_matches into the ctx
 runtime/runtime.py::class::RunQuantumResult	class	ported	spec/chronicle/run_quantum_spec.cr	RunQuantumResult value struct (process observations; elapsed never logged)
 runtime/runtime.py::class::Runtime	class	missing	-	auto-generated
 runtime/runtime.py::function::_budget_reason	function	ported	spec/chronicle/budget_reason_spec.cr	RuntimeReason.budget_reason maps a budget dimension name to the behavior.failed reason code (explicit tool/cost/llm map, max_-stripped default, nil -> budget.exhausted)
@@ -758,7 +758,7 @@ runtime/runtime.py::method::Context.propose_object	method	ported	spec/chronicle/
 runtime/runtime.py::method::Runtime.__init__	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._add_pending_approval	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._attach_sink_configs	method	missing	-	auto-generated
-runtime/runtime.py::method::Runtime._budget_remaining	method	missing	-	auto-generated
+runtime/runtime.py::method::Runtime._budget_remaining	method	ported	spec/chronicle/budget_call_spec.cr	Chronicle::Runtime#budget_exhausted? syncs max_events from the store count and consults Budget#remaining (covers max_llm_calls/max_behavior_calls now that dispatch consumes them); budget_exhausted? gates the dispatch loop and run_goal/run_quantum
 runtime/runtime.py::method::Runtime._emit	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_behavior_failed	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_context_read	method	ported	spec/chronicle/context_read_runtime_spec.cr	Runtime#emit_context_read (batched context.read at commit; only when tracing + reads exist)
@@ -767,14 +767,14 @@ runtime/runtime.py::method::Runtime._emit_embedding_event	method	ported	spec/chr
 runtime/runtime.py::method::Runtime._emit_idle_or_exhausted	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_lifecycle	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_llm_error_response	method	ported	spec/chronicle/llm_error_shape_spec.cr	record_llm_failed emits the upstream error-shape payload on the llm.failed event: nested error {reason, message, **extras}, retryable, attempt_index/max_attempts, latency_seconds, cost_usd:0, cache_hit:false, behavior/prompt_hash/model; caused_by the request. Divergence: event name stays llm.failed (not llm.responded) and generic-exception message is redacted to the exception class name (provider text never enters the log)
-runtime/runtime.py::method::Runtime._emit_llm_event	method	missing	-	auto-generated
+runtime/runtime.py::method::Runtime._emit_llm_event	method	ported	spec/chronicle/responded_payload_spec.cr	Chronicle::Runtime#record_llm_responded now records cache_hit + latency_seconds on the success-path llm.responded payload (upstream LLMResponse.to_dict()); the CONTRACT #18 trace line renders cache_hit=true and omits cost/latency for cache hits. cost_usd stays at the provider boundary (Crig seam exposes no cost)
 runtime/runtime.py::method::Runtime._emit_pattern_matched	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._emit_tool_event	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._endpoint_type	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._ensure_registry	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._find_event	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime._fire_due_delayed	method	missing	-	auto-generated
-runtime/runtime.py::method::Runtime._invoke	method	missing	-	auto-generated
+runtime/runtime.py::method::Runtime._invoke	method	ported	spec/chronicle/budget_call_spec.cr	Chronicle::Runtime#invoke_pack_behavior consumes one max_behavior_calls unit per behavior invocation (upstream _invoke/_invoke_llm/relation invocation); the dispatch loop stops and emits runtime.budget_exhausted when a per-call dimension exhausts
 runtime/runtime.py::method::Runtime._invoke_llm	method	ported	execute_llm_behavior_request + invoke_llm_behavior	-port
 runtime/runtime.py::method::Runtime._invoke_llm_body	method	ported	spec/chronicle/llm_retry_loop_spec.cr	same-target LLM retry loop: execute_llm_behavior_request + execute_model_request (retry_max_attempts/attempt_index/retry_of, llm_retry_delay_seconds backoff, retry_exhausted extras on behavior.failed) + tool turn loop (declared-tool invoke, re-call, max_tool_turns, max_tool_calls budget gate, llm.network_error fold)
 runtime/runtime.py::method::Runtime._invoke_relation	method	missing	-	auto-generated
@@ -818,7 +818,7 @@ runtime/runtime.py::method::Runtime.run_until_idle	method	missing	-	auto-generat
 runtime/runtime.py::method::Runtime.save_state	method	ported	spec/chronicle/save_state_spec.cr	Runtime#save_state flushes an attached SQLite store (mismatched path raises InvalidRuntimeConfiguration) or late-binds a SQLite store at path= and appends all in-memory events (missing path raises); returns the write path. CONTRACT v0.5 #5
 runtime/runtime.py::method::Runtime.set_authority_ceiling	method	missing	-	auto-generated
 runtime/runtime.py::method::Runtime.sink_statuses	method	ported	spec/chronicle/runtime_sinks_spec.cr	Runtime#sink_statuses (delegates to graph)
-runtime/runtime.py::method::Runtime.status	method	missing	-	auto-generated
+runtime/runtime.py::method::Runtime.status	method	ported	spec/chronicle/status_state_spec.cr	Chronicle::Runtime#status (log-derived RuntimeState: runtime.budget_exhausted -> exhausted, runtime.idle -> idle, none -> stopped); save/load round-trip state survival + exhausted-on-budget pinned
 runtime/runtime.py::method::Runtime.trace	method	ported	spec/chronicle/trace_accessors_spec.cr	Runtime#trace returns Chronicle::TraceFacade (events/failures)
 runtime/runtime.py::method::Runtime.validate_dev_override	method	missing	-	auto-generated
 runtime/scheduler.py::class::DelayedQueue	class	ported	spec/chronicle/activate_after_spec.cr	Chronicle::Packs::DelayedQueue (push / pop_due / empty?; FIFO within a fire tick)
@@ -836,7 +836,7 @@ sandbox/__init__.py::class::PackSource	class	ported	spec/chronicle/sandbox_spec.
 sandbox/__init__.py::class::SandboxStartupError	class	missing	-	auto-generated
 sandbox/__init__.py::class::TrialLimits	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialLimits (wall_clock/max_rss_bytes/max_events/max_llm_calls/env_passthrough; max_llm_calls=0 is structural key-freedom)
 sandbox/__init__.py::class::TrialReport	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialReport (outcome/fork_run_id/events_appended/behavior_failures/detail/exit_code/warnings)
-sandbox/__init__.py::const::TRIAL_OUTCOMES	const	missing	-	auto-generated
+sandbox/__init__.py::const::TRIAL_OUTCOMES	const	ported	spec/chronicle/trial_executor_spec.cr	Chronicle::Sandbox::TRIAL_OUTCOMES (closed five-outcome set); conformance checks result.status membership
 sandbox/__init__.py::function::_child_code_paths	function	missing	-	auto-generated
 sandbox/__init__.py::function::_child_env	function	missing	-	auto-generated
 sandbox/__init__.py::function::_limits_job_block	function	missing	-	auto-generated
@@ -855,20 +855,20 @@ sandbox/_child.py::function::_report	function	missing	-	auto-generated
 sandbox/_child.py::function::_resolve_scenario	function	missing	-	auto-generated
 sandbox/_child.py::function::counts	function	missing	-	auto-generated
 sandbox/_child.py::function::main	function	missing	-	auto-generated
-sandbox/conformance.py::class::TrialExecutorConformance	class	missing	-	auto-generated
-sandbox/conformance.py::method::TrialExecutorConformance.make_executor	method	missing	-	auto-generated
-sandbox/conformance.py::method::TrialExecutorConformance.make_serialized_specification	method	missing	-	auto-generated
+sandbox/conformance.py::class::TrialExecutorConformance	class	ported	spec/chronicle/trial_executor_spec.cr	Chronicle::Sandbox::TrialExecutorConformance (reusable define_tests mixin, spec/chronicle/trial_executor_conformance.cr)
+sandbox/conformance.py::method::TrialExecutorConformance.make_executor	method	ported	spec/chronicle/trial_executor_spec.cr	define_tests executor_factory expression (macro arg, not a method)
+sandbox/conformance.py::method::TrialExecutorConformance.make_serialized_specification	method	ported	spec/chronicle/trial_executor_spec.cr	define_tests specification_factory expression (macro arg, not a method)
 sandbox/executor.py::class::LocalSubprocessTrialExecutor	class	missing	-	auto-generated
-sandbox/executor.py::class::RecordingTrialExecutor	class	missing	-	auto-generated
+sandbox/executor.py::class::RecordingTrialExecutor	class	ported	spec/chronicle/trial_executor_spec.cr	Chronicle::Sandbox::RecordingTrialExecutor < TrialExecutor (records parsed + serialized specs; pops fixtures in order; RuntimeError when exhausted)
 sandbox/executor.py::class::TrialArtifactReference	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialArtifactReference (name/uri/media_type/digest)
 sandbox/executor.py::class::TrialBudgetUse	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialBudgetUse (events_appended/behavior_failures/limits)
 sandbox/executor.py::class::TrialEventLogReference	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialEventLogReference (store_path/run_id)
-sandbox/executor.py::class::TrialExecutor	class	missing	-	auto-generated
+sandbox/executor.py::class::TrialExecutor	class	ported	spec/chronicle/trial_executor_spec.cr	Chronicle::Sandbox::TrialExecutor abstract class (isolation_guarantees + execute); LocalSubprocessTrialExecutor stays at the platform edge
 sandbox/executor.py::class::TrialFailureDetails	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialFailureDetails (kind/message/exit_code)
 sandbox/executor.py::class::TrialIsolationGuarantees	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialIsolationGuarantees + LOCAL_SUBPROCESS_ISOLATION
 sandbox/executor.py::class::TrialResult	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialResult (status/budget_use/artifacts/event_log/failure/isolation/detail/exit_code/warnings) with from_report/to_report
 sandbox/executor.py::class::TrialSpecification	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialSpecification (versioned JSON; to_json canonical, from_json validates schema_version/required fields/pack sources/limits/extra packs)
-sandbox/executor.py::const::LOCAL_SUBPROCESS_ISOLATION	const	missing	-	auto-generated
+sandbox/executor.py::const::LOCAL_SUBPROCESS_ISOLATION	const	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::LOCAL_SUBPROCESS_ISOLATION (crash and parent-state isolation only; no security sandbox)
 sandbox/executor.py::function::_limits_payload	function	missing	-	auto-generated
 sandbox/executor.py::function::_pack_source_payload	function	missing	-	auto-generated
 sandbox/executor.py::function::_parse_limits	function	missing	-	auto-generated
@@ -876,15 +876,15 @@ sandbox/executor.py::function::_parse_pack_source	function	missing	-	auto-genera
 sandbox/executor.py::function::_required_string	function	missing	-	auto-generated
 sandbox/executor.py::method::LocalSubprocessTrialExecutor.execute	method	missing	-	auto-generated
 sandbox/executor.py::method::LocalSubprocessTrialExecutor.isolation_guarantees	method	missing	-	auto-generated
-sandbox/executor.py::method::RecordingTrialExecutor.__init__	method	missing	-	auto-generated
-sandbox/executor.py::method::RecordingTrialExecutor.execute	method	missing	-	auto-generated
-sandbox/executor.py::method::RecordingTrialExecutor.isolation_guarantees	method	missing	-	auto-generated
-sandbox/executor.py::method::TrialExecutor.execute	method	missing	-	auto-generated
-sandbox/executor.py::method::TrialExecutor.isolation_guarantees	method	missing	-	auto-generated
-sandbox/executor.py::method::TrialResult.from_report	method	missing	-	auto-generated
-sandbox/executor.py::method::TrialResult.to_report	method	missing	-	auto-generated
-sandbox/executor.py::method::TrialSpecification.from_json	method	missing	-	auto-generated
-sandbox/executor.py::method::TrialSpecification.to_json	method	missing	-	auto-generated
+sandbox/executor.py::method::RecordingTrialExecutor.__init__	method	ported	spec/chronicle/trial_executor_spec.cr	RecordingTrialExecutor#initialize(results, isolation_guarantees: nil) defaults to the none-test-double isolation posture
+sandbox/executor.py::method::RecordingTrialExecutor.execute	method	ported	spec/chronicle/trial_executor_spec.cr	RecordingTrialExecutor#execute validates via TrialSpecification.from_json before recording; raises ArgumentError on malformed
+sandbox/executor.py::method::RecordingTrialExecutor.isolation_guarantees	method	ported	spec/chronicle/trial_executor_spec.cr	RecordingTrialExecutor#isolation_guarantees (injected or none_test_double default)
+sandbox/executor.py::method::TrialExecutor.execute	method	ported	spec/chronicle/trial_executor_spec.cr	TrialExecutor#execute abstract def
+sandbox/executor.py::method::TrialExecutor.isolation_guarantees	method	ported	spec/chronicle/trial_executor_spec.cr	TrialExecutor#isolation_guarantees abstract def
+sandbox/executor.py::method::TrialResult.from_report	method	ported	spec/chronicle/sandbox_spec.cr	TrialResult.from_report lifts a legacy TrialReport into the provider-neutral result (failure kind = non-completed outcome)
+sandbox/executor.py::method::TrialResult.to_report	method	ported	spec/chronicle/sandbox_spec.cr	TrialResult#to_report lossless legacy run_forked_trial report shape
+sandbox/executor.py::method::TrialSpecification.from_json	method	ported	spec/chronicle/sandbox_spec.cr	TrialSpecification.from_json validates JSON/schema_version/required fields/pack sources/limits
+sandbox/executor.py::method::TrialSpecification.to_json	method	ported	spec/chronicle/sandbox_spec.cr	TrialSpecification#to_json canonical versioned JSON (sort_keys, compact separators)
 sinks/base.py::class::DeliveryContext	class	missing	-	auto-generated
 sinks/base.py::class::EventSink	class	missing	-	auto-generated
 sinks/base.py::class::OverflowPolicy	class	missing	-	auto-generated
@@ -1162,9 +1162,9 @@ tools/web_fetch.py::class::WebFetchInput	class	ported	spec/chronicle/web_fetch_s
 tools/web_fetch.py::class::WebFetchOutput	class	ported	spec/chronicle/web_fetch_spec.cr	WebFetchOutput value struct
 tools/web_fetch.py::function::_decode	function	missing	-	auto-generated
 tools/web_fetch.py::function::web_fetch	function	ported	spec/chronicle/web_fetch_spec.cr	make_web_fetch_tool fail-closed gate (CONTRACT v0.7 #16, v1.8 #7)
-trace/causal.py::function::_find_response_for	function	missing	-	auto-generated
-trace/causal.py::function::_fmt_money	function	missing	-	auto-generated
-trace/causal.py::function::causal_chain	function	missing	-	auto-generated
+trace/causal.py::function::_find_response_for	function	ported	spec/chronicle/causal_weave_spec.cr	Chronicle::Trace.find_response_for (private): first event of a type whose caused_by == request_id
+trace/causal.py::function::_fmt_money	function	ported	spec/chronicle/causal_weave_spec.cr	Chronicle::Trace.fmt_money (private): 3-decimal cost rendering with raw fallback
+trace/causal.py::function::causal_chain	function	ported	spec/chronicle/causal_weave_spec.cr	Chronicle::Trace.causal_chain weave: object label (title/text), llm.requested/llm.responded block (model + cost/cache tail via _fmt_money), tool.requested/tool.responded blocks (tool name + error/cache/cost tail), then the caused_by walk
 trace/printer.py::class::Trace	class	ported	spec/chronicle/trace_accessors_spec.cr	Chronicle::TraceFacade (named to avoid clashing with the Chronicle::Trace module): events() copy, failures() behavior.failed events
 trace/printer.py::const::TAG_COL	const	ported	spec/chronicle/trace_lines_spec.cr	TAG_COL=26 tag column (CONTRACT #18)
 trace/printer.py::function::_compute_prompt_normalized_rollup	function	ported	spec/chronicle/trace_lines_method_spec.cr	prompt_normalized_rollup (no-op: Chronicle llm.requested carries prompt_hash)
@@ -1192,7 +1192,7 @@ trace/printer.py::function::_fmt_replay_complete	function	ported	spec/chronicle/
 trace/printer.py::function::_fmt_replay_ready	function	ported	spec/chronicle/trace_lines_method_spec.cr	format_replay_ready
 trace/printer.py::function::_fmt_runtime_budget_exhausted	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_runtime_budget_exhausted
 trace/printer.py::function::_fmt_runtime_idle	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_runtime_idle
-trace/printer.py::function::_fmt_runtime_snapshot	function	missing	-	auto-generated
+trace/printer.py::function::_fmt_runtime_snapshot	function	ported	spec/chronicle/trace_snapshot_line_spec.cr	Chronicle::Trace.fmt_runtime_snapshot (CONTRACT v1.5 #2): one [runtime.snapshot] line - N events compacted (state <hash[:19]>...) from the runtime.snapshot payload (state_hash/events_covered)
 trace/printer.py::function::_fmt_tool_requested	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_tool_requested (flat tool/args)
 trace/printer.py::function::_fmt_tool_responded	function	ported	spec/chronicle/trace_lines_spec.cr	fmt_tool_responded (flat tool)
 trace/printer.py::function::_fmt_trace_flags	function	ported	spec/chronicle/trace_lines_method_spec.cr	format_trace_flags

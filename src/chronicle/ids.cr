@@ -1,7 +1,7 @@
 require "json"
 
 # Per-graph monotonic ID generation. Ported from activegraph
-# activegraph/core/ids.py (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# activegraph/core/ids.py (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 #
 # Objects share one global counter prefixed by type — task#1, task#2, claim#3,
 # not claim#1; events, relations, patches, and frames each have their own
