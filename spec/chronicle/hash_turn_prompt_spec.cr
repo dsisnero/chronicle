@@ -64,5 +64,12 @@ describe Chronicle::Prompt do
       native = turn_prompt_params(structured_output_mode: "native")
       hash_turn(*params).should_not eq(hash_turn(*native))
     end
+
+    it "includes deterministic so determinism mode hashes differently (test_deterministic_flag_is_in_prompt_hash)" do
+      model, messages, max_tokens, temperature, top_p, _det, tools, mode = turn_prompt_params
+      det = hash_turn(model, messages, max_tokens, temperature, top_p, true, tools, mode)
+      stoch = hash_turn(model, messages, max_tokens, temperature, top_p, false, tools, mode)
+      det.should_not eq(stoch)
+    end
   end
 end

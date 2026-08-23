@@ -24,6 +24,11 @@ module Chronicle
       # v1.10 #1: the behavior's scoped view of the graph. When the runtime
       # traces context reads, this is a TracedView that records object reads.
       @view : Chronicle::View | Chronicle::ContextRead::TracedView
+      # v0.7 #12: pattern bindings for the current invocation. Empty for
+      # behaviors that don't declare a pattern. The handler is fired ONCE per
+      # event regardless of how many bindings the pattern produced — iterating
+      # `ctx.matches` is the developer's job.
+      @matches : Array(Chronicle::Match)
 
       def initialize(
         @pack_name : String,
@@ -32,7 +37,15 @@ module Chronicle
         @propose_object_proc : Proc(String, String, String, String)? = nil,
         @embed_proc : Proc(Array(String), String?, Array(Array(Float64)))? = nil,
         @view : Chronicle::View | Chronicle::ContextRead::TracedView = Chronicle::View.new,
+        @matches : Array(Chronicle::Match) = [] of Chronicle::Match,
       )
+      end
+
+      # The pattern bindings produced for this invocation (upstream
+      # `Context.matches`, CONTRACT v0.7 #12). Empty for behaviors without a
+      # `pattern=`.
+      def matches : Array(Chronicle::Match)
+        @matches
       end
 
       def view : Chronicle::View | Chronicle::ContextRead::TracedView

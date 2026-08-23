@@ -2508,7 +2508,7 @@ module Chronicle
       to_invoke.sort_by! { |entry| {entry[0].sequence, -entry[1].behavior.priority, entry[1].behavior.name} }
       to_invoke.each do |event, match|
         emit_pattern_matched(match, event) if match.behavior.pattern && !match.pattern_matches.empty?
-        invoke_pack_behavior(match.behavior, event, graph, match.relations)
+        invoke_pack_behavior(match.behavior, event, graph, match.relations, match.pattern_matches)
       end
     end
 
@@ -2531,6 +2531,7 @@ module Chronicle
       event : Event,
       graph : GraphProjection,
       relations : Array(GraphRelation) = [] of GraphRelation,
+      pattern_matches : Array(Match) = [] of Match,
     ) : Nil
       owner = behavior.pack_owner || ""
       settings = @pack_state.pack_settings[owner]? || {} of String => JSON::Any
@@ -2546,16 +2547,19 @@ module Chronicle
       # (TracedView) and graph.get_object, then commit one context.read.
       recorder : ContextRead::ReadRecorder? = nil
       view = graph.build_view
-      ctx = Packs::BehaviorContext.new(owner, settings, provider, propose, embed)
+      ctx = Packs::BehaviorContext.new(owner, settings, provider, propose, embed, matches: pattern_matches)
       if @trace_context_reads
         recorder = ContextRead::ReadRecorder.new
         ctx = Packs::BehaviorContext.new(owner, settings, provider, propose, embed,
-          view: ContextRead::TracedView.new(view, recorder))
+          view: ContextRead::TracedView.new(view, recorder), matches: pattern_matches)
         graph.context_read_recorder=(recorder)
       end
 
       @metrics.counter("activegraph_behaviors_invoked_total", {"behavior" => behavior.name})
       t0 = Time.instant
+      # Every behavior invocation consumes one max_behavior_calls unit
+      # (upstream `_invoke` / `_invoke_llm` / relation invocation).
+      @budget.consume("max_behavior_calls")
       begin
         case behavior.kind
         in Packs::PackBehaviorKind::Behavior
@@ -2569,6 +2573,10 @@ module Chronicle
             behavior.relation_handler.try(&.call(relation, event, graph, ctx))
           end
         in Packs::PackBehaviorKind::LLM
+          # One max_llm_calls unit per LLM behavior invocation (upstream
+          # `_invoke_llm` consumes max_behavior_calls + max_llm_calls at the
+          # top of the lifecycle).
+          @budget.consume("max_llm_calls")
           invoke_llm_behavior(behavior, event, ctx)
         end
       rescue error : Exception
@@ -2677,10 +2685,21 @@ module Chronicle
         if behavior.llm_handler.nil?
           raise Packs::PackError.new("LLM behavior #{behavior.name} is missing its handler")
         end
-        output = execute_llm_behavior_request(behavior, event, ctx, graph)
-        behavior.llm_handler.try(&.call(event, graph, ctx, output))
+        invocation = execute_llm_behavior_request(behavior, event, ctx, graph)
+        # v0.6 #15 / v0.7 #19: while the handler runs, every object/relation it
+        # creates carries the successful llm.requested id + the tool.requested
+        # ids in provenance (upstream BehaviorGraph stamping).
+        graph.provenance_stamp = ProvenanceStamp.new(
+          invocation.llm_request_event_id,
+          invocation.tool_request_event_ids,
+        )
+        begin
+          behavior.llm_handler.try(&.call(event, graph, ctx, invocation.output))
+        ensure
+          graph.provenance_stamp = nil
+        end
         record_behavior_completed(
-          behavior, event, output,
+          behavior, event, invocation.output,
           objects_created: graph.all_objects.size - objects_before,
           relations_created: graph.all_relations.size - relations_before,
         )
@@ -2729,13 +2748,16 @@ module Chronicle
     # for a declared tool, the runtime invokes it (recording tool.requested /
     # tool.responded), feeds the result back into the conversation, and re-calls
     # the model until a non-tool response arrives or max_tool_turns is exhausted.
-    # Returns the model output text.
+    # Returns the model output text plus the successful llm.requested id and the
+    # tool.requested ids (upstream `_invoke_llm_body`'s
+    # `successful_llm_request_id` / `tool_request_event_ids`), so
+    # `invoke_llm_behavior` can stamp them onto handler-created objects.
     private def execute_llm_behavior_request(
       behavior : Packs::PackBehavior,
       event : Event,
       ctx : Packs::BehaviorContext,
       graph : GraphProjection,
-    ) : String
+    ) : LlmBehaviorInvocation
       system = build_llm_system(behavior)
       user = build_llm_user_message(behavior, event, graph)
       tool_defs = resolve_behavior_tools(behavior)
@@ -2753,6 +2775,12 @@ module Chronicle
       running_messages = [] of Crig::Completion::Message
       final_response = nil
       so_mode = structured_output_mode(behavior)
+      # The successful llm.requested event id (last successful request — with
+      # retries, failed attempts remain in the log but provenance points at
+      # the request whose response fed the handler) and the tool.requested ids
+      # invoked across the turn loop (upstream `_invoke_llm_body`).
+      successful_llm_request_id : String? = nil
+      tool_request_event_ids = [] of String
 
       Math.max(1, behavior.max_tool_turns).times do |turn_idx|
         payload = JSON.build do |json|
@@ -2794,7 +2822,7 @@ module Chronicle
         )
 
         builder = running_messages.empty? ? base_builder : base_builder.messages(running_messages)
-        response = execute_model_request(
+        result = execute_model_request(
           effect,
           builder.build,
           caused_by: event.id,
@@ -2804,6 +2832,8 @@ module Chronicle
           behavior_name: behavior.name,
           structured_output_mode: so_mode,
         )
+        successful_llm_request_id = result.request_event_id
+        response = result.response
         refuse_undeclared_tool_calls(behavior, event, response)
 
         calls = response.choice.to_a.compact_map(&.tool_call)
@@ -2823,7 +2853,7 @@ module Chronicle
             frame_id: current_frame_id,
             idempotency_key: Random::Secure.hex(16),
             external_io_mode: ExternalIOMode::RuntimeRecorded,
-          ))
+          ), tool_request_event_ids)
           running_messages << Crig::Completion::Message.tool_result_with_call_id(call.id, call.call_id, output)
         end
       end
@@ -2836,6 +2866,11 @@ module Chronicle
       end
 
       final_response.choice.first.text.try(&.text) || ""
+      LlmBehaviorInvocation.new(
+        final_response.choice.first.text.try(&.text) || "",
+        successful_llm_request_id,
+        tool_request_event_ids,
+      )
     end
 
     # The max_tool_calls budget gate for the LLM behavior tool loop. Before
@@ -3366,7 +3401,8 @@ module Chronicle
       raise "model step is missing its prompt or history" unless prompt && history
 
       request = @log_agent.agent.build_completion_request(prompt, history).build
-      response = execute_model_request(effect, request)
+      result = execute_model_request(effect, request)
+      response = result.response
       turn = Crig::ModelTurn.new(
         message_id: "msg_#{next_seq}",
         choice: response.choice,
@@ -3374,6 +3410,29 @@ module Chronicle
         allowed_tools: @tools.map(&.name),
       )
       @log_agent.model_response(turn, result_hash: effect.content_hash)
+    end
+
+    # The outcome of one model-effect execution surfaced to callers: the
+    # recorded response plus the successful llm.requested event id (the
+    # provenance anchor for objects created by the consuming handler).
+    private struct ModelExecutionResult
+      getter response : Crig::Completion::CompletionResponse(String)
+      getter request_event_id : String
+
+      def initialize(@response : Crig::Completion::CompletionResponse(String), @request_event_id : String)
+      end
+    end
+
+    # The result of one LLM-behavior execution: the model output text plus the
+    # successful llm.requested id and the tool.requested ids from the turn
+    # loop, for provenance stamping on handler-created objects.
+    private struct LlmBehaviorInvocation
+      getter output : String
+      getter llm_request_event_id : String?
+      getter tool_request_event_ids : Array(String)
+
+      def initialize(@output : String, @llm_request_event_id : String?, @tool_request_event_ids : Array(String))
+      end
     end
 
     # Run one model effect through the recorded pipeline (llm.requested ->
@@ -3412,7 +3471,7 @@ module Chronicle
 
         case outcome
         when RetryLoopOutcome::Succeeded
-          return outcome.response
+          return ModelExecutionResult.new(outcome.response, outcome.request_event_id)
         when RetryLoopOutcome::Failed
           if outcome.error.is_a?(RetryableProviderError)
             if select_next_fallback(outcome.failed_event)
@@ -3466,8 +3525,8 @@ module Chronicle
 
         if cached_result = cached
           response = completion_response_from_cache(cached_result)
-          record_llm_responded(request_event, target, response)
-          return RetryLoopOutcome::Succeeded.new(response)
+          record_llm_responded(request_event, target, response, cache_hit: true)
+          return RetryLoopOutcome::Succeeded.new(response, request_event.id)
         end
 
         call_t0 = 0.0_f64
@@ -3480,9 +3539,13 @@ module Chronicle
             "",
             result.message_id,
           )
-          record_llm_responded(request_event, target, response)
+          record_llm_responded(
+            request_event, target, response,
+            cache_hit: false,
+            latency_seconds: RuntimeReason.monotonic - call_t0,
+          )
           @llm_cache.try(&.record(effect.content_hash, EffectResult.new(effect.content_hash, true, response_cache_payload(response))))
-          return RetryLoopOutcome::Succeeded.new(response)
+          return RetryLoopOutcome::Succeeded.new(response, request_event.id)
         rescue ex : Exception
           latency_seconds = RuntimeReason.monotonic - call_t0
           failed_event = record_llm_failed(
@@ -3541,8 +3604,11 @@ module Chronicle
     private abstract struct RetryLoopOutcome
       struct Succeeded < RetryLoopOutcome
         getter response : Crig::Completion::CompletionResponse(String)
+        # The successful llm.requested event id — provenance for objects the
+        # LLM handler creates (upstream `successful_llm_request_id`).
+        getter request_event_id : String
 
-        def initialize(@response : Crig::Completion::CompletionResponse(String))
+        def initialize(@response : Crig::Completion::CompletionResponse(String), @request_event_id : String)
         end
       end
 
@@ -3751,6 +3817,8 @@ module Chronicle
       request_event : Event,
       target : Routing::Target?,
       response,
+      cache_hit : Bool = false,
+      latency_seconds : Float64? = nil,
     ) : Event
       event = Event.new(
         schema_version: 1_u16,
@@ -3768,6 +3836,14 @@ module Chronicle
             json.field "provider", target.try(&.provider)
             json.field "model", target.try(&.model)
             json.field "content", response.choice.first.text.try(&.text)
+            # The runtime-measurable response metadata (upstream
+            # `LLMResponse.to_dict()`): cache_hit and latency ride the
+            # responded event so trace consumers can render the CONTRACT #18
+            # line (cache-hit omits cost/latency) and reconstruct the call.
+            json.field "cache_hit", cache_hit
+            if latency_seconds
+              json.field "latency_seconds", latency_seconds
+            end
           end
         end,
       )
@@ -3981,8 +4057,9 @@ module Chronicle
       @log_agent.tool_results(results)
     end
 
-    private def invoke_tool(name : String, args : String, ctx : ToolContext? = nil) : String
+    private def invoke_tool(name : String, args : String, ctx : ToolContext? = nil, tool_request_ids : Array(String)? = nil) : String
       request_event = record_tool_requested(name, args)
+      tool_request_ids.try(&.push(request_event.id))
       if cached = @tool_cache.try(&.get(name, args))
         record_tool_responded(request_event, name, args, cached)
         return cached

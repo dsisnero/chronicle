@@ -128,6 +128,10 @@ module Chronicle
         event.type.starts_with?("runtime.") ||
         event.type.starts_with?("llm.") ||
         event.type.starts_with?("tool.") ||
+        # v0.7: pattern.matched markers are runtime bookkeeping and must not
+        # re-trigger pattern-only behaviors (upstream _on_event suppresses
+        # `pattern.*` from enqueue).
+        event.type.starts_with?("pattern.") ||
         event.type.starts_with?("embedding.") ||
         event.type.starts_with?("dev.")
     end

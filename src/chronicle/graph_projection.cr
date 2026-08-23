@@ -25,12 +25,34 @@ module Chronicle
     getter caused_by_event : String?
     @[JSON::Field(emit_null: true)]
     getter frame_id : String?
+    # CONTRACT v0.6 #15: when an object was created inside an @llm_behavior
+    # handler, its provenance carries the successful llm.requested event id so
+    # causal-chain walks can cross the LLM boundary. Omitted when nil so
+    # pre-existing serialized provenance stays byte-identical.
+    getter llm_request_event_id : String?
+    # CONTRACT v0.7 #19: the tool.requested event ids invoked by the LLM
+    # behavior's turn loop. Omitted when nil.
+    getter tool_request_event_ids : Array(String)?
 
     def initialize(
       @created_by : String,
       @caused_by_event : String? = nil,
       @frame_id : String? = nil,
+      @llm_request_event_id : String? = nil,
+      @tool_request_event_ids : Array(String)? = nil,
     )
+    end
+  end
+
+  # The per-execution LLM/tool provenance stamp threaded through the graph
+  # while an @llm_behavior handler runs (upstream BehaviorGraph's
+  # `_llm_request_event_id` / `_tool_request_event_ids`). Every object /
+  # relation created while the stamp is set carries the ids in its provenance.
+  struct ProvenanceStamp
+    getter llm_request_event_id : String?
+    getter tool_request_event_ids : Array(String)
+
+    def initialize(@llm_request_event_id : String?, @tool_request_event_ids : Array(String) = [] of String)
     end
   end
 
@@ -160,6 +182,11 @@ module Chronicle
     # installed for the duration of one behavior execution so point reads
     # (graph.get_object hits) are recorded. Nil otherwise.
     @context_read_recorder : ContextRead::ReadRecorder?
+    # v0.6 #15 / v0.7 #19: when the runtime is executing an @llm_behavior
+    # handler, this stamp carries the successful llm.requested event id + the
+    # tool.requested event ids so objects/relations the handler creates carry
+    # them in provenance (upstream BehaviorGraph). Nil otherwise.
+    @provenance_stamp : ProvenanceStamp?
 
     def initialize(
       @store : GraphStore = InMemoryGraphStore.new,
@@ -172,6 +199,8 @@ module Chronicle
     )
       @sinks = {} of String => SinkHandle
       @replayed_ids = Set(String).new
+      @context_read_recorder = nil
+      @provenance_stamp = nil
     end
 
     def self.empty : self
@@ -228,6 +257,15 @@ module Chronicle
     # recorder is present.
     def context_read_recorder=(recorder : ContextRead::ReadRecorder?) : self
       @context_read_recorder = recorder
+      self
+    end
+
+    # Install/clear the LLM/tool provenance stamp for one @llm_behavior
+    # handler execution (v0.6 #15 / v0.7 #19). While set, every object /
+    # relation created through this projection carries the stamp's
+    # llm_request_event_id / tool_request_event_ids in its provenance.
+    def provenance_stamp=(stamp : ProvenanceStamp?) : self
+      @provenance_stamp = stamp
       self
     end
 
@@ -305,7 +343,7 @@ module Chronicle
     def apply(event : Event) : self
       @applied_events << event
       payload = JSON.parse(event.payload).as_h
-      provenance = Provenance.new(created_by: event.actor, caused_by_event: event.id)
+      provenance = provenance_for(event, payload)
 
       case event.type
       when "object.created", "object.patched"
@@ -428,7 +466,7 @@ module Chronicle
         data = validator.call(type, data)
       end
       object_id = @ids.object(type)
-      emit(build_event("object.created", object_created_payload(object_id, type, data), actor, caused_by))
+      emit(build_event("object.created", object_created_payload(object_id, type, data, @provenance_stamp), actor, caused_by))
       # Internal return-lookup bypasses the traced get_object accessor so the
       # writer's own emit is not recorded as a context read (v1.10 #1).
       @store.get_object(object_id) || raise GraphProjectionError.new("object #{object_id} was not projected")
@@ -451,7 +489,7 @@ module Chronicle
         validator.call(type, source_type, target_type)
       end
       relation_id = @ids.relation
-      emit(build_event("relation.created", relation_created_payload(relation_id, type, source, target, data), actor, caused_by))
+      emit(build_event("relation.created", relation_created_payload(relation_id, type, source, target, data, @provenance_stamp), actor, caused_by))
       get_relation(relation_id) || raise GraphProjectionError.new("relation #{relation_id} was not projected")
     end
 
@@ -648,7 +686,7 @@ module Chronicle
       (@applied_events.size + 1).to_u64
     end
 
-    private def object_created_payload(id : String, type : String, data : String) : String
+    private def object_created_payload(id : String, type : String, data : String, provenance : ProvenanceStamp? = nil) : String
       JSON.build do |json|
         json.object do
           json.field "id", id
@@ -657,6 +695,7 @@ module Chronicle
             json.raw(data)
           end
           json.field "version", 1
+          emit_provenance_stamp(json, provenance)
         end
       end
     end
@@ -667,6 +706,7 @@ module Chronicle
       source : String,
       target : String,
       data : String,
+      provenance : ProvenanceStamp? = nil,
     ) : String
       JSON.build do |json|
         json.object do
@@ -677,12 +717,48 @@ module Chronicle
           json.field "data" do
             json.raw(data)
           end
+          emit_provenance_stamp(json, provenance)
+        end
+      end
+    end
+
+    # Embed the optional LLM/tool provenance stamp into an emitted payload as
+    # a `provenance` sub-object (upstream `_provenance`), so replay
+    # reconstructs it. Omitted entirely when no stamp is active — pre-existing
+    # payloads stay byte-identical.
+    private def emit_provenance_stamp(json : JSON::Builder, provenance : ProvenanceStamp?) : Nil
+      return unless provenance
+      json.field "provenance" do
+        json.object do
+          if id = provenance.llm_request_event_id
+            json.field "llm_request_event_id", id
+          end
+          unless provenance.tool_request_event_ids.empty?
+            json.field "tool_request_event_ids", provenance.tool_request_event_ids
+          end
         end
       end
     end
 
     private def id_payload(id : String) : String
       JSON.build { |json| json.object { json.field "id", id } }
+    end
+
+    # Build the provenance for a projected entity: the base event-derived
+    # provenance (created_by / caused_by_event) merged with any optional
+    # `provenance` sub-object the payload carries (the LLM/tool stamp emitted
+    # when the object was created inside an @llm_behavior handler — upstream
+    # `_provenance`, CONTRACT v0.6 #15 / v0.7 #19).
+    private def provenance_for(event : Event, payload : Hash(String, JSON::Any)) : Provenance
+      p = payload["provenance"]?.try(&.as_h?)
+      llm_id = p.try(&.["llm_request_event_id"]?.try(&.as_s))
+      tool_ids = p.try(&.["tool_request_event_ids"]?.try(&.as_a.try(&.map(&.as_s))))
+      Provenance.new(
+        created_by: event.actor,
+        caused_by_event: event.id,
+        llm_request_event_id: llm_id,
+        tool_request_event_ids: tool_ids,
+      )
     end
 
     private def project_object!(payload : Hash(String, JSON::Any), provenance : Provenance) : Nil

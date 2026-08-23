@@ -1,7 +1,7 @@
 require "json"
 
 # Causal-chain audit. Ported from activegraph activegraph/trace/causal.py
-# (revision 8aedb1866cf5dce056af97529152ffd6f468a1ed).
+# (revision 148e12c2969f18fa12a1a3c2e75f3affd9aa0616).
 # Walks back from an object through caused_by links until a goal.created
 # (or an event with no parent).
 module Chronicle
@@ -17,8 +17,22 @@ module Chronicle
 
       created_by = events.find { |e| e.type == "object.created" && created_object?(e, object_id) }
 
-      lines = ["#{obj.id} (#{obj.type})"]
+      lines = [] of String
+      label = obj_label(obj.data)
+      label_s = " \"#{label}\"" unless label.empty?
+      lines << "#{obj.id} (#{obj.type})#{label_s}"
+
       indent = "  "
+      # CONTRACT v0.6 #15: objects created inside an @llm_behavior handler
+      # carry llm_request_event_id in provenance; weave the LLM round-trip in
+      # before continuing up the triggering chain.
+      weave_llm_block(lines, by_id, obj.provenance.llm_request_event_id, indent)
+      # CONTRACT v0.7 #19: tool calls that contributed to the final output are
+      # enumerated, each walking tool.requested + tool.responded.
+      (obj.provenance.tool_request_event_ids || [] of String).each do |tr_id|
+        weave_tool_block(lines, by_id, tr_id, indent)
+      end
+
       seen = Set(String).new
       cursor = created_by
       while cursor
@@ -37,11 +51,92 @@ module Chronicle
       lines.join("\n")
     end
 
+    # Weave the LLM round-trip for one llm_request_event_id into the chain
+    # lines (upstream causal.py llm block).
+    private def weave_llm_block(
+      lines : Array(String),
+      by_id : Hash(String, Event),
+      llm_request_id : String?,
+      indent : String,
+    ) : Nil
+      return unless llm_request_id
+      llm_req = by_id[llm_request_id]?
+      return unless llm_req
+      llm_resp = find_response_for(by_id, llm_request_id, "llm.responded")
+      model = payload_hash(llm_req)["model"]?.try(&.as_s?) || "?"
+      lines << "#{indent}← #{llm_req.actor} (#{llm_req.id}) llm.requested  model=#{model}"
+      return unless llm_resp
+      cost = payload_hash(llm_resp)["cost_usd"]?
+      cached = payload_hash(llm_resp)["cache_hit"]?.try(&.as_bool?) || false
+      tail = cached ? " (cache_hit)" : (cost ? " cost=$#{fmt_money(cost)}" : "")
+      lines << "#{indent}  (#{llm_resp.id}) llm.responded#{tail}"
+    end
+
+    # Weave one tool round-trip into the chain lines (upstream causal.py tool
+    # block).
+    private def weave_tool_block(
+      lines : Array(String),
+      by_id : Hash(String, Event),
+      tr_id : String,
+      indent : String,
+    ) : Nil
+      tr = by_id[tr_id]?
+      return unless tr
+      tresp = find_response_for(by_id, tr_id, "tool.responded")
+      tool_name = payload_hash(tr)["tool"]?.try(&.as_s?) || "?"
+      lines << "#{indent}← #{tr.actor} (#{tr.id}) tool.requested  tool=#{tool_name}"
+      return unless tresp
+      payload = payload_hash(tresp)
+      cost = payload["cost_usd"]?
+      cached = payload["cache_hit"]?.try(&.as_bool?) || false
+      err = payload["error"]?
+      tail = if err
+               reason = err.try(&.as_h?).try(&.["reason"]?.try(&.as_s?)) || "tool.error"
+               " error=#{reason}"
+             elsif cached
+               " (cache_hit)"
+             elsif cost
+               " cost=$#{fmt_money(cost)}"
+             else
+               ""
+             end
+      lines << "#{indent}  (#{tresp.id}) tool.responded#{tail}"
+    end
+
+    # The event of `response_type` whose `caused_by` is `request_id` (upstream
+    # `_find_response_for`).
+    private def find_response_for(by_id : Hash(String, Event), request_id : String, response_type : String) : Event?
+      by_id.each_value.find { |e| e.type == response_type && e.caused_by == request_id }
+    end
+
+    # Upstream `_fmt_money`: render a cost as a 3-decimal string, falling back
+    # to the raw value when it isn't numeric.
+    private def fmt_money(value : JSON::Any) : String
+      f = value.as_f?
+      return sprintf("%.3f", f) if f
+      value.to_s
+    end
+
+    private def obj_label(data : String) : String
+      h = JSON.parse(data).as_h?
+      return "" unless h
+      h["title"]?.try(&.as_s?) || h["text"]?.try(&.as_s?) || ""
+    rescue JSON::ParseException
+      ""
+    end
+
     private def created_object?(event : Event, object_id : String) : Bool
       payload = JSON.parse(event.payload).as_h
       payload["id"]?.try(&.as_s) == object_id
     rescue JSON::ParseException
       false
+    end
+
+    # Parse an event's payload into a hash (empty on malformed payloads).
+    private def payload_hash(event : Event) : Hash(String, JSON::Any)
+      JSON.parse(event.payload).as_h
+    rescue JSON::ParseException
+      {} of String => JSON::Any
     end
 
     # --- CONTRACT #18 trace line rendering (format is the public contract).
@@ -295,6 +390,16 @@ module Chronicle
       "#{format_tag("runtime.budget_exhausted")}stopped: #{by}"
     end
 
+    # CONTRACT v1.5 #2: the compaction boundary renders as one line — the
+    # events covered count plus a short state-hash preview (upstream
+    # `_fmt_runtime_snapshot`, which truncates the hash to 19 chars).
+    private def fmt_runtime_snapshot(payload : Hash(String, JSON::Any)) : String
+      covered = payload["events_covered"]?.try(&.as_i) || 0
+      h = payload["state_hash"]?.try(&.as_s) || ""
+      short = h.size > 19 ? h[0, 19] : h
+      "#{format_tag("runtime.snapshot")}#{plural(covered, "event")} compacted (state #{short}…)"
+    end
+
     private def fmt_event_emitted(event : Event, payload : Hash(String, JSON::Any)) : String
       kvs = payload.map { |k, v| "#{k}=#{short(v)}" }
       body = ([event.type] + kvs).join(" ")
@@ -339,6 +444,7 @@ module Chronicle
       "tool.responded"            => ->(p : Hash(String, JSON::Any)) { fmt_tool_responded(p) },
       "pattern.matched"           => ->(p : Hash(String, JSON::Any)) { fmt_pattern_matched(p) },
       "runtime.budget_exhausted"  => ->(p : Hash(String, JSON::Any)) { fmt_runtime_budget_exhausted(p) },
+      "runtime.snapshot"          => ->(p : Hash(String, JSON::Any)) { fmt_runtime_snapshot(p) },
       "pack.loaded"               => ->(p : Hash(String, JSON::Any)) { fmt_pack_loaded(p) },
     } of String => Proc(Hash(String, JSON::Any), String)
 
