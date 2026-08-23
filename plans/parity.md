@@ -41,8 +41,8 @@ SKILL=/Users/dominic/.agents/skills/cross-language-crystal-parity
 ```
 
 Current state: all three checks pass against v1.10.0 — 1,210 source symbols,
-42 tests, and 1,210 ledger entries. The ledger contains 505 `ported` and 40
-`intentional_divergence` entries; its 665 `missing` entries are all
+42 tests, and 1,210 ledger entries. The ledger contains 593 `ported` and 41
+`intentional_divergence` entries; its 576 `missing` entries are all
 auto-generated discovery coverage, not a curated work queue. `plan_with_chiasmus.sh`
 and `check_completion_gate.sh` need `chiasmus-plan`/`chiasmus-complete`, which
 are not released yet — treat their absence as a tooling gap, not a porting
@@ -475,11 +475,30 @@ sequence of future implementation phases.
    decoding without requiring a locally provisioned graph engine. Crystal has
    no embedded FalkorDB equivalent, so unlike upstream's optional
    `falkordblite` fallback this backend requires an explicit server URL.
+5. [ ] **FalkorDB live-server conformance and secure parameter binding** — run
+   the complete `GraphStoreConformance` suite and physical-layout checks against
+   a reproducible FalkorDB server, including URL credentials. Replace the
+   current escaped-literal Cypher construction with FalkorDB query parameters
+   so all object ids, types, and JSON remain out of the Cypher text. This phase
+   closes the only unverified graph-backend integration; it does not add an
+   embedded database fallback.
+6. [ ] **Prometheus HTTP scrape endpoint** — host the existing deterministic
+   Prometheus text renderer behind a bounded HTTP endpoint with lifecycle,
+   content-type, and error-path tests. This is a deployable operator surface,
+   distinct from metrics collection and from OTel export.
+7. [ ] **OpenTelemetry SDK export adapter** — add an optional OTel boundary
+   that maps Chronicle metrics and trace context to the SDK, with disabled/no-op
+   behavior, batching/shutdown, and redaction tests. It must not change the
+   durable event-log contract or make the core depend on network I/O.
+8. [ ] **Interactive quickstart command** — turn the existing fixture-mode
+   quickstart into an operator-facing interactive CLI flow with input handling,
+   cancellation, deterministic transcript fixtures, and no provider calls in
+   the default demo path. This is separate from CLI trace/diff rendering.
 
-The following are not pending core parity phases: retention/compaction,
-migration, and Prometheus text exposition are complete; the Prometheus HTTP
-endpoint, interactive quickstart, and OTel SDK adapter are host/application
-integration work and remain intentional platform boundaries.
+The core ActiveGraph port is complete. The remaining phases are intentionally
+separate host-integration deliveries, each with its own optional dependency and
+runtime boundary. Direct Anthropic/OpenAI client classes remain out of scope:
+the `ModelExecutor`/Crig provider seam is the supported integration point.
 
 ---
 
@@ -577,8 +596,10 @@ From `plans/generated/parity/python/parity.tsv`:
       Memory + SQLite backends — `spec/chronicle/event_store_conformance.cr`
 - [x] Store URL parsing — `Chronicle.parse_store_url`/`StoreURL`/`InvalidStoreURL`
       (sqlite:///, sqlite:////, postgres://, postgresql://) — `spec/chronicle/store_url_spec.cr`
-- [ ] Postgres event store — next delivery phase 2 (needs `pg` shard + a
-      disposable live server; the `EventStore` protocol is the path for adding it)
+- [x] PostgreSQL event store — `Chronicle::PostgresEventStore` uses the direct
+      `pg` shard, supports URL dispatch and transactional forks, and passes the
+      reusable conformance suite against a disposable PostgreSQL 16 server —
+      `spec/chronicle/postgres_event_store_spec.cr`.
 - [x] Retention/compaction (`store/retention.py`) — complete; see the
       `Retention / compaction` feature record above for snapshot, archive-tier,
       integrity, and load/replay coverage.
@@ -798,7 +819,8 @@ From `parity.tsv` (`missing_contains` on Runtime):
       before insert to dodge
       `database is locked`. Ported from test_fork / `SQLiteEventStore.fork_run` —
       `spec/chronicle/fork_spec.cr`. Divergence: `Runtime.load` takes a
-      `Crig::Agent(M)`/`max_turns` (generic runtime); `save_state` still deferred.
+      `Crig::Agent(M)`/`max_turns` (generic runtime); `Runtime#save_state` is
+      implemented separately against the attached SQLite store.
 - [x] Schedule — `activate_after` delayed-queue scheduling — a behavior with
       `activate_after=N` emits `behavior.scheduled` and fires N events later
       (where= re-checked at fire time, CONTRACT v0.7 #13); `parse_activate_after`
@@ -1037,10 +1059,9 @@ From `parity.tsv` (`missing_contains` on Runtime):
       a SQLite store by bare path (v0.5-v0.7 sugar) or connection URL (v0.8,
       upstream `_open_sqlite_store`). A bare path is treated as a SQLite path
       directly; anything containing `://` is parsed with `parse_store_url`
-      and dispatched by scheme (`sqlite` → its resolved `sqlite_path`).
-      A postgres URL raises `IncompatibleRuntimeState` — the Postgres
-      backend is deferred (the `EventStore` protocol is the path for adding
-      it). Ported from activegraph runtime/runtime.py `_open_sqlite_store` +
+      and dispatched by scheme (`sqlite` → its resolved `sqlite_path`,
+      `postgres` → `Chronicle::PostgresEventStore`). Ported from activegraph
+      runtime/runtime.py `_open_sqlite_store` +
       store/url.py `open_store` — `spec/chronicle/open_sqlite_store_spec.cr`.
  - [x] `now_iso` / `monotonic` —
       `Chronicle::RuntimeReason.now_iso` (UTC ISO-8601 second-precision
@@ -1496,9 +1517,9 @@ globally (CONTRACT v0.9 #3).
 - [x] Sandbox executor protocol + conformance — `TRIAL_OUTCOMES`, the
       `TrialExecutor` protocol, the `RecordingTrialExecutor` double, and the
       reusable `TrialExecutorConformance` mixin (see the L-batch sandbox
-      row). `LocalSubprocessTrialExecutor` (`_child`, `executor`,
-      `conformance` subprocess runner) stays deferred at the platform edge
-      — `sandbox/*`
+      row). `LocalSubprocessTrialExecutor` now provides the platform-edge
+      `_child` / executor / conformance subprocess runner — `sandbox/*`,
+      `spec/chronicle/local_subprocess_trial_executor_spec.cr`.
 - [x] CONTRACT #18 trace line rendering — `Chronicle::Trace.format_event(event)`
       renders each event type as a CONTRACT #18 line: the `[tag]` column is
       left-aligned and padded to `TAG_COL = 26` (`format_tag`), with formatters
