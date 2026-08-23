@@ -4,10 +4,23 @@ module Chronicle
   # Sandbox trial execution value types (upstream activegraph/sandbox/executor.py
   # + __init__.py, CONTRACT v1.8 #9–#12): the provider-neutral trial
   # specification, isolation guarantees, budget/artifact/event-log/failure
-  # references, and the structured trial result with the legacy report lift.
-  # Sans-IO — these are pure value types (serialization + validation); the
-  # subprocess executor / child runner stay at the platform edge.
+  # references, the structured trial result with the legacy report lift, the
+  # `TrialExecutor` protocol, and the `RecordingTrialExecutor` test double.
+  # Sans-IO — these are pure value types (serialization + validation) and the
+  # protocol/double (no external execution); the LocalSubprocessTrialExecutor
+  # and the `_child` runner stay at the platform edge.
   module Sandbox
+    # The closed trial outcome set (upstream `TRIAL_OUTCOMES`): ``crashed`` is
+    # the implementation's one addition over the design draft — a child that
+    # dies without a parseable tail is reported as what it is.
+    TRIAL_OUTCOMES = [
+      "completed",
+      "scenario_failed",
+      "limits_exceeded",
+      "materialization_failed",
+      "crashed",
+    ]
+
     # Where the child materializes the candidate pack from.
     struct PackSource
       include JSON::Serializable
@@ -186,6 +199,32 @@ module Chronicle
 
         value
       end
+
+      # Value equality over the specification fields (upstream dataclass
+      # equality). Two specifications are equal iff every field matches.
+      def ==(other : TrialSpecification) : Bool
+        store_path == other.store_path &&
+          parent_run_id == other.parent_run_id &&
+          at_event == other.at_event &&
+          pack_source == other.pack_source &&
+          scenario == other.scenario &&
+          limits == other.limits &&
+          label == other.label &&
+          extra_packs == other.extra_packs &&
+          schema_version == other.schema_version
+      end
+
+      def hash(hasher)
+        hasher = hasher.combine(store_path.hash)
+        hasher = hasher.combine(parent_run_id.hash)
+        hasher = hasher.combine(at_event.hash)
+        hasher = hasher.combine(pack_source.hash)
+        hasher = hasher.combine(scenario.hash)
+        hasher = hasher.combine(limits.hash)
+        hasher = hasher.combine(label.hash)
+        hasher = hasher.combine(extra_packs.hash)
+        hasher.combine(schema_version.hash)
+      end
     end
 
     # Store-authoritative work counts plus the requested limit set.
@@ -288,6 +327,91 @@ module Chronicle
           exit_code: exit_code,
           warnings: warnings,
         )
+      end
+
+      # Value equality over the result fields (upstream dataclass equality).
+      def ==(other : TrialResult) : Bool
+        status == other.status &&
+          budget_use == other.budget_use &&
+          artifacts == other.artifacts &&
+          event_log == other.event_log &&
+          failure == other.failure &&
+          isolation == other.isolation &&
+          detail == other.detail &&
+          exit_code == other.exit_code &&
+          warnings == other.warnings
+      end
+
+      def hash(hasher)
+        hasher = hasher.combine(status.hash)
+        hasher = hasher.combine(budget_use.hash)
+        hasher = hasher.combine(artifacts.hash)
+        hasher = hasher.combine(event_log.hash)
+        hasher = hasher.combine(failure.hash)
+        hasher = hasher.combine(isolation.hash)
+        hasher = hasher.combine(detail.hash)
+        hasher = hasher.combine(exit_code.hash)
+        hasher.combine(warnings.hash)
+      end
+    end
+
+    # Provider-neutral trial execution interface (upstream `TrialExecutor`,
+    # CONTRACT v1.8 #11): execute a serialized trial behind declared isolation
+    # guarantees. Executors are adapters — the local subprocess adapter stays
+    # at the platform edge; `RecordingTrialExecutor` is the deterministic
+    # Sans-IO double.
+    abstract class TrialExecutor
+      # Return the adapter's honest host/process isolation claims.
+      abstract def isolation_guarantees : TrialIsolationGuarantees
+
+      # Execute one validated serialized specification.
+      abstract def execute(serialized_specification : String) : TrialResult
+    end
+
+    # Deterministic executor double that records specs and returns fixtures
+    # (upstream `RecordingTrialExecutor`): validates each serialized
+    # specification, records it (parsed + raw), and returns the next fixture
+    # result in order. Raising when the fixtures are exhausted mirrors
+    # upstream's `RuntimeError("RecordingTrialExecutor has no result
+    # remaining")`.
+    class RecordingTrialExecutor < TrialExecutor
+      getter serialized_specifications : Array(String)
+      getter specifications : Array(TrialSpecification)
+
+      @results : Deque(TrialResult)
+      @isolation : TrialIsolationGuarantees
+
+      def initialize(
+        results : Array(TrialResult),
+        *,
+        isolation_guarantees : TrialIsolationGuarantees? = nil,
+      )
+        @results = Deque.new(results)
+        @isolation = isolation_guarantees || TrialIsolationGuarantees.new(
+          process: "none_test_double",
+          filesystem: "none",
+          network: "none",
+          syscalls: "none",
+          environment: "none",
+          security_sandbox: false,
+          notes: ["records calls only; executes no candidate code"],
+        )
+        @serialized_specifications = [] of String
+        @specifications = [] of TrialSpecification
+      end
+
+      def isolation_guarantees : TrialIsolationGuarantees
+        @isolation
+      end
+
+      def execute(serialized_specification : String) : TrialResult
+        specification = TrialSpecification.from_json(serialized_specification)
+        @serialized_specifications << serialized_specification
+        @specifications << specification
+        if @results.empty?
+          raise RuntimeError.new("RecordingTrialExecutor has no result remaining")
+        end
+        @results.shift
       end
     end
   end
