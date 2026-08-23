@@ -986,31 +986,31 @@ store/errors.py::class::CorruptedEventPayloadError	class	ported	spec/chronicle/s
 store/errors.py::class::DuplicateEventError	class	missing	-	auto-generated
 store/errors.py::class::EventNotFoundError	class	missing	-	auto-generated
 store/errors.py::class::SchemaVersionMismatch	class	missing	-	auto-generated
-store/falkordb.py::class::FalkorDBGraphStore	class	missing	-	auto-generated
-store/falkordb.py::function::_require_falkordb_client	function	missing	-	auto-generated
-store/falkordb.py::function::_require_falkordblite	function	missing	-	auto-generated
-store/falkordb.py::function::_resolve_connection	function	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.__init__	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore._ensure_indexes	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.all_objects	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.all_patches	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.all_relations	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.clear	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.close	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.find_objects	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.find_objects_in_types	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.find_relations	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.get_object	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.get_patch	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.get_relation	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.match_chain	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.neighborhood	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.put_object	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.put_patch	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.put_relation	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.remove_object	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.remove_patch	method	missing	-	auto-generated
-store/falkordb.py::method::FalkorDBGraphStore.remove_relation	method	missing	-	auto-generated
+store/falkordb.py::class::FalkorDBGraphStore	class	ported	spec/chronicle/falkordb_graph_store_spec.cr	Chronicle::FalkorDBGraphStore with server-configured RESP client
+store/falkordb.py::function::_require_falkordb_client	function	ported	spec/chronicle/falkordb_graph_store_spec.cr	Dependency-free Chronicle::FalkorDBClient
+store/falkordb.py::function::_require_falkordblite	function	intentional_divergence	spec/chronicle/falkordb_graph_store_spec.cr	No Crystal embedded FalkorDB equivalent; explicit FALKORDB_URL is required
+store/falkordb.py::function::_resolve_connection	function	ported	spec/chronicle/falkordb_graph_store_spec.cr	FalkorDBGraphStore URL plus optional credentials configuration
+store/falkordb.py::method::FalkorDBGraphStore.__init__	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Server URL, graph name, credentials, index initialization
+store/falkordb.py::method::FalkorDBGraphStore._ensure_indexes	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	AGNode/object/relation/patch Cypher indexes
+store/falkordb.py::method::FalkorDBGraphStore.all_objects	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Cypher AGObject enumeration
+store/falkordb.py::method::FalkorDBGraphStore.all_patches	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Cypher AGPatch enumeration
+store/falkordb.py::method::FalkorDBGraphStore.all_relations	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Cypher native-edge enumeration
+store/falkordb.py::method::FalkorDBGraphStore.clear	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	DETACH DELETE graph projection
+store/falkordb.py::method::FalkorDBGraphStore.close	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	RESP socket lifecycle
+store/falkordb.py::method::FalkorDBGraphStore.find_objects	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Cypher object-type filter
+store/falkordb.py::method::FalkorDBGraphStore.find_objects_in_types	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Cypher IN type filter
+store/falkordb.py::method::FalkorDBGraphStore.find_relations	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Cypher source/target/type AND filter
+store/falkordb.py::method::FalkorDBGraphStore.get_object	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Cypher object lookup
+store/falkordb.py::method::FalkorDBGraphStore.get_patch	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Cypher patch lookup
+store/falkordb.py::method::FalkorDBGraphStore.get_relation	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Cypher native-edge lookup
+store/falkordb.py::method::FalkorDBGraphStore.match_chain	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Single Cypher linear-chain match
+store/falkordb.py::method::FalkorDBGraphStore.neighborhood	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Variable-length Cypher traversal
+store/falkordb.py::method::FalkorDBGraphStore.put_object	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Placeholder promotion via AGNode MERGE
+store/falkordb.py::method::FalkorDBGraphStore.put_patch	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	AGPatch MERGE
+store/falkordb.py::method::FalkorDBGraphStore.put_relation	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Native edge MERGE with placeholder endpoints
+store/falkordb.py::method::FalkorDBGraphStore.remove_object	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Demote referenced object to placeholder
+store/falkordb.py::method::FalkorDBGraphStore.remove_patch	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	AGPatch delete
+store/falkordb.py::method::FalkorDBGraphStore.remove_relation	method	ported	spec/chronicle/falkordb_graph_store_spec.cr	Native edge delete and orphan placeholder cleanup
 store/graph_conformance.py::class::GraphStoreConformance	class	ported	spec/chronicle/graph_store_conformance.cr	Reusable Crystal macro conformance contract
 store/graph_conformance.py::method::GraphStoreConformance._chain_ids	method	ported	spec/chronicle/graph_store_conformance.cr	GraphStoreConformanceFixture.chain_ids
 store/graph_conformance.py::method::GraphStoreConformance._obj	method	ported	spec/chronicle/graph_store_conformance.cr	GraphStoreConformanceFixture.obj

@@ -464,10 +464,17 @@ sequence of future implementation phases.
    namespace-isolation coverage, runs against the disposable PostgreSQL 16
    cluster when `CHRONICLE_POSTGRES_URL` is set. It is deliberately separate
    from the FalkorDB delivery.
-4. [ ] **FalkorDB graph-store backend and query pushdown** — add the FalkorDB
-   adapter, connection/configuration seam, and Cypher pushdown with the same
-   graph-store conformance coverage. It is independently releasable from the
-   Postgres backend.
+4. [x] **FalkorDB graph-store backend and query pushdown** — **done**:
+   `FalkorDBGraphStore` owns a small dependency-free RESP client and a
+   server-configured Cypher adapter. It stores materialized objects as
+   `:AGNode:AGObject`, relations as native `:AGRelation` edges, and dangling
+   endpoints as placeholders; object/relation filters, neighborhoods, and
+   linear-chain matching are pushed into Cypher. The `FALKORDB_URL` integration
+   target runs the entire reusable `GraphStoreConformance` suite against an
+   actual FalkorDB server, while the default suite exercises compact RESP
+   decoding without requiring a locally provisioned graph engine. Crystal has
+   no embedded FalkorDB equivalent, so unlike upstream's optional
+   `falkordblite` fallback this backend requires an explicit server URL.
 
 The following are not pending core parity phases: retention/compaction,
 migration, and Prometheus text exposition are complete; the Prometheus HTTP
@@ -1550,8 +1557,12 @@ globally (CONTRACT v0.9 #3).
       `spec/chronicle/postgres_graph_store_spec.cr`. This is a Chronicle
       backend extension after upstream's PostgreSQL event-store seam; it does
       not claim a nonexistent upstream Postgres graph-store class.
-- [ ] FalkorDB graph-store backend and query pushdown — next delivery phase 4;
-      `store/falkordb.py`, independently conformance-tested.
+- [x] FalkorDB-backed `GraphStore` — `Chronicle::FalkorDBGraphStore` uses
+      native Cypher nodes/edges and safe escaped literals over a small RESP
+      client, with the full conformance target enabled by `FALKORDB_URL` —
+      `spec/chronicle/falkordb_graph_store_spec.cr`. Intentional divergence:
+      server configuration is required because Crystal has no `falkordblite`
+      equivalent.
 
 ---
 

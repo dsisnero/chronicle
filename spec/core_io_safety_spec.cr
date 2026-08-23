@@ -26,6 +26,7 @@ describe "core I/O safety" do
       "platform_edge.cr", "routing_config.cr", "cli.cr", "session_store.cr",
       "config.cr", "packs/prompt.cr", "packs/manifest.cr", "packs/scaffold.cr",
       "llm_recorded.cr", "tool_recorded.cr", "sandbox.cr",
+      "falkordb_graph_store.cr",
     }
 
     core_paths = Dir.glob("src/chronicle/**/*.cr").reject do |path|
