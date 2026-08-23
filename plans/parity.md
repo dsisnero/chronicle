@@ -455,10 +455,15 @@ sequence of future implementation phases.
    against a disposable PostgreSQL 16 cluster when `CHRONICLE_POSTGRES_URL` is
    set; the full suite ran with that integration URL (1,128 examples green).
    This feature owns the `pg` shard; it does not add graph-query pushdown.
-3. [ ] **Postgres graph-store backend and query pushdown** — add a separate
-   `GraphStore` implementation for Postgres and push down the query operations
-   already covered by `GraphStoreConformance`. It depends on phase 2 and must
-   pass the full graph-store conformance suite; do not combine it with FalkorDB.
+3. [x] **Postgres graph-store backend and query pushdown** — **done**:
+   `PostgresGraphStore` keeps the recoverable graph projection in a namespaced
+   PostgreSQL schema. It preserves raw entity JSON beside JSONB and pushes
+   object-type, multi-type, relation-filter, and breadth-first neighborhood
+   queries down to indexed SQL; `match_chain` composes those pushed-down hooks.
+   The complete reusable `GraphStoreConformance` suite (22 examples), plus
+   namespace-isolation coverage, runs against the disposable PostgreSQL 16
+   cluster when `CHRONICLE_POSTGRES_URL` is set. It is deliberately separate
+   from the FalkorDB delivery.
 4. [ ] **FalkorDB graph-store backend and query pushdown** — add the FalkorDB
    adapter, connection/configuration seam, and Cypher pushdown with the same
    graph-store conformance coverage. It is independently releasable from the
@@ -1539,8 +1544,12 @@ globally (CONTRACT v0.9 #3).
       `spec/chronicle/graph_store_sqlite_spec.cr`
 - [x] `graph_store=` injection seam — `GraphProjection.new(store:)` already
       accepts any `GraphStore`.
-- [ ] Postgres graph-store backend and query pushdown — next delivery phase 3;
-      `store/postgres.py`, after the Postgres event-store backend is green.
+- [x] PostgreSQL-backed `GraphStore` — `Chronicle::PostgresGraphStore` stores
+      namespaced JSONB/raw-JSON entities, pushes down filter and neighborhood
+      queries, and passes the full conformance suite —
+      `spec/chronicle/postgres_graph_store_spec.cr`. This is a Chronicle
+      backend extension after upstream's PostgreSQL event-store seam; it does
+      not claim a nonexistent upstream Postgres graph-store class.
 - [ ] FalkorDB graph-store backend and query pushdown — next delivery phase 4;
       `store/falkordb.py`, independently conformance-tested.
 

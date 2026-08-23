@@ -1011,14 +1011,14 @@ store/falkordb.py::method::FalkorDBGraphStore.put_relation	method	missing	-	auto
 store/falkordb.py::method::FalkorDBGraphStore.remove_object	method	missing	-	auto-generated
 store/falkordb.py::method::FalkorDBGraphStore.remove_patch	method	missing	-	auto-generated
 store/falkordb.py::method::FalkorDBGraphStore.remove_relation	method	missing	-	auto-generated
-store/graph_conformance.py::class::GraphStoreConformance	class	missing	-	auto-generated
-store/graph_conformance.py::method::GraphStoreConformance._chain_ids	method	missing	-	auto-generated
-store/graph_conformance.py::method::GraphStoreConformance._obj	method	missing	-	auto-generated
-store/graph_conformance.py::method::GraphStoreConformance._patch	method	missing	-	auto-generated
-store/graph_conformance.py::method::GraphStoreConformance._rel	method	missing	-	auto-generated
-store/graph_conformance.py::method::GraphStoreConformance.cleanup	method	missing	-	auto-generated
-store/graph_conformance.py::method::GraphStoreConformance.ids	method	missing	-	auto-generated
-store/graph_conformance.py::method::GraphStoreConformance.make_store	method	missing	-	auto-generated
+store/graph_conformance.py::class::GraphStoreConformance	class	ported	spec/chronicle/graph_store_conformance.cr	Reusable Crystal macro conformance contract
+store/graph_conformance.py::method::GraphStoreConformance._chain_ids	method	ported	spec/chronicle/graph_store_conformance.cr	GraphStoreConformanceFixture.chain_ids
+store/graph_conformance.py::method::GraphStoreConformance._obj	method	ported	spec/chronicle/graph_store_conformance.cr	GraphStoreConformanceFixture.obj
+store/graph_conformance.py::method::GraphStoreConformance._patch	method	ported	spec/chronicle/graph_store_conformance.cr	GraphStoreConformanceFixture.patch
+store/graph_conformance.py::method::GraphStoreConformance._rel	method	ported	spec/chronicle/graph_store_conformance.cr	GraphStoreConformanceFixture.rel
+store/graph_conformance.py::method::GraphStoreConformance.cleanup	method	ported	spec/chronicle/graph_store_conformance.cr	Fresh backend factory and per-example cleanup
+store/graph_conformance.py::method::GraphStoreConformance.ids	method	ported	spec/chronicle/graph_store_conformance.cr	GraphStoreConformanceFixture.chain_ids
+store/graph_conformance.py::method::GraphStoreConformance.make_store	method	ported	spec/chronicle/graph_store_conformance.cr	GraphStoreConformance.define_tests factory expression
 store/memory.py::class::InMemoryEventStore	class	missing	-	auto-generated
 store/memory.py::function::_event_not_found	function	missing	-	auto-generated
 store/memory.py::method::InMemoryEventStore.__init__	method	missing	-	auto-generated
