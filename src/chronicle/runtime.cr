@@ -1664,6 +1664,7 @@ module Chronicle
       run_id : String,
       agent : Crig::Agent(M),
       *,
+      budget : Budget = Budget.new(max_events: 1000),
       max_turns : Int32 = 1,
       llm_retry_max_attempts : Int32 = 3,
       llm_retry_initial_delay_seconds : Float64 = 0.5,
@@ -1688,7 +1689,7 @@ module Chronicle
       log = LogAgent(M).new(agent, store: store, max_turns: max_turns)
       embedding_cache = replay_embedding_cache ? EmbeddingCache.from_events(events) : nil
       runtime = Runtime(M).new(
-        store: store, log_agent: log, graph: graph, run_id: run_id,
+        store: store, log_agent: log, graph: graph, run_id: run_id, budget: budget,
         llm_retry_max_attempts: llm_retry_max_attempts,
         llm_retry_initial_delay_seconds: llm_retry_initial_delay_seconds,
         llm_retry_max_delay_seconds: llm_retry_max_delay_seconds,

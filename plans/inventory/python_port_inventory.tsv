@@ -837,28 +837,28 @@ sandbox/__init__.py::class::SandboxStartupError	class	missing	-	auto-generated
 sandbox/__init__.py::class::TrialLimits	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialLimits (wall_clock/max_rss_bytes/max_events/max_llm_calls/env_passthrough; max_llm_calls=0 is structural key-freedom)
 sandbox/__init__.py::class::TrialReport	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialReport (outcome/fork_run_id/events_appended/behavior_failures/detail/exit_code/warnings)
 sandbox/__init__.py::const::TRIAL_OUTCOMES	const	ported	spec/chronicle/trial_executor_spec.cr	Chronicle::Sandbox::TRIAL_OUTCOMES (closed five-outcome set); conformance checks result.status membership
-sandbox/__init__.py::function::_child_code_paths	function	missing	-	auto-generated
-sandbox/__init__.py::function::_child_env	function	missing	-	auto-generated
-sandbox/__init__.py::function::_limits_job_block	function	missing	-	auto-generated
-sandbox/__init__.py::function::_parse_report_tail	function	missing	-	auto-generated
-sandbox/__init__.py::function::_preflight_with	function	missing	-	auto-generated
-sandbox/__init__.py::function::_run_child	function	missing	-	auto-generated
-sandbox/__init__.py::function::_run_forked_trial_local	function	missing	-	auto-generated
-sandbox/__init__.py::function::_stderr_tail	function	missing	-	auto-generated
-sandbox/__init__.py::function::preflight	function	missing	-	auto-generated
-sandbox/__init__.py::function::run_forked_trial	function	missing	-	auto-generated
-sandbox/_child.py::function::_apply_rlimits	function	missing	-	auto-generated
-sandbox/_child.py::function::_cap	function	missing	-	auto-generated
-sandbox/_child.py::function::_materialize_pack	function	missing	-	auto-generated
-sandbox/_child.py::function::_mem_off	function	missing	-	auto-generated
-sandbox/_child.py::function::_report	function	missing	-	auto-generated
-sandbox/_child.py::function::_resolve_scenario	function	missing	-	auto-generated
-sandbox/_child.py::function::counts	function	missing	-	auto-generated
-sandbox/_child.py::function::main	function	missing	-	auto-generated
+sandbox/__init__.py::function::_child_code_paths	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	LocalSubprocessTrialExecutor#child_env supplies fixed candidate/repo Crystal code paths
+sandbox/__init__.py::function::_child_env	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	LocalSubprocessTrialExecutor#child_env closed allowlist plus explicit passthrough
+sandbox/__init__.py::function::_limits_job_block	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	LocalSubprocessTrialExecutor#child_job serializes event/LLM/wall-clock limits
+sandbox/__init__.py::function::_parse_report_tail	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	Parent derives authoritative counts/status directly from forked SQLite store
+sandbox/__init__.py::function::_preflight_with	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	LocalSubprocessTrialExecutor#preflight invokes Crystal compiler capability check
+sandbox/__init__.py::function::_run_child	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	LocalSubprocessTrialExecutor#run_child process/timeout adapter
+sandbox/__init__.py::function::_run_forked_trial_local	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	LocalSubprocessTrialExecutor#execute forks then runs generated child
+sandbox/__init__.py::function::_stderr_tail	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	Child stdout/stderr detail is captured for terminal result
+sandbox/__init__.py::function::preflight	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	LocalSubprocessTrialExecutor#preflight
+sandbox/__init__.py::function::run_forked_trial	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	TrialExecutor#execute is the Crystal execution seam
+sandbox/_child.py::function::_apply_rlimits	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	Parent wall-clock cap; RSS degradation is explicit in preflight
+sandbox/_child.py::function::_cap	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	Generated child decodes optional JSON budget caps
+sandbox/_child.py::function::_materialize_pack	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	Generated child requires pinned entrypoint and loads CandidatePack::PACK
+sandbox/_child.py::function::_mem_off	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	RSS cap unavailable is reported, never silently enforced
+sandbox/_child.py::function::_report	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	TrialReport is built from parent/store outcome
+sandbox/_child.py::function::_resolve_scenario	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	LocalSubprocessTrialExecutor#resolve_scenario_path constrains scenario below root
+sandbox/_child.py::function::counts	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	LocalSubprocessTrialExecutor#report_for uses fork store authoritative counts
+sandbox/_child.py::function::main	function	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	LocalSubprocessTrialExecutor#child_runner_source generated main
 sandbox/conformance.py::class::TrialExecutorConformance	class	ported	spec/chronicle/trial_executor_spec.cr	Chronicle::Sandbox::TrialExecutorConformance (reusable define_tests mixin, spec/chronicle/trial_executor_conformance.cr)
 sandbox/conformance.py::method::TrialExecutorConformance.make_executor	method	ported	spec/chronicle/trial_executor_spec.cr	define_tests executor_factory expression (macro arg, not a method)
 sandbox/conformance.py::method::TrialExecutorConformance.make_serialized_specification	method	ported	spec/chronicle/trial_executor_spec.cr	define_tests specification_factory expression (macro arg, not a method)
-sandbox/executor.py::class::LocalSubprocessTrialExecutor	class	missing	-	auto-generated
+sandbox/executor.py::class::LocalSubprocessTrialExecutor	class	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	Chronicle::Sandbox::LocalSubprocessTrialExecutor source-pack child adapter
 sandbox/executor.py::class::RecordingTrialExecutor	class	ported	spec/chronicle/trial_executor_spec.cr	Chronicle::Sandbox::RecordingTrialExecutor < TrialExecutor (records parsed + serialized specs; pops fixtures in order; RuntimeError when exhausted)
 sandbox/executor.py::class::TrialArtifactReference	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialArtifactReference (name/uri/media_type/digest)
 sandbox/executor.py::class::TrialBudgetUse	class	ported	spec/chronicle/sandbox_spec.cr	Chronicle::Sandbox::TrialBudgetUse (events_appended/behavior_failures/limits)
@@ -874,8 +874,8 @@ sandbox/executor.py::function::_pack_source_payload	function	missing	-	auto-gene
 sandbox/executor.py::function::_parse_limits	function	missing	-	auto-generated
 sandbox/executor.py::function::_parse_pack_source	function	missing	-	auto-generated
 sandbox/executor.py::function::_required_string	function	missing	-	auto-generated
-sandbox/executor.py::method::LocalSubprocessTrialExecutor.execute	method	missing	-	auto-generated
-sandbox/executor.py::method::LocalSubprocessTrialExecutor.isolation_guarantees	method	missing	-	auto-generated
+sandbox/executor.py::method::LocalSubprocessTrialExecutor.execute	method	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	fork/materialize/run/timeout/store-authoritative result
+sandbox/executor.py::method::LocalSubprocessTrialExecutor.isolation_guarantees	method	ported	spec/chronicle/local_subprocess_trial_executor_spec.cr	LOCAL_SUBPROCESS_ISOLATION
 sandbox/executor.py::method::RecordingTrialExecutor.__init__	method	ported	spec/chronicle/trial_executor_spec.cr	RecordingTrialExecutor#initialize(results, isolation_guarantees: nil) defaults to the none-test-double isolation posture
 sandbox/executor.py::method::RecordingTrialExecutor.execute	method	ported	spec/chronicle/trial_executor_spec.cr	RecordingTrialExecutor#execute validates via TrialSpecification.from_json before recording; raises ArgumentError on malformed
 sandbox/executor.py::method::RecordingTrialExecutor.isolation_guarantees	method	ported	spec/chronicle/trial_executor_spec.cr	RecordingTrialExecutor#isolation_guarantees (injected or none_test_double default)

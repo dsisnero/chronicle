@@ -368,6 +368,192 @@ module Chronicle
       abstract def execute(serialized_specification : String) : TrialResult
     end
 
+    # Local adapter for the selected Crystal source-pack ABI. Candidate code is
+    # compiled only from `PackSource#root_dir/entrypoint.cr`; the later child
+    # runner never searches ambient load paths for a pack entrypoint.
+    class LocalSubprocessTrialExecutor < TrialExecutor
+      def isolation_guarantees : TrialIsolationGuarantees
+        LOCAL_SUBPROCESS_ISOLATION
+      end
+
+      def entrypoint_path(source : PackSource) : String
+        File.join(source.root_dir, "entrypoint.cr")
+      end
+
+      # Verify that the host can start the selected Crystal toolchain. Memory
+      # caps need a platform-specific rlimit adapter, so a requested cap is
+      # reported instead of being silently claimed.
+      def preflight(limits : TrialLimits = TrialLimits.new) : Array(String)
+        output = IO::Memory.new
+        status = Process.run("crystal", ["--version"], output: output, error: Process::Redirect::Inherit)
+        raise RuntimeError.new("Crystal compiler preflight failed") unless status.success?
+
+        warnings = [] of String
+        if limits.max_rss_bytes
+          warnings << "max_rss_bytes is not enforced by the local Crystal subprocess executor on this host"
+        end
+        warnings
+      end
+
+      def execute(serialized_specification : String) : TrialResult
+        specification = TrialSpecification.from_json(serialized_specification)
+        source = specification.pack_source
+        root = File.expand_path(source.root_dir)
+        run_id = IDGen.new.run
+        SQLiteEventStore.fork_run(
+          path: specification.store_path, parent_run_id: specification.parent_run_id,
+          new_run_id: run_id, at_event_id: specification.at_event, label: specification.label,
+          created_at: Time.utc.to_rfc3339,
+        )
+        fork_store = SQLiteEventStore.new(specification.store_path, run_id: run_id)
+        initial_events = fork_store.count
+        runner = File.join(Dir.tempdir, "chronicle-trial-#{run_id}.cr")
+        executable = File.join(Dir.tempdir, "chronicle-trial-#{run_id}")
+        warnings = preflight(specification.limits)
+        report = run_forked_trial(specification, source, root, run_id, fork_store, initial_events, runner, executable, warnings)
+        TrialResult.from_report(report, specification: specification, isolation: isolation_guarantees)
+      ensure
+        File.delete(runner) if runner && File.exists?(runner)
+        File.delete(executable) if executable && File.exists?(executable)
+      end
+
+      private def run_forked_trial(specification : TrialSpecification, source : PackSource, root : String, run_id : String, fork_store : SQLiteEventStore, initial_events : Int64, runner : String, executable : String, warnings : Array(String)) : TrialReport
+        entrypoint = entrypoint_path(PackSource.new(root, source.expected_bundle_hash, source.manifest_required?))
+        raise ArgumentError.new("trial candidate entrypoint is missing: #{entrypoint}") unless File.file?(entrypoint)
+        Packs.verify_bundle_hash(source.expected_bundle_hash, root) unless source.expected_bundle_hash.empty?
+        scenario_path = resolve_scenario_path(root, specification.scenario)
+        raise ArgumentError.new("extra_packs are not supported by the Crystal source-pack ABI") unless specification.extra_packs.empty?
+        File.write(runner, child_runner_source(scenario_path))
+        env = child_env(root, specification.limits)
+        compile_status, compile_output, compile_error = compile_child(runner, executable, env)
+        return compilation_failure(specification, run_id, fork_store, initial_events, compile_status, compile_output, compile_error, warnings) unless compile_status.success?
+
+        status, output, error, timed_out = run_child(executable, child_job(specification, run_id, root), env, specification.limits.wall_clock_seconds)
+        report_child_status(specification, run_id, fork_store, initial_events, status, output, error, timed_out, warnings)
+      rescue ex : ArgumentError | Packs::PackManifestError
+        report_for(specification, run_id, fork_store, initial_events, "materialization_failed", ex.message || ex.class.name, nil, warnings)
+      end
+
+      private def compilation_failure(specification : TrialSpecification, run_id : String, store : SQLiteEventStore, initial_events : Int64, status : Process::Status, output : String, error : String, warnings : Array(String)) : TrialReport
+        detail = output.strip
+        detail = error.strip if detail.empty?
+        report_for(specification, run_id, store, initial_events, "materialization_failed", detail, status.exit_code?, warnings)
+      end
+
+      private def report_child_status(specification : TrialSpecification, run_id : String, store : SQLiteEventStore, initial_events : Int64, status : Process::Status, output : String, error : String, timed_out : Bool, warnings : Array(String)) : TrialReport
+        detail = output.strip
+        detail = error.strip if detail.empty?
+        outcome = timed_out ? "limits_exceeded" : status.success? ? "completed" : "scenario_failed"
+        detail = "wall-clock limit of #{specification.limits.wall_clock_seconds}s exceeded" if timed_out
+        report_for(specification, run_id, store, initial_events, outcome, detail, status.exit_code?, warnings)
+      end
+
+      private def resolve_scenario_path(root : String, scenario : String) : String?
+        return nil if scenario.empty?
+        path = File.expand_path(scenario, root)
+        unless path.starts_with?(root + "/") && File.file?(path)
+          raise ArgumentError.new("trial scenario must be a file beneath the candidate root: #{scenario.inspect}")
+        end
+        path
+      end
+
+      private def child_runner_source(scenario : String?) : String
+        scenario_require = scenario ? "require #{File.basename(scenario).to_json}\n" : ""
+        scenario_run = scenario ? "Chronicle::Sandbox::Scenario.run(runtime)" : "runtime.run_until_idle"
+        <<-CRYSTAL
+        require "chronicle"
+        require "entrypoint"
+        #{scenario_require}
+        class ChronicleTrialModel
+          include Crig::Completion::CompletionModel
+          def completion(request : Crig::Completion::Request::CompletionRequest) : Crig::Completion::CompletionResponse(String); raise "trial has no model provider"; end
+          def stream(request : Crig::Completion::Request::CompletionRequest) : Nil; raise "trial has no model provider"; end
+          def completion_request(prompt : Crig::Completion::Message | String) : Crig::Completion::Request::CompletionRequestBuilder; Crig::Completion::Request::CompletionRequestBuilder.new(prompt); end
+        end
+        job = JSON.parse(STDIN.gets_to_end).as_h
+        limits = {} of String => Float64 | String
+        if value = job["max_events"]?
+          limits["max_events"] = value.as_i.to_f
+        end
+        if value = job["max_llm_calls"]?
+          limits["max_llm_calls"] = value.as_i.to_f
+        end
+        if value = job["wall_clock_seconds"]?
+          limits["max_seconds"] = value.as_f
+        end
+        agent = Crig::Agent(ChronicleTrialModel).new(model: ChronicleTrialModel.new, preamble: "")
+        runtime = Chronicle::Runtime(ChronicleTrialModel).load(job["store_path"].as_s, job["run_id"].as_s, agent, budget: Chronicle::Budget.new(limits: limits))
+        runtime.load_pack(Chronicle::Sandbox::CandidatePack::PACK, manifest_path: job["manifest_path"]?.try(&.as_s?))
+        #{scenario_run}
+        CRYSTAL
+      end
+
+      private def child_job(specification : TrialSpecification, run_id : String, root : String) : String
+        JSON.build do |json|
+          json.object do
+            json.field "store_path", specification.store_path
+            json.field "run_id", run_id
+            json.field "manifest_path", specification.pack_source.manifest_required? ? File.join(root, "manifest.toml") : nil
+            json.field "max_events", specification.limits.max_events
+            json.field "max_llm_calls", specification.limits.max_llm_calls
+            json.field "wall_clock_seconds", specification.limits.wall_clock_seconds
+          end
+        end
+      end
+
+      private def child_env(root : String, limits : TrialLimits) : Hash(String, String)
+        env = {} of String => String
+        {"PATH", "HOME", "LANG"}.each { |name| env[name] = ENV[name] if ENV[name]? }
+        limits.env_passthrough.each { |name| env[name] = ENV[name] if ENV[name]? }
+        env["CRYSTAL_PATH"] = "#{root}:#{File.expand_path("src")}:#{crystal_path}"
+        env["CRYSTAL_CACHE_DIR"] = ENV["CRYSTAL_CACHE_DIR"]? || File.join(Dir.tempdir, "chronicle-crystal-cache")
+        env["TMPDIR"] = ENV["TMPDIR"]? || Dir.tempdir
+        env
+      end
+
+      private def compile_child(runner : String, executable : String, env : Hash(String, String)) : Tuple(Process::Status, String, String)
+        output = IO::Memory.new
+        error = IO::Memory.new
+        status = Process.run("crystal", ["build", runner, "-o", executable], env: env, clear_env: true, output: output, error: error, chdir: Dir.current)
+        {status, output.to_s, error.to_s}
+      end
+
+      private def run_child(executable : String, job : String, env : Hash(String, String), wall_clock_seconds : Float64) : Tuple(Process::Status, String, String, Bool)
+        output = IO::Memory.new
+        error = IO::Memory.new
+        process = Process.new(executable, env: env, clear_env: true, input: Process::Redirect::Pipe, output: output, error: error, chdir: Dir.current)
+        input = process.input
+        raise RuntimeError.new("trial child input pipe is unavailable") if input.nil?
+        input.print(job)
+        input.close
+        complete = ::Channel(Process::Status).new
+        spawn { complete.send(process.wait) }
+        timed_out = false
+        status = select
+        when value = complete.receive
+          value
+        when timeout(wall_clock_seconds.seconds)
+          timed_out = true
+          process.terminate(graceful: false) if process.exists?
+          complete.receive
+        end
+        {status, output.to_s, error.to_s, timed_out}
+      end
+
+      private def report_for(specification : TrialSpecification, run_id : String, store : SQLiteEventStore, initial_events : Int64, outcome : String, detail : String, exit_code : Int32?, warnings : Array(String)) : TrialReport
+        TrialReport.new(
+          outcome, run_id, (store.count - initial_events).to_i,
+          store.iter_events.count { |event| event.type == "behavior.failed" }, detail, exit_code, warnings,
+        )
+      end
+
+      private def crystal_path : String
+        output = IO::Memory.new
+        Process.run("crystal", ["env"], output: output)
+        output.to_s.lines.find(&.starts_with?("CRYSTAL_PATH=")).try(&.split("=", 2)[1].strip) || "lib"
+      end
+    end
+
     # Deterministic executor double that records specs and returns fixtures
     # (upstream `RecordingTrialExecutor`): validates each serialized
     # specification, records it (parsed + raw), and returns the next fixture

@@ -422,12 +422,29 @@ sequence of future implementation phases.
 
 ### Next delivery phases (canonical order)
 
-1. [ ] **Local subprocess trial executor** — implement
-   `LocalSubprocessTrialExecutor`, the `_child` protocol, serialized pack-source
-   loading, preflight, limits/environment handling, and an end-to-end
-   conformance run. Keep this a platform-edge adapter around the already-green
-   `TrialExecutor` contract; no runtime or routing changes belong in this
-   feature.
+1. [x] **Local subprocess trial executor** — **done**: `LocalSubprocessTrialExecutor`
+   is the platform-edge adapter for a generated `_child` source runner. It
+   validates a pinned source-pack bundle, forks SQLite history before child
+   execution, compiles the candidate in a fresh Crystal process, and returns
+   store-authoritative appended-event/failure counts. `preflight` validates the
+   Crystal compiler; the child has a closed environment (`PATH`, `HOME`,
+   `LANG`, `TMPDIR`, and explicit toolchain paths) plus only requested
+   passthrough variables; parent wall-clock enforcement kills an overrun and
+   reports `limits_exceeded`. The reloaded runtime receives event/LLM/wall-clock
+   budget dimensions. Focused red-green coverage is in
+   `spec/chronicle/local_subprocess_trial_executor_spec.cr` (fresh process,
+   parent-state isolation, closed environment, timeout, preflight degradation).
+   Keep this a platform-edge adapter around the already-green `TrialExecutor`
+   contract; no runtime or routing changes belong in this feature. **Chosen
+   Crystal source-pack ABI:** the pinned candidate directory
+   contains `entrypoint.cr`, which exposes
+   `Chronicle::Sandbox::CandidatePack::PACK`; an optional `scenario` names a
+   Crystal file relative to that directory which exposes
+   `Chronicle::Sandbox::Scenario.run(rt)`. The parent verifies the candidate
+   bundle before compiling a generated child runner, forks the SQLite run
+   before execution, and the child loads the fixed `PACK` constant in a fresh
+   Crystal process. This is a compile-time Crystal analogue of upstream's
+   dynamic Python pack import; it never evaluates an unpinned ambient file.
 2. [ ] **Postgres event-store backend** — add `PostgresEventStore` behind the
    existing `EventStore` protocol, URL construction, schema/bootstrap and
    transaction semantics, then run the existing event-store conformance suite
@@ -1528,6 +1545,12 @@ globally (CONTRACT v0.9 #3).
 
 - **Ordered comparisons on incomparable types:** matching activegraph, ordered
   comparisons (`<`, `>`, `<=`, `>=`) raise on mixed/incomparable non-nil values.
+- **Local trial resource caps and extra packs:** parent wall-clock enforcement
+  and runtime event/LLM budgets are implemented. `max_rss_bytes` is surfaced by
+  preflight as a host-capability warning because this Crystal port has no
+  portable rlimit adapter; it is never silently claimed. The selected static
+  source-pack ABI supports one pinned candidate pack; `extra_packs` is rejected
+  explicitly until a collision-free Crystal constant ABI is designed.
   Chronicle raises `Chronicle::PatternTypeError` (analogous to Python's `TypeError`).
   Nil operands still evaluate to no-match. Residual: Python compares arrays
   lexicographically; Chronicle raises for array operands. Equality ops use
