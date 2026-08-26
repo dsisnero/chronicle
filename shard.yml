@@ -25,14 +25,16 @@ dependencies:
     github: dsisnero/bubbles
   bubbletea:
     github: dsisnero/bubbletea.cr
-    version: 2.0.8
   toml:
     github: crystal-community/toml.cr
   json-schema:
     github: spider-gazelle/json-schema
-    version: 1.3.3
   pg:
     github: will/crystal-pg
-    version: 0.29.0
+    commit: c16d548
+  tracing:
+    github: dsisnero/tracing.cr
+  tracing-opentelemetry:
+    github: dsisnero/tracing-opentelemetry
 
 license: MIT

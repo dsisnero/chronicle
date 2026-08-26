@@ -24,8 +24,24 @@ end
 
 describe "CLI chat" do
   it "reports missing API key without crash" do
-    output = Chronicle::CLI.run(["chat"])
-    output.should contain("API_KEY")
+    old_home = ENV["HOME"]?
+    old_clarity_key = ENV["CLARITY_DEEPSEEK_API_KEY"]?
+    old_key = ENV["DEEPSEEK_API_KEY"]?
+    isolated_home = File.join(Dir.tempdir, "chronicle-cli-chat-#{Random::Secure.hex(4)}")
+    Dir.mkdir_p(isolated_home)
+
+    begin
+      ENV["HOME"] = isolated_home
+      ENV["CLARITY_DEEPSEEK_API_KEY"] = nil
+      ENV["DEEPSEEK_API_KEY"] = nil
+
+      output = Chronicle::CLI.run(["chat"])
+      output.should contain("API_KEY")
+    ensure
+      ENV["HOME"] = old_home
+      ENV["CLARITY_DEEPSEEK_API_KEY"] = old_clarity_key
+      ENV["DEEPSEEK_API_KEY"] = old_key
+    end
   end
 
   it "runs a headless chat with a prompt and records events" do

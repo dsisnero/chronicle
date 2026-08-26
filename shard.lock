@@ -6,7 +6,7 @@ shards:
 
   baked_file_system:
     git: https://github.com/schovi/baked_file_system.git
-    version: 0.14.1+git.commit.393b620d5e98138006d20f4d47e40a9e0d5ce6c3
+    version: 0.14.1+git.commit.559a49ab2a7242f60bfd0e939f6b0c70b96b575a
 
   bidi:
     git: https://github.com/dsisnero/bidi.git
@@ -14,7 +14,7 @@ shards:
 
   bubbles:
     git: https://github.com/dsisnero/bubbles.git
-    version: 2.1.1
+    version: 2.1.2
 
   bubbletea:
     git: https://github.com/dsisnero/bubbletea.cr.git
@@ -34,7 +34,7 @@ shards:
 
   cml:
     git: https://github.com/dsisnero/cml.git
-    version: 0.5.0+git.commit.890caf7cde91b4fcf3d5ace146546b6cbd94865f
+    version: 0.5.0+git.commit.942ca55abefe4d02875a35d2d7f6ea1ee81b3ed3
 
   colorful:
     git: https://github.com/dsisnero/colorful.git
@@ -90,7 +90,7 @@ shards:
 
   lipgloss:
     git: https://github.com/dsisnero/lipgloss.git
-    version: 2.0.3
+    version: 2.0.4
 
   mcp:
     git: https://github.com/dsisnero/mcp.cr.git
@@ -101,20 +101,20 @@ shards:
     version: 0.1.0+git.commit.efe05c232d6da4cf24ccceafa5b26a01314bfa94
 
   nbchannel:
-    git: https://github.com/wyhaines/nbchannel.cr.git
-    version: 0.1.0
+    git: https://github.com/dsisnero/nbchannel.cr.git
+    version: 0.1.0+git.commit.8ead6a9f7373f7c48747d66c99e930a72efa6dae
 
   nucleoc:
     git: https://github.com/dsisnero/nucleoc.git
     version: 0.1.0+git.commit.2c822209690d1b82f5b7c8f0b13d433a1663b7ba
 
   opentelemetry-api:
-    git: https://github.com/wyhaines/opentelemetry-api.cr.git
-    version: 0.5.1
+    git: https://github.com/dsisnero/opentelemetry-api.cr.git
+    version: 0.5.1+git.commit.c8a0f0b5b35655d4b7552ae8824100758d3e01ca
 
   opentelemetry-sdk:
-    git: https://github.com/wyhaines/opentelemetry-sdk.cr.git
-    version: 0.6.2
+    git: https://github.com/dsisnero/opentelemetry-sdk.cr.git
+    version: 0.6.2+git.commit.265d9472ff0007fc9ee7eca1a71f1140c360915e
 
   parse_date:
     git: https://github.com/wyhaines/parsedate.cr.git
@@ -178,11 +178,15 @@ shards:
 
   tracing:
     git: https://github.com/dsisnero/tracing.cr.git
-    version: 0.5.1+git.commit.57b76d8b88f3c954284c5fd2cf4e2e887e0fb47c
+    version: 0.5.2
+
+  tracing-opentelemetry:
+    git: https://github.com/dsisnero/tracing-opentelemetry.git
+    version: 0.1.0+git.commit.c697c207aecdce6e4a64fc62dcdb1bd9fc697399
 
   ultraviolet:
     git: https://github.com/dsisnero/ultraviolet.git
-    version: 1.0.1
+    version: 1.1.0
 
   uniwidth:
     git: https://github.com/naqvis/uni_char_width.git
