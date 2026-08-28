@@ -17,7 +17,7 @@ class MockModel
 end
 
 describe "CLI chat integration" do
-  it "loads config and creates runtime from environment" do
+  it "loads config and creates runtime from environment", tags: "interactive" do
     # Set up minimal env for the test
     old_key = ENV["CLARITY_DEEPSEEK_API_KEY"]?
     ENV["CLARITY_DEEPSEEK_API_KEY"] = "sk-test-key"

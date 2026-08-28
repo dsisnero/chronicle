@@ -1,4 +1,4 @@
-.PHONY: format format-check lint test http-fixtures clean
+.PHONY: format format-check lint test test-interactive http-fixtures clean
 
 format:
 	crystal tool format src spec
@@ -10,7 +10,10 @@ lint:
 	ameba src spec
 
 test:
-	CRYSTAL_CACHE_DIR=$(CURDIR)/.crystal-cache crystal spec
+	CRYSTAL_CACHE_DIR=$(CURDIR)/.crystal-cache crystal spec -- --tag '~interactive'
+
+test-interactive:
+	CRYSTAL_CACHE_DIR=$(CURDIR)/.crystal-cache crystal spec -- --tag interactive
 
 http-fixtures:
 	sh ./scripts/check_h11_fixture_provenance.sh

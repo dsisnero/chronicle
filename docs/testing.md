@@ -25,5 +25,19 @@ Before submitting a change, also run `make format-check` and `make lint`.
   capabilities (time and randomness are permitted; only routing must be
   deterministic).
 
-Note: `spec/chronicle/cli_chat_spec.cr` opens a TTY and only passes in an
-interactive terminal — it is the single environment-dependent spec.
+## Interactive specs
+
+`spec/chronicle/cli_chat_integration_spec.cr` includes the single
+TTY-launching example. It is tagged `interactive`, so `make test` excludes it
+and always runs headlessly. Run it explicitly in a terminal when exercising
+the live chat loop:
+
+```bash
+make test-interactive
+```
+
+When running Crystal directly, exclude interactive specs with:
+
+```bash
+crystal spec -- --tag ~interactive
+```
