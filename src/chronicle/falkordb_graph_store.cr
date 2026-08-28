@@ -5,6 +5,8 @@ require "uri"
 # avoids a second client shard while preserving the adapter as an optional,
 # server-backed GraphStore.
 module Chronicle
+  alias FalkorDBQueryValue = String | Array(String) | Nil
+
   class FalkorDBResponse
     getter string : String?
     getter integer : Int64?
@@ -25,13 +27,27 @@ module Chronicle
       endpoint = URI.parse(url)
       host = endpoint.host || raise ArgumentError.new("FalkorDB URL requires a host")
       @socket = TCPSocket.new(host, endpoint.port || 6379)
-      if password
-        username ? command(["AUTH", username, password]) : command(["AUTH", password])
+      resolved_username = username || endpoint.user
+      resolved_password = password || endpoint.password
+      if resolved_password
+        resolved_username ? command(["AUTH", resolved_username, resolved_password]) : command(["AUTH", resolved_password])
       end
     end
 
-    def query(graph_name : String, cypher : String) : Array(Array(FalkorDBResponse))
-      table = command(["GRAPH.QUERY", graph_name, cypher, "--compact"]).array || [] of FalkorDBResponse
+    # FalkorDB receives bound values as RESP command arguments after `params`.
+    # The Cypher text contains only generated structure and `$name` references;
+    # caller-controlled strings and lists are never interpolated into it.
+    def query(graph_name : String, cypher : String, params : Hash(String, FalkorDBQueryValue) = {} of String => FalkorDBQueryValue) : Array(Array(FalkorDBResponse))
+      parts = ["GRAPH.QUERY", graph_name, cypher, "--compact"]
+      unless params.empty?
+        parts << "params"
+        parts << params.size.to_s
+        params.each do |name, value|
+          parts << name
+          parts << parameter(value)
+        end
+      end
+      table = command(parts).array || [] of FalkorDBResponse
       return [] of Array(FalkorDBResponse) if table.size < 2
 
       (table[1].array || [] of FalkorDBResponse).map { |row| row.array || [] of FalkorDBResponse }
@@ -46,6 +62,23 @@ module Chronicle
       parts.each { |part| @socket << "$#{part.bytesize}\r\n#{part}\r\n" }
       @socket.flush
       read_response
+    end
+
+    private def parameter(value : FalkorDBQueryValue) : String
+      case value
+      when String
+        cypher_literal(value)
+      when Array(String)
+        "[#{value.map { |item| cypher_literal(item) }.join(", ")}]"
+      when Nil
+        "null"
+      else
+        raise ArgumentError.new("unsupported FalkorDB query parameter")
+      end
+    end
+
+    private def cypher_literal(value : String) : String
+      "'#{value.gsub("\\", "\\\\").gsub("'", "\\'")}'"
     end
 
     private def read_response : FalkorDBResponse
@@ -96,15 +129,15 @@ module Chronicle
     end
 
     def put_object(obj : GraphObject) : Nil
-      query("MERGE (o:AGNode {id: #{literal(obj.id)}}) SET o:AGObject, o.type = #{literal(obj.type)}, o.doc = #{literal(obj.to_json)}")
+      query("MERGE (o:AGNode {id: $id}) SET o:AGObject, o.type = $type, o.doc = $doc", {"id" => obj.id, "type" => obj.type, "doc" => obj.to_json})
     end
 
     def get_object(object_id : String) : GraphObject?
-      read_object(query("MATCH (o:AGObject {id: #{literal(object_id)}}) RETURN o.doc").first?)
+      read_object(query("MATCH (o:AGObject {id: $id}) RETURN o.doc", {"id" => object_id}).first?)
     end
 
     def remove_object(object_id : String) : Nil
-      query("MATCH (o:AGObject {id: #{literal(object_id)}}) REMOVE o:AGObject, o.type, o.doc WITH o OPTIONAL MATCH (o)-[e]-() WITH o, count(e) AS degree WHERE degree = 0 DELETE o")
+      query("MATCH (o:AGObject {id: $id}) REMOVE o:AGObject, o.type, o.doc WITH o OPTIONAL MATCH (o)-[e]-() WITH o, count(e) AS degree WHERE degree = 0 DELETE o", {"id" => object_id})
     end
 
     def all_objects : Array(GraphObject)
@@ -113,15 +146,15 @@ module Chronicle
 
     def put_relation(rel : GraphRelation) : Nil
       remove_relation(rel.id)
-      query("MERGE (s:AGNode {id: #{literal(rel.from_id)}}) MERGE (t:AGNode {id: #{literal(rel.to_id)}}) MERGE (s)-[r:AGRelation {id: #{literal(rel.id)}}}]->(t) SET r.type = #{literal(rel.type)}, r.doc = #{literal(rel.to_json)}")
+      query("MERGE (s:AGNode {id: $source}) MERGE (t:AGNode {id: $target}) MERGE (s)-[r:AGRelation {id: $id}]->(t) SET r.type = $type, r.doc = $doc", {"source" => rel.from_id, "target" => rel.to_id, "id" => rel.id, "type" => rel.type, "doc" => rel.to_json})
     end
 
     def get_relation(relation_id : String) : GraphRelation?
-      read_relation(query("MATCH ()-[r:AGRelation {id: #{literal(relation_id)}}]->() RETURN r.doc").first?)
+      read_relation(query("MATCH ()-[r:AGRelation {id: $id}]->() RETURN r.doc", {"id" => relation_id}).first?)
     end
 
     def remove_relation(relation_id : String) : Nil
-      query("MATCH (s)-[r:AGRelation {id: #{literal(relation_id)}}]->(t) DELETE r WITH [s, t] AS ends UNWIND ends AS n WITH DISTINCT n OPTIONAL MATCH (n)-[e]-() WITH n, count(e) AS degree WHERE degree = 0 AND NOT n:AGObject DELETE n")
+      query("MATCH (s)-[r:AGRelation {id: $id}]->(t) DELETE r WITH [s, t] AS ends UNWIND ends AS n WITH DISTINCT n OPTIONAL MATCH (n)-[e]-() WITH n, count(e) AS degree WHERE degree = 0 AND NOT n:AGObject DELETE n", {"id" => relation_id})
     end
 
     def all_relations : Array(GraphRelation)
@@ -129,11 +162,11 @@ module Chronicle
     end
 
     def put_patch(patch : Patch) : Nil
-      query("MERGE (p:AGPatch {id: #{literal(patch.id)}}) SET p.doc = #{literal(patch.to_json)}")
+      query("MERGE (p:AGPatch {id: $id}) SET p.doc = $doc", {"id" => patch.id, "doc" => patch.to_json})
     end
 
     def get_patch(patch_id : String) : Patch?
-      read_patch(query("MATCH (p:AGPatch {id: #{literal(patch_id)}}) RETURN p.doc").first?)
+      read_patch(query("MATCH (p:AGPatch {id: $id}) RETURN p.doc", {"id" => patch_id}).first?)
     end
 
     def all_patches : Array(Patch)
@@ -141,29 +174,21 @@ module Chronicle
     end
 
     def remove_patch(patch_id : String) : Nil
-      query("MATCH (p:AGPatch {id: #{literal(patch_id)}}) DELETE p")
+      query("MATCH (p:AGPatch {id: $id}) DELETE p", {"id" => patch_id})
     end
 
     def find_objects(type : String? = nil) : Array(GraphObject)
-      cypher = "MATCH (o:AGObject)"
-      cypher += " WHERE o.type = #{literal(type)}" if type
-      query(cypher + " RETURN o.doc").compact_map { |row| read_object(row) }
+      query("MATCH (o:AGObject) WHERE $type IS NULL OR o.type = $type RETURN o.doc", {"type" => type}).compact_map { |row| read_object(row) }
     end
 
     def find_objects_in_types(types : Array(String)) : Array(GraphObject)
       return [] of GraphObject if types.empty?
 
-      query("MATCH (o:AGObject) WHERE o.type IN [#{types.map { |type| literal(type) }.join(", ")}] RETURN o.doc").compact_map { |row| read_object(row) }
+      query("MATCH (o:AGObject) WHERE o.type IN $types RETURN o.doc", {"types" => types}).compact_map { |row| read_object(row) }
     end
 
     def find_relations(source : String? = nil, target : String? = nil, type : String? = nil) : Array(GraphRelation)
-      clauses = [] of String
-      clauses << "s.id = #{literal(source)}" if source
-      clauses << "t.id = #{literal(target)}" if target
-      clauses << "r.type = #{literal(type)}" if type
-      cypher = "MATCH (s)-[r:AGRelation]->(t)"
-      cypher += " WHERE #{clauses.join(" AND ")}" unless clauses.empty?
-      query(cypher + " RETURN r.doc").compact_map { |row| read_relation(row) }
+      query("MATCH (s)-[r:AGRelation]->(t) WHERE ($source IS NULL OR s.id = $source) AND ($target IS NULL OR t.id = $target) AND ($type IS NULL OR r.type = $type) RETURN r.doc", {"source" => source, "target" => target, "type" => type}).compact_map { |row| read_relation(row) }
     end
 
     def neighborhood(object_id : String, depth : Int32 = 1) : {Array(GraphObject), Array(GraphRelation)}
@@ -172,8 +197,8 @@ module Chronicle
       return {[start], [] of GraphRelation} if depth < 1
 
       hops = depth.to_i
-      objects = query("MATCH (start:AGObject {id: #{literal(object_id)}}) OPTIONAL MATCH (start)-[:AGRelation*1..#{hops}]-(o:AGObject) WITH start, collect(DISTINCT o) AS nodes UNWIND nodes + [start] AS node RETURN DISTINCT node.doc").compact_map { |row| read_object(row) }
-      relations = query("MATCH path=(start:AGObject {id: #{literal(object_id)}})-[:AGRelation*1..#{hops}]-(node) UNWIND relationships(path) AS relation RETURN DISTINCT relation.doc").compact_map { |row| read_relation(row) }
+      objects = query("MATCH (start:AGObject {id: $id}) OPTIONAL MATCH (start)-[:AGRelation*1..#{hops}]-(o:AGObject) WITH start, collect(DISTINCT o) AS nodes UNWIND nodes + [start] AS node RETURN DISTINCT node.doc", {"id" => object_id}).compact_map { |row| read_object(row) }
+      relations = query("MATCH path=(start:AGObject {id: $id})-[:AGRelation*1..#{hops}]-(node) UNWIND relationships(path) AS relation RETURN DISTINCT relation.doc", {"id" => object_id}).compact_map { |row| read_relation(row) }
       {objects, relations}
     end
 
@@ -182,16 +207,19 @@ module Chronicle
       return find_objects(node_types[0]).map { |obj| ChainMatch.new(objects: [obj], relations: [] of GraphRelation) } if rels.empty?
 
       path = ["(n0:AGObject)"]
-      conditions = [node_type_condition("n0", node_types[0])]
+      params = {"t0" => node_types[0]} of String => FalkorDBQueryValue
+      conditions = ["($t0 IS NULL OR n0.type = $t0)"]
       rels.each_with_index do |(rel_type, direction), index|
         left = direction == "left" ? "<-" : "-"
         right = direction == "left" ? "-" : "->"
         path << "#{left}[r#{index}:AGRelation]#{right}(n#{index + 1}:AGObject)"
-        conditions << "r#{index}.type = #{literal(rel_type)}"
-        conditions << node_type_condition("n#{index + 1}", node_types[index + 1])
+        params["rt#{index}"] = rel_type
+        params["t#{index + 1}"] = node_types[index + 1]
+        conditions << "($rt#{index} IS NULL OR r#{index}.type = $rt#{index})"
+        conditions << "($t#{index + 1} IS NULL OR n#{index + 1}.type = $t#{index + 1})"
       end
       docs = (0...node_types.size).map { |index| "n#{index}.doc" } + (0...rels.size).map { |index| "r#{index}.doc" }
-      query("MATCH #{path.join} WHERE #{conditions.compact.join(" AND ")} RETURN #{docs.join(", ")}").map do |row|
+      query("MATCH #{path.join} WHERE #{conditions.join(" AND ")} RETURN #{docs.join(", ")}", params).map do |row|
         objects = node_types.size.times.map { |index| GraphObject.from_json(row[index].text) }.to_a
         relations = rels.size.times.map { |index| GraphRelation.from_json(row[node_types.size + index].text) }.to_a
         ChainMatch.new(objects: objects, relations: relations)
@@ -218,16 +246,8 @@ module Chronicle
       ].each { |statement| query(statement) rescue nil }
     end
 
-    private def query(cypher : String) : Array(Array(FalkorDBResponse))
-      @client.query(@graph_name, cypher)
-    end
-
-    private def literal(value : String) : String
-      "'#{value.gsub("\\", "\\\\").gsub("'", "\\'")}'"
-    end
-
-    private def node_type_condition(node : String, type : String?) : String?
-      type ? "#{node}.type = #{literal(type)}" : nil
+    private def query(cypher : String, params : Hash(String, FalkorDBQueryValue) = {} of String => FalkorDBQueryValue) : Array(Array(FalkorDBResponse))
+      @client.query(@graph_name, cypher, params)
     end
 
     private def read_object(row : Array(FalkorDBResponse)?) : GraphObject?

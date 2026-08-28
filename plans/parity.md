@@ -475,22 +475,31 @@ sequence of future implementation phases.
    decoding without requiring a locally provisioned graph engine. Crystal has
    no embedded FalkorDB equivalent, so unlike upstream's optional
    `falkordblite` fallback this backend requires an explicit server URL.
-5. [ ] **FalkorDB live-server conformance and secure parameter binding** — run
-   the complete `GraphStoreConformance` suite and physical-layout checks against
-   a reproducible FalkorDB server, including URL credentials. Replace the
-   current escaped-literal Cypher construction with FalkorDB query parameters
-   so all object ids, types, and JSON remain out of the Cypher text. This phase
-   closes the only unverified graph-backend integration; it does not add an
-   embedded database fallback.
-6. [ ] **Prometheus HTTP scrape endpoint** — host the existing deterministic
+5. [x] **FalkorDB secure parameter binding** — **done**: `FalkorDBClient`
+   encodes every caller-controlled scalar/list/null value in the RESP
+   `GRAPH.QUERY ... params` arguments; generated Cypher contains only static
+   graph structure, validated hop counts, and `$name` references. The graph
+   store now binds object/relation/patch IDs, types, endpoint IDs, and JSON
+   documents (including chain filters) rather than interpolating escaped
+   literals. URL user/password credentials are applied as Redis `AUTH` before
+   graph commands. Transport-level specs prove injection-shaped strings remain
+   parameter arguments and cover URL authentication —
+   `spec/chronicle/falkordb_graph_store_spec.cr`.
+6. [ ] **FalkorDB live-server conformance and physical layout** — run the
+   complete `GraphStoreConformance` suite and physical-layout checks against a
+   reproducible FalkorDB server, including URL credentials. The opt-in suite
+   already uses a per-run graph name to prevent cross-run state leakage; this
+   phase closes the only unverified graph-backend integration and does not add
+   an embedded database fallback.
+7. [ ] **Prometheus HTTP scrape endpoint** — host the existing deterministic
    Prometheus text renderer behind a bounded HTTP endpoint with lifecycle,
    content-type, and error-path tests. This is a deployable operator surface,
    distinct from metrics collection and from OTel export.
-7. [ ] **OpenTelemetry SDK export adapter** — add an optional OTel boundary
+8. [ ] **OpenTelemetry SDK export adapter** — add an optional OTel boundary
    that maps Chronicle metrics and trace context to the SDK, with disabled/no-op
    behavior, batching/shutdown, and redaction tests. It must not change the
    durable event-log contract or make the core depend on network I/O.
-8. [ ] **Interactive quickstart command** — turn the existing fixture-mode
+9. [ ] **Interactive quickstart command** — turn the existing fixture-mode
    quickstart into an operator-facing interactive CLI flow with input handling,
    cancellation, deterministic transcript fixtures, and no provider calls in
    the default demo path. This is separate from CLI trace/diff rendering.

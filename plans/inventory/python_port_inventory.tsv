@@ -986,7 +986,7 @@ store/errors.py::class::CorruptedEventPayloadError	class	ported	spec/chronicle/s
 store/errors.py::class::DuplicateEventError	class	missing	-	auto-generated
 store/errors.py::class::EventNotFoundError	class	missing	-	auto-generated
 store/errors.py::class::SchemaVersionMismatch	class	missing	-	auto-generated
-store/falkordb.py::class::FalkorDBGraphStore	class	ported	spec/chronicle/falkordb_graph_store_spec.cr	Chronicle::FalkorDBGraphStore with server-configured RESP client
+store/falkordb.py::class::FalkorDBGraphStore	class	ported	spec/chronicle/falkordb_graph_store_spec.cr	Chronicle::FalkorDBGraphStore with server-configured RESP client and bound GRAPH.QUERY parameters
 store/falkordb.py::function::_require_falkordb_client	function	ported	spec/chronicle/falkordb_graph_store_spec.cr	Dependency-free Chronicle::FalkorDBClient
 store/falkordb.py::function::_require_falkordblite	function	intentional_divergence	spec/chronicle/falkordb_graph_store_spec.cr	No Crystal embedded FalkorDB equivalent; explicit FALKORDB_URL is required
 store/falkordb.py::function::_resolve_connection	function	ported	spec/chronicle/falkordb_graph_store_spec.cr	FalkorDBGraphStore URL plus optional credentials configuration
