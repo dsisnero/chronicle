@@ -31,3 +31,22 @@ describe Chronicle::Quickstart do
     lines.should contain(" Try next")
   end
 end
+
+describe "CLI quickstart" do
+  it "runs the fixture walkthrough without provider configuration" do
+    output = Chronicle::CLI.run(["quickstart"])
+
+    output.should contain("chronicle quickstart")
+    output.should contain("No API key required")
+    output.should contain("Quickstart complete")
+  end
+
+  it "accepts an explicit cancellation command" do
+    output = IO::Memory.new
+    input = IO::Memory.new("cancel\n")
+
+    Chronicle::CLI.exec(["quickstart"], output, input)
+
+    output.to_s.should contain("Quickstart cancelled")
+  end
+end

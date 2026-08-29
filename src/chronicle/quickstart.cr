@@ -106,6 +106,20 @@ module Chronicle
       lines
     end
 
+    # The interactive command remains fixture-backed: one optional terminal
+    # command can cancel the walkthrough, but it never opens a provider or
+    # executes a tool. EOF completes the deterministic transcript.
+    def interactive_lines(input : IO) : Array(String)
+      lines = fixture_mode_lines
+      case input.gets.try(&.strip.downcase)
+      when "cancel", "quit", "exit"
+        lines << "Quickstart cancelled. No provider or external tool was used."
+      else
+        lines << "Quickstart complete. No provider or external tool was used."
+      end
+      lines
+    end
+
     private def what_just_happened(write : Proc(String, Nil)) : Nil
       rule = "-" * 76
       write.call(rule)

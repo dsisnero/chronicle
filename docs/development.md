@@ -48,3 +48,10 @@ The endpoint serves only `GET /metrics` as Prometheus text exposition v0.0.4.
 It rejects other methods and paths, and defaults to 8 KiB request-line and
 header bounds. Bind it from the process lifecycle owner, not from Sans-IO core
 code.
+
+## Offline quickstart
+
+Run `chronicle-cli quickstart` for the deterministic Diligence walkthrough.
+It uses the bundled scripted fixture provider, needs no credentials, and makes
+no provider, tool, or network calls. Type `cancel`, `quit`, or `exit` on its
+input stream to end the walkthrough explicitly.

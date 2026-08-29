@@ -504,14 +504,34 @@ sequence of future implementation phases.
    scrape, content type, invalid routes/methods, bounds validation, and
    lifecycle shutdown. This remains distinct from metrics collection and OTel
    export.
-8. [ ] **OpenTelemetry SDK export adapter** — add an optional OTel boundary
-   that maps Chronicle metrics and trace context to the SDK, with disabled/no-op
-   behavior, batching/shutdown, and redaction tests. It must not change the
-   durable event-log contract or make the core depend on network I/O.
-9. [ ] **Interactive quickstart command** — turn the existing fixture-mode
-   quickstart into an operator-facing interactive CLI flow with input handling,
-   cancellation, deterministic transcript fixtures, and no provider calls in
-   the default demo path. This is separate from CLI trace/diff rendering.
+8. [ ] **OpenTelemetry metrics adapter** — port activegraph's optional
+   `OpenTelemetryMetrics` boundary: map counters to OTel counters, histograms
+   to OTel histograms, and synchronous gauges to UpDownCounter deltas; cache
+   instruments by kind/name/sorted tag keys and retain gauge last values by
+   name/tag keys/tag values. The adapter must accept an application-owned meter
+   for tests and embedding, keep per-instrument creation separate so an
+   unrelated slow SDK factory cannot block metric observations, and leave the
+   event-log contract unchanged. Trace-context propagation, exporter batching,
+   and SDK lifecycle ownership are not part of activegraph's metrics adapter
+   and remain application-owned platform concerns.
+
+   **Current blocker (Crystal 1.21):** the pinned
+   `dsisnero/opentelemetry-sdk.cr` v0.6.2 cannot compile in an isolated shard
+   checkout because its `nbchannel` dependency references removed
+   `Crystal::Scheduler` APIs. Independently, its `OpenTelemetry::Meter` has no
+   `create_counter`, `create_histogram`, or `create_up_down_counter` surface,
+   so it cannot support the verified vendor adapter. The red shard spec is in
+   `temp/opentelemetry-sdk/spec/meter_instruments_spec.cr`; rehabilitate the
+   SDK and its dependencies upstream before wiring Chronicle to it. Do not
+   substitute tracing spans for metric instruments: that would diverge from
+   activegraph's `observability/otel.py` contract.
+9. [x] **Interactive quickstart command** — **done**: `chronicle-cli
+   quickstart` runs the existing fixture-backed Diligence transcript through a
+   dedicated ephemeral CLI command, with no provider configuration, tool
+   execution, or network activity. It accepts `cancel`/`quit`/`exit` for an
+   explicit safe termination and completes deterministically at EOF. Focused
+   specs cover the credential-free transcript and cancellation path. This is
+   separate from the real chat/TUI session and trace/diff rendering.
 
 The core ActiveGraph port is complete. The remaining phases are intentionally
 separate host-integration deliveries, each with its own optional dependency and

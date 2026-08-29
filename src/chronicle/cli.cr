@@ -16,14 +16,15 @@ module Chronicle
       include Clip::Mapper
 
       Clip.add_commands({
-        "route"   => Route,
-        "diff"    => DiffCmd,
-        "log"     => Log,
-        "replay"  => ReplayCmd,
-        "trace"   => TraceCmd,
-        "session" => Session,
-        "fork"    => ForkCmd,
-        "chat"    => ChatCmd,
+        "route"      => Route,
+        "diff"       => DiffCmd,
+        "log"        => Log,
+        "replay"     => ReplayCmd,
+        "trace"      => TraceCmd,
+        "session"    => Session,
+        "fork"       => ForkCmd,
+        "chat"       => ChatCmd,
+        "quickstart" => QuickstartCmd,
       })
     end
 
@@ -92,6 +93,11 @@ module Chronicle
       include Clip::Mapper
     end
 
+    @[Clip::Doc("Run the offline, fixture-backed interactive quickstart")]
+    struct QuickstartCmd < Root
+      include Clip::Mapper
+    end
+
     @[Clip::Doc("List saved sessions")]
     struct SessionList < Session
       include Clip::Mapper
@@ -145,12 +151,12 @@ module Chronicle
 
     def self.run(args : Array(String) = ARGV) : String
       io = IO::Memory.new
-      exec(args, io)
+      exec(args, io, IO::Memory.new)
       io.to_s
     end
 
     # ameba:disable Metrics/CyclomaticComplexity
-    def self.exec(args : Array(String), io : IO) : Nil
+    def self.exec(args : Array(String), io : IO, input : IO = STDIN) : Nil
       cmd = Root.parse(args)
       case cmd
       when RoutePreview
@@ -169,6 +175,8 @@ module Chronicle
         execute_fork(cmd, io)
       when ChatCmd
         execute_chat(cmd, io)
+      when QuickstartCmd
+        execute_quickstart(io, input)
       else
         io.puts Root.help
       end
@@ -191,6 +199,8 @@ module Chronicle
         io.puts Chronicle::CLI::ForkCmd.help rescue io.puts Root.help
       when "chat"
         io.puts Chronicle::CLI::ChatCmd.help rescue io.puts Root.help
+      when "quickstart"
+        io.puts Chronicle::CLI::QuickstartCmd.help rescue io.puts Root.help
       else
         io.puts Root.help
       end
@@ -204,6 +214,10 @@ module Chronicle
       else
         io.puts "ERROR: #{ex.message}"
       end
+    end
+
+    private def self.execute_quickstart(io : IO, input : IO) : Nil
+      Chronicle::Quickstart.interactive_lines(input).each { |line| io.puts line }
     end
 
     private def self.execute_route_preview(cmd : RoutePreview, io : IO) : Nil
