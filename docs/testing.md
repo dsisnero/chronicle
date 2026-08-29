@@ -41,3 +41,18 @@ When running Crystal directly, exclude interactive specs with:
 ```bash
 crystal spec -- --tag ~interactive
 ```
+
+## FalkorDB integration
+
+On macOS, run the live FalkorDB graph-store conformance suite with Apple's
+`container` CLI:
+
+```bash
+make test-falkordb
+```
+
+The target starts an authenticated disposable `falkordb/falkordb` container,
+waits for Redis readiness, runs the opt-in specs through `FALKORDB_URL`, and
+removes the container even when the suite fails. Override `FALKORDB_PORT`,
+`FALKORDB_PASSWORD`, or `FALKORDB_IMAGE` only when the local environment
+requires it.
