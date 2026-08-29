@@ -476,21 +476,24 @@ sequence of future implementation phases.
    no embedded FalkorDB equivalent, so unlike upstream's optional
    `falkordblite` fallback this backend requires an explicit server URL.
 5. [x] **FalkorDB secure parameter binding** — **done**: `FalkorDBClient`
-   encodes every caller-controlled scalar/list/null value in the RESP
-   `GRAPH.QUERY ... params` arguments; generated Cypher contains only static
-   graph structure, validated hop counts, and `$name` references. The graph
-   store now binds object/relation/patch IDs, types, endpoint IDs, and JSON
-   documents (including chain filters) rather than interpolating escaped
-   literals. URL user/password credentials are applied as Redis `AUTH` before
-   graph commands. Transport-level specs prove injection-shaped strings remain
-   parameter arguments and cover URL authentication —
+   encodes every caller-controlled scalar/list/null value in FalkorDB's
+   documented `CYPHER name=value` parameter prelude; the generated statement
+   body contains only static graph structure, validated hop counts, and `$name`
+   references. The graph store binds object/relation/patch IDs, types, endpoint
+   IDs, and JSON documents (including chain filters). URL user/password
+   credentials are applied as Redis `AUTH` before graph commands.
+   Transport-level specs prove injection-shaped strings are encoded only as
+   parameter values and cover URL authentication —
    `spec/chronicle/falkordb_graph_store_spec.cr`.
-6. [ ] **FalkorDB live-server conformance and physical layout** — run the
-   complete `GraphStoreConformance` suite and physical-layout checks against a
-   reproducible FalkorDB server, including URL credentials. The opt-in suite
-   already uses a per-run graph name to prevent cross-run state leakage; this
-   phase closes the only unverified graph-backend integration and does not add
-   an embedded database fallback.
+6. [x] **FalkorDB live-server conformance and physical layout** — **done**:
+   `make test-falkordb` creates an isolated, authenticated FalkorDB service
+   and a Crystal spec client on the same disposable Apple Container network,
+   connected through the server's inspected private address.
+   The client runs the complete `GraphStoreConformance` suite and the
+   URL-credential integration against a per-run graph name, so neither host
+   port forwarding nor shared graph state is required. The gate removes both
+   service and network on success, failure, or interruption; no embedded
+   database fallback is added.
 7. [ ] **Prometheus HTTP scrape endpoint** — host the existing deterministic
    Prometheus text renderer behind a bounded HTTP endpoint with lifecycle,
    content-type, and error-path tests. This is a deployable operator surface,
@@ -1588,7 +1591,7 @@ globally (CONTRACT v0.9 #3).
       backend extension after upstream's PostgreSQL event-store seam; it does
       not claim a nonexistent upstream Postgres graph-store class.
 - [x] FalkorDB-backed `GraphStore` — `Chronicle::FalkorDBGraphStore` uses
-      native Cypher nodes/edges and safe escaped literals over a small RESP
+      native Cypher nodes/edges and bound query parameters over a small RESP
       client, with the full conformance target enabled by `FALKORDB_URL` —
       `spec/chronicle/falkordb_graph_store_spec.cr`. Intentional divergence:
       server configuration is required because Crystal has no `falkordblite`

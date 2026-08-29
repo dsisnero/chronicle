@@ -1,8 +1,11 @@
 .PHONY: format format-check lint test test-interactive test-falkordb http-fixtures clean
 
 FALKORDB_CONTAINER ?= chronicle-falkordb-test
+FALKORDB_NETWORK ?= chronicle-falkordb-test-network
 FALKORDB_IMAGE ?= falkordb/falkordb:latest
-FALKORDB_PORT ?= 6380
+FALKORDB_TEST_IMAGE ?= crystallang/crystal:1.21.0
+FALKORDB_SERVER_MEMORY ?= 2G
+FALKORDB_TEST_MEMORY ?= 4G
 FALKORDB_PASSWORD ?= chronicle-parity-password
 
 format:
@@ -20,24 +23,25 @@ test:
 test-interactive:
 	CRYSTAL_CACHE_DIR=$(CURDIR)/.crystal-cache crystal spec -- --tag interactive
 
-# macOS live integration gate. Requires Apple's `container` CLI; it owns the
-# disposable server lifecycle and always removes the authenticated instance.
+# macOS live integration gate. Requires Apple's `container` CLI; it owns an
+# isolated server/client network and always removes the authenticated instance.
 test-falkordb:
 	@set -eu; \
 	name='$(FALKORDB_CONTAINER)'; \
-	password='$(FALKORDB_PASSWORD)'; \
-	cleanup() { container delete -f "$$name" >/dev/null 2>&1 || true; }; \
+	network='$(FALKORDB_NETWORK)'; \
+	cleanup() { container delete -f "$$name" >/dev/null 2>&1 || true; container network delete "$$network" >/dev/null 2>&1 || true; }; \
 	trap cleanup EXIT INT TERM; \
 	cleanup; \
-	container run --rm -d --name "$$name" --publish '$(FALKORDB_PORT):6379' --env 'BROWSER=0' --env 'REDIS_ARGS=--requirepass $(FALKORDB_PASSWORD)' '$(FALKORDB_IMAGE)' >/dev/null; \
+	container network create "$$network" >/dev/null; \
+	container run --rm -d --memory '$(FALKORDB_SERVER_MEMORY)' --name "$$name" --network "$$network" --env 'BROWSER=0' --env 'REDIS_ARGS=--requirepass $(FALKORDB_PASSWORD)' '$(FALKORDB_IMAGE)' >/dev/null; \
 	ready=0; \
 	for attempt in $$(seq 1 30); do \
 		if container exec "$$name" redis-cli --no-auth-warning -a '$(FALKORDB_PASSWORD)' ping 2>/dev/null | grep -qx PONG; then ready=1; break; fi; \
 		sleep 1; \
 	done; \
 	test "$$ready" -eq 1 || { container logs "$$name"; echo "FalkorDB did not become ready" >&2; exit 1; }; \
-	printf '*2\r\n$$4\r\nAUTH\r\n$$%s\r\n%s\r\n*1\r\n$$4\r\nPING\r\n' "$${#password}" "$$password" | nc -w 3 127.0.0.1 '$(FALKORDB_PORT)' | tr -d '\r' | grep -qx '+PONG' || { echo "Apple Container did not expose FalkorDB on 127.0.0.1:$(FALKORDB_PORT)" >&2; exit 1; }; \
-	FALKORDB_URL='falkor://127.0.0.1:$(FALKORDB_PORT)' FALKORDB_PASSWORD='$(FALKORDB_PASSWORD)' CRYSTAL_CACHE_DIR='$(CURDIR)/.crystal-cache' crystal spec spec/chronicle/falkordb_graph_store_spec.cr
+	server_ip=$$(container inspect "$$name" | ruby -rjson -e 'puts JSON.parse(STDIN.read)[0].dig("status", "networks", 0, "ipv4Address").split("/").first'); \
+	container run --rm --memory '$(FALKORDB_TEST_MEMORY)' --network "$$network" --mount 'type=bind,source=$(CURDIR),target=/workspace,readonly' --workdir /workspace --env "FALKORDB_URL=falkor://$$server_ip:6379" --env 'FALKORDB_PASSWORD=$(FALKORDB_PASSWORD)' --env 'CRYSTAL_CACHE_DIR=/tmp/chronicle-crystal-cache' '$(FALKORDB_TEST_IMAGE)' sh -ec 'apt-get update -qq; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libsqlite3-dev; crystal spec spec/chronicle/falkordb_graph_store_spec.cr'
 
 http-fixtures:
 	sh ./scripts/check_h11_fixture_provenance.sh

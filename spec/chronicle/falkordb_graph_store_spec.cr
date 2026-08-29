@@ -51,7 +51,7 @@ describe Chronicle::FalkorDBClient do
     end
   end
 
-  it "sends caller values as GRAPH.QUERY parameters, not Cypher text" do
+  it "encodes caller values in FalkorDB's CYPHER parameter prelude" do
     reply = "*3\r\n*0\r\n*0\r\n$2\r\nok\r\n"
     injected = "object' }) MATCH (n) DETACH DELETE n //"
     with_falkordb_reply(reply) do |url, commands|
@@ -69,16 +69,8 @@ describe Chronicle::FalkorDBClient do
       commands.receive.should eq([
         "GRAPH.QUERY",
         "test_graph",
-        "MATCH (o:AGObject {id: $id}) WHERE $type IS NULL OR o.type IN $types RETURN o.doc",
+        "CYPHER id='object\\' }) MATCH (n) DETACH DELETE n //' type=null types=['note', 'a\\'b'] MATCH (o:AGObject {id: $id}) WHERE $type IS NULL OR o.type IN $types RETURN o.doc",
         "--compact",
-        "params",
-        "3",
-        "id",
-        "'object\\' }) MATCH (n) DETACH DELETE n //'",
-        "type",
-        "null",
-        "types",
-        "['note', 'a\\'b']",
       ])
       client.close
     end

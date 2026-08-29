@@ -52,7 +52,14 @@ make test-falkordb
 ```
 
 The target starts an authenticated disposable `falkordb/falkordb` container,
-waits for Redis readiness, runs the opt-in specs through `FALKORDB_URL`, and
-removes the container even when the suite fails. Override `FALKORDB_PORT`,
-`FALKORDB_PASSWORD`, or `FALKORDB_IMAGE` only when the local environment
-requires it.
+waits for Redis readiness, then runs the opt-in specs in a Crystal container on
+the same private Apple Container network. It does not publish a host port, so
+the gate also works on hosts where VM port forwarding is unavailable. Both the
+server and its temporary network are removed when the suite exits. The Crystal
+client uses the server's inspected private address and installs its SQLite
+development library before compiling the spec.
+Override
+`FALKORDB_PASSWORD`, `FALKORDB_IMAGE`, or `FALKORDB_TEST_IMAGE` only when the
+local environment requires it. The disposable server and spec client default
+to 2G and 4G respectively; override `FALKORDB_SERVER_MEMORY` or
+`FALKORDB_TEST_MEMORY` on smaller hosts.

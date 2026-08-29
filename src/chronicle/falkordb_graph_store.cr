@@ -34,20 +34,11 @@ module Chronicle
       end
     end
 
-    # FalkorDB receives bound values as RESP command arguments after `params`.
-    # The Cypher text contains only generated structure and `$name` references;
-    # caller-controlled strings and lists are never interpolated into it.
+    # FalkorDB binds values through a `CYPHER name=value` query prelude. The
+    # statement body contains only generated structure and `$name` references;
+    # caller-controlled values are encoded as Cypher literals in that prelude.
     def query(graph_name : String, cypher : String, params : Hash(String, FalkorDBQueryValue) = {} of String => FalkorDBQueryValue) : Array(Array(FalkorDBResponse))
-      parts = ["GRAPH.QUERY", graph_name, cypher, "--compact"]
-      unless params.empty?
-        parts << "params"
-        parts << params.size.to_s
-        params.each do |name, value|
-          parts << name
-          parts << parameter(value)
-        end
-      end
-      table = command(parts).array || [] of FalkorDBResponse
+      table = command(["GRAPH.QUERY", graph_name, parameterized_cypher(cypher, params), "--compact"]).array || [] of FalkorDBResponse
       return [] of Array(FalkorDBResponse) if table.size < 2
 
       (table[1].array || [] of FalkorDBResponse).map { |row| row.array || [] of FalkorDBResponse }
@@ -75,6 +66,18 @@ module Chronicle
       else
         raise ArgumentError.new("unsupported FalkorDB query parameter")
       end
+    end
+
+    private def parameterized_cypher(cypher : String, params : Hash(String, FalkorDBQueryValue)) : String
+      return cypher if params.empty?
+
+      assignments = params.map do |name, value|
+        unless name.matches?(/\A[a-zA-Z_][a-zA-Z0-9_]*\z/)
+          raise ArgumentError.new("invalid FalkorDB query parameter name")
+        end
+        "#{name}=#{parameter(value)}"
+      end
+      "CYPHER #{assignments.join(" ")} #{cypher}"
     end
 
     private def cypher_literal(value : String) : String
