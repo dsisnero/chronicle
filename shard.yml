@@ -36,5 +36,9 @@ dependencies:
     github: dsisnero/tracing.cr
   tracing-opentelemetry:
     github: dsisnero/tracing-opentelemetry
+    branch: codex/metrics-instruments-compat
+  opentelemetry-sdk:
+    github: dsisnero/opentelemetry-sdk.cr
+    branch: codex/metrics-instruments
 
 license: MIT
