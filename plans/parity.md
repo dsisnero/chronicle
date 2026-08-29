@@ -494,10 +494,16 @@ sequence of future implementation phases.
    port forwarding nor shared graph state is required. The gate removes both
    service and network on success, failure, or interruption; no embedded
    database fallback is added.
-7. [ ] **Prometheus HTTP scrape endpoint** — host the existing deterministic
-   Prometheus text renderer behind a bounded HTTP endpoint with lifecycle,
-   content-type, and error-path tests. This is a deployable operator surface,
-   distinct from metrics collection and from OTel export.
+7. [x] **Prometheus HTTP scrape endpoint** — **done**:
+   `Prometheus::ScrapeServer` is the optional platform-edge owner of a bounded
+   `HTTP::Server`. It serves only `GET /metrics` from the deterministic
+   renderer with Prometheus v0.0.4 content type, has 8 KiB default request-line
+   and header limits, and returns plain-text 404/405 responses for invalid
+   paths or methods. `start` returns the bound address; idempotent `close`
+   makes application lifecycle cleanup safe. Real loopback specs cover the
+   scrape, content type, invalid routes/methods, bounds validation, and
+   lifecycle shutdown. This remains distinct from metrics collection and OTel
+   export.
 8. [ ] **OpenTelemetry SDK export adapter** — add an optional OTel boundary
    that maps Chronicle metrics and trace context to the SDK, with disabled/no-op
    behavior, batching/shutdown, and redaction tests. It must not change the

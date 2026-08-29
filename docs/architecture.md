@@ -46,7 +46,8 @@ divergences are recorded in `plans/parity.md`.
 - **Tools & effects** — `tool.cr`, `tool_cache.cr`, `tool_permission.cr`,
   `effect.cr`, `approval.cr`.
 - **Observability** — `sink.cr` (Sans-IO outbound observers), `trace.cr`
-  (causal chains), `telemetry.cr`, `diff_formatter.cr`.
+  (causal chains), `telemetry.cr`, `prometheus.cr` (Sans-IO rendering),
+  `prometheus_http.cr` (the optional HTTP scrape edge), `diff_formatter.cr`.
 - **Edge/CLI** — `platform_edge.cr`, `channel.cr`, `config.cr`,
   `routing_config.cr`, `cli.cr`, `tui.cr`, `session_store.cr`.
 

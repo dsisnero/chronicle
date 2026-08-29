@@ -30,3 +30,21 @@ external SSD's default cache is not relied on.
 - Keep temporary artifacts under `temp/`; `make clean` removes them.
 - `vendor/activegraph/` is the pinned upstream source of truth (see
   `plans/parity.md`); do not edit it — validate ported behavior against it.
+
+## Prometheus scrape endpoint
+
+Applications that use `PrometheusMetrics` can expose it from their platform
+edge without adding network I/O to the runtime:
+
+```crystal
+metrics = Chronicle::PrometheusMetrics.new
+scrape = Chronicle::Prometheus::ScrapeServer.new(metrics, host: "127.0.0.1", port: 9464)
+scrape.start
+# ... application lifecycle ...
+scrape.close
+```
+
+The endpoint serves only `GET /metrics` as Prometheus text exposition v0.0.4.
+It rejects other methods and paths, and defaults to 8 KiB request-line and
+header bounds. Bind it from the process lifecycle owner, not from Sans-IO core
+code.
