@@ -504,27 +504,17 @@ sequence of future implementation phases.
    scrape, content type, invalid routes/methods, bounds validation, and
    lifecycle shutdown. This remains distinct from metrics collection and OTel
    export.
-8. [ ] **OpenTelemetry metrics adapter** — port activegraph's optional
-   `OpenTelemetryMetrics` boundary: map counters to OTel counters, histograms
-   to OTel histograms, and synchronous gauges to UpDownCounter deltas; cache
-   instruments by kind/name/sorted tag keys and retain gauge last values by
-   name/tag keys/tag values. The adapter must accept an application-owned meter
-   for tests and embedding, keep per-instrument creation separate so an
-   unrelated slow SDK factory cannot block metric observations, and leave the
-   event-log contract unchanged. Trace-context propagation, exporter batching,
-   and SDK lifecycle ownership are not part of activegraph's metrics adapter
-   and remain application-owned platform concerns.
+8. [x] **OpenTelemetry metrics adapter** — **done**: `Chronicle::OpenTelemetryMetrics`
+   accepts an application-owned `OpenTelemetry::Meter` and maps counters,
+   histograms, and gauges to the matching synchronous OTel instruments. Gauge
+   observations are emitted as UpDownCounter deltas. Instruments are keyed by
+   kind/name/sorted tag keys and gauge last values include tag values; each
+   instrument has its own creation lock so a slow unrelated factory does not
+   serialize observations. The adapter owns neither trace context nor exporter
+   lifecycle. The required Crystal 1.21 SDK instruments and compatibility fixes
+   are supplied by `dsisnero/opentelemetry-sdk.cr` branch
+   `codex/metrics-instruments`.
 
-   **Current blocker (Crystal 1.21):** the pinned
-   `dsisnero/opentelemetry-sdk.cr` v0.6.2 cannot compile in an isolated shard
-   checkout because its `nbchannel` dependency references removed
-   `Crystal::Scheduler` APIs. Independently, its `OpenTelemetry::Meter` has no
-   `create_counter`, `create_histogram`, or `create_up_down_counter` surface,
-   so it cannot support the verified vendor adapter. The red shard spec is in
-   `temp/opentelemetry-sdk/spec/meter_instruments_spec.cr`; rehabilitate the
-   SDK and its dependencies upstream before wiring Chronicle to it. Do not
-   substitute tracing spans for metric instruments: that would diverge from
-   activegraph's `observability/otel.py` contract.
 9. [x] **Interactive quickstart command** — **done**: `chronicle-cli
    quickstart` runs the existing fixture-backed Diligence transcript through a
    dedicated ephemeral CLI command, with no provider configuration, tool
