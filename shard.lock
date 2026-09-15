@@ -42,15 +42,15 @@ shards:
 
   colorprofile:
     git: https://github.com/dsisnero/colorprofile.git
-    version: 0.1.0+git.commit.c689a6d8a71c5d8fb3b863a1eb6dc10e7fa0f931
+    version: 0.1.1
 
   crig:
     git: https://github.com/dsisnero/crig.git
-    version: 0.39.1
+    version: 0.39.1+git.commit.0692edfc113700d50d71b22307b7f373af738f53
 
   crig-postgres:
     git: https://github.com/dsisnero/crig-postgres.git
-    version: 0.1.0+git.commit.24e5d9ff3342a4a030246e87cd1dad2a12fc542d
+    version: 0.1.0+git.commit.872d02e6172402668d155f13038d5962d319d1cc
 
   crig-sqlite:
     git: https://github.com/dsisnero/crig-sqlite.git
@@ -126,7 +126,7 @@ shards:
 
   pg:
     git: https://github.com/will/crystal-pg.git
-    version: 0.29.0+git.commit.c16d54814405e2b9748d9bddc3d8ce0d41d2190f
+    version: 0.30.0+git.commit.4b899a1c6fa47d02061999ac526a591d447fc428
 
   protobuf:
     git: https://github.com/jeromegn/protobuf.cr.git
@@ -161,8 +161,8 @@ shards:
     version: 0.1.4
 
   terminfo:
-    git: https://github.com/docelic/terminfo.git
-    version: 0.8.1
+    git: https://github.com/dsisnero/terminfo.git
+    version: 0.8.2
 
   textseg:
     git: https://github.com/naqvis/uni_text_seg.git
@@ -186,7 +186,7 @@ shards:
 
   ultraviolet:
     git: https://github.com/dsisnero/ultraviolet.git
-    version: 1.1.0
+    version: 1.1.1
 
   uniwidth:
     git: https://github.com/naqvis/uni_char_width.git

@@ -17,6 +17,7 @@ dependencies:
     github: dsisnero/cml
   crig:
     github: dsisnero/crig
+    branch: main
   clip:
     github: erdnaxeli/clip
   similar:
@@ -31,7 +32,7 @@ dependencies:
     github: spider-gazelle/json-schema
   pg:
     github: will/crystal-pg
-    commit: c16d548
+    branch: master
   tracing:
     github: dsisnero/tracing.cr
   tracing-opentelemetry:
