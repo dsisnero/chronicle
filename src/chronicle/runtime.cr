@@ -2748,6 +2748,7 @@ module Chronicle
       system = build_llm_system(behavior)
       user = build_llm_user_message(behavior, event, graph)
       tool_defs = resolve_behavior_tools(behavior)
+      bound_tools = behavior.llm_tools.to_h { |tool| {tool.name, tool} }
 
       base_builder = Crig::Completion::Request::CompletionRequestBuilder.new(
         user
@@ -2821,7 +2822,7 @@ module Chronicle
         )
         successful_llm_request_id = result.request_event_id
         response = result.response
-        refuse_undeclared_tool_calls(behavior, event, response)
+        refuse_undeclared_tool_calls(behavior, event, response, bound_tools)
 
         calls = response.choice.to_a.compact_map(&.tool_call)
         if calls.empty?
@@ -2840,7 +2841,7 @@ module Chronicle
             frame_id: current_frame_id,
             idempotency_key: Random::Secure.hex(16),
             external_io_mode: ExternalIOMode::RuntimeRecorded,
-          ), tool_request_event_ids)
+          ), tool_request_event_ids, bound_tools)
           running_messages << Crig::Completion::Message.tool_result_with_call_id(call.id, call.call_id, output)
         end
       end
@@ -2888,7 +2889,7 @@ module Chronicle
     # isn't registered fails the behavior (reason="tool.unknown_tool"), mirroring
     # upstream `_invoke_llm_body`'s MissingToolError guard.
     private def resolve_behavior_tools(behavior : Packs::PackBehavior) : Array(Crig::Completion::ToolDefinition)
-      behavior.tools.map do |name|
+      declared = behavior.tools.map do |name|
         tool = get_tool(name)
         if tool.nil?
           raise MissingToolError.new(
@@ -2903,6 +2904,18 @@ module Chronicle
           JSON::Any.new({"type" => JSON::Any.new("object")}),
         )
       end
+      bound = behavior.llm_tools.map do |tool|
+        Crig::Completion::ToolDefinition.new(
+          tool.name,
+          tool.description,
+          JSON::Any.new({"type" => JSON::Any.new("object")}),
+        )
+      end
+      collisions = declared.map(&.name) & bound.map(&.name)
+      unless collisions.empty?
+        raise PackError.new("LLM behavior #{behavior.name.inspect} binds tools already declared by name: #{collisions.join(", ")}")
+      end
+      declared + bound
     end
 
     # Render one running-conversation message into the turn-payload JSON so each
@@ -2957,8 +2970,9 @@ module Chronicle
       behavior : Packs::PackBehavior,
       event : Event,
       response : Crig::Completion::CompletionResponse(String),
+      bound_tools : Hash(String, Tool) = {} of String => Tool,
     ) : Nil
-      declared = behavior.tools
+      declared = behavior.tools + bound_tools.keys
       return if declared.empty?
 
       response.choice.each do |item|
@@ -4044,7 +4058,7 @@ module Chronicle
       @log_agent.tool_results(results)
     end
 
-    private def invoke_tool(name : String, args : String, ctx : ToolContext? = nil, tool_request_ids : Array(String)? = nil) : String
+    private def invoke_tool(name : String, args : String, ctx : ToolContext? = nil, tool_request_ids : Array(String)? = nil, bound_tools : Hash(String, Tool) = {} of String => Tool) : String
       request_event = record_tool_requested(name, args)
       tool_request_ids.try(&.push(request_event.id))
       if cached = @tool_cache.try(&.get(name, args))
@@ -4057,12 +4071,12 @@ module Chronicle
         record_tool_responded(request_event, name, args, placeholder)
         return placeholder
       end
-      tool = get_tool(name)
+      tool = bound_tools[name]? || get_tool(name)
       unless tool
         raise UnknownToolError.new(
           "LLM called tool #{name.inspect} which is not declared",
           tool_name: name,
-          declared_tools: @tools.map(&.name),
+          declared_tools: @tools.map(&.name) + @pack_tools.map(&.name) + bound_tools.keys,
         )
       end
       tool.validate_input!(args)

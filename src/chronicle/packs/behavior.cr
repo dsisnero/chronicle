@@ -105,6 +105,11 @@ module Chronicle
       getter temperature : Float64
       getter max_tool_turns : Int32
       getter tools : Array(String)
+      # Tools bound directly when an LLM behavior is constructed.  This is
+      # the ActiveGraph `@llm_behavior(tools=[Tool, ...])` path: they are
+      # scoped to this behavior and never registered on the Runtime after
+      # construction.
+      getter llm_tools : Array(Tool)
       getter pack_owner : String?
       getter activate_after : Int32?
       getter output_schema_name : String?
@@ -129,6 +134,7 @@ module Chronicle
         @temperature : Float64 = 0.7,
         @max_tool_turns : Int32 = 6,
         @tools : Array(String) = [] of String,
+        @llm_tools : Array(Tool) = [] of Tool,
         @handler : Proc(Event, GraphProjection, BehaviorContext, Nil)? = nil,
         @relation_handler : Proc(GraphRelation, Event, GraphProjection, BehaviorContext, Nil)? = nil,
         @llm_handler : Proc(Event, GraphProjection, BehaviorContext, String, Nil)? = nil,
@@ -157,6 +163,7 @@ module Chronicle
           temperature: @temperature,
           max_tool_turns: @max_tool_turns,
           tools: resolve_tools(pack),
+          llm_tools: @llm_tools,
           handler: @handler,
           relation_handler: @relation_handler,
           llm_handler: @llm_handler,
@@ -167,6 +174,25 @@ module Chronicle
           output_schema_json: @output_schema_json,
         )
         copy
+      end
+
+      # Rebuild an LLM behavior with construction-time Tool objects.  Pack
+      # builders use this for context-bound proxies (for example gateway
+      # tools which close over a graph); the original pack remains immutable.
+      def with_llm_tools(bound_tools : Array(Tool), max_tool_turns : Int32 = @max_tool_turns) : PackBehavior
+        PackBehavior.new(
+          name: @name, event_types: @event_types.dup, where: @where,
+          priority: @priority, creates: @creates.dup, pattern: @pattern,
+          relation_type: @relation_type, description: @description,
+          model: @model, prompt_template: @prompt_template,
+          max_tokens: @max_tokens, temperature: @temperature,
+          max_tool_turns: max_tool_turns, tools: @tools.dup,
+          llm_tools: bound_tools, handler: @handler,
+          relation_handler: @relation_handler, llm_handler: @llm_handler,
+          kind: @kind, pack_owner: @pack_owner, activate_after: @activate_after,
+          output_schema_name: @output_schema_name,
+          output_schema_json: @output_schema_json,
+        )
       end
 
       # Compose the effective description from the decorator's `description=`
