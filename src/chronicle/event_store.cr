@@ -2,7 +2,10 @@ module Chronicle
   # Abstract interface for durable event storage.
   # Ported from activegraph.store.base.EventStore.
   abstract class EventStore
-    # Append a single event to the store.
+    # Append a single event to the store. The store is the sequencing
+    # authority (upstream `seq` AUTOINCREMENT/BIGSERIAL): the persisted copy's
+    # `sequence` is the store-assigned, strictly-increasing append position,
+    # regardless of the emitter's provisional value.
     abstract def append(event : Event) : Nil
 
     # Iterate events, optionally bounded by event IDs.
@@ -33,8 +36,28 @@ module Chronicle
       if @by_id.has_key?(event.id)
         raise DuplicateEventError.new("duplicate event id: #{event.id}")
       end
-      @events << event
-      @by_id[event.id] = event
+      stored = stamped(event, @events.size.to_u64 + 1)
+      @events << stored
+      @by_id[event.id] = stored
+    end
+
+    # The store is the sequencing authority, mirroring SQLite/Postgres
+    # `seq` AUTOINCREMENT/BIGSERIAL. The emitter's provisional sequence is
+    # replaced with the store-assigned append position so the log is always
+    # strictly increasing and directly codec-encodable.
+    private def stamped(event : Event, sequence : UInt64) : Event
+      return event if event.sequence == sequence
+      Event.new(
+        schema_version: event.schema_version,
+        sequence: sequence,
+        id: event.id,
+        type: event.type,
+        actor: event.actor,
+        caused_by: event.caused_by,
+        payload: event.payload,
+        frame_id: event.frame_id,
+        timestamp: event.timestamp,
+      )
     end
 
     def iter_events(after : String? = nil, before : String? = nil) : Array(Event)
