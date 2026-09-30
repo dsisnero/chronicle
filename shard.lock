@@ -102,7 +102,7 @@ shards:
 
   nbchannel:
     git: https://github.com/dsisnero/nbchannel.cr.git
-    version: 0.1.0+git.commit.8ead6a9f7373f7c48747d66c99e930a72efa6dae
+    version: 0.1.1
 
   nucleoc:
     git: https://github.com/dsisnero/nucleoc.git
@@ -110,11 +110,11 @@ shards:
 
   opentelemetry-api:
     git: https://github.com/dsisnero/opentelemetry-api.cr.git
-    version: 0.5.1+git.commit.c8a0f0b5b35655d4b7552ae8824100758d3e01ca
+    version: 0.5.3
 
   opentelemetry-sdk:
     git: https://github.com/dsisnero/opentelemetry-sdk.cr.git
-    version: 0.6.4
+    version: 0.6.6
 
   parse_date:
     git: https://github.com/wyhaines/parsedate.cr.git
@@ -182,7 +182,7 @@ shards:
 
   tracing-opentelemetry:
     git: https://github.com/dsisnero/tracing-opentelemetry.git
-    version: 0.1.0+git.commit.7758db3bf9379428fd000040efdf5bcf943f6448
+    version: 0.1.0+git.commit.33a03837d9787465a7cb5d7b6b1841d7ff3276af
 
   ultraviolet:
     git: https://github.com/dsisnero/ultraviolet.git
