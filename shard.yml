@@ -37,6 +37,7 @@ dependencies:
     github: dsisnero/tracing.cr
   tracing-opentelemetry:
     github: dsisnero/tracing-opentelemetry
+    version: 0.1.0
   opentelemetry-sdk:
     github: dsisnero/opentelemetry-sdk.cr
     version: 0.6.6
