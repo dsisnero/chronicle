@@ -1,0 +1,18 @@
+# .lattice.yml — Lattice LSP configuration
+# See https://codeberg.org/DaZhi-the-Revelator/lattice for documentation.
+
+# Path(s) to Crystal source roots (relative to this file).
+source_dirs:
+  - src
+
+# Path to the ameba binary used for linting (leave blank to auto-detect).
+ameba_path: ""
+
+# Enable strict type-checking mode.
+strict_mode: false
+
+# Cache directory for the persistent symbol index.
+cache_dir: .lattice-cache
+
+# Logging level: debug | info | warn | error
+log_level: warn
