@@ -103,6 +103,10 @@ module Chronicle
       getter prompt_template : String?
       getter max_tokens : Int32
       getter temperature : Float64
+      getter top_p : Float64
+      getter? deterministic : Bool
+      getter view_around : String?
+      getter view_depth : Int32?
       getter max_tool_turns : Int32
       getter tools : Array(String)
       # Tools bound directly when an LLM behavior is constructed.  This is
@@ -132,6 +136,10 @@ module Chronicle
         @prompt_template : String? = nil,
         @max_tokens : Int32 = 4096,
         @temperature : Float64 = 0.7,
+        @top_p : Float64 = 1.0,
+        @deterministic : Bool = false,
+        @view_around : String? = nil,
+        @view_depth : Int32? = nil,
         @max_tool_turns : Int32 = 6,
         @tools : Array(String) = [] of String,
         @llm_tools : Array(Tool) = [] of Tool,
@@ -161,6 +169,10 @@ module Chronicle
           prompt_template: @prompt_template,
           max_tokens: @max_tokens,
           temperature: @temperature,
+          top_p: @top_p,
+          deterministic: @deterministic,
+          view_around: @view_around,
+          view_depth: @view_depth,
           max_tool_turns: @max_tool_turns,
           tools: resolve_tools(pack),
           llm_tools: @llm_tools,
@@ -186,6 +198,8 @@ module Chronicle
           relation_type: @relation_type, description: @description,
           model: @model, prompt_template: @prompt_template,
           max_tokens: @max_tokens, temperature: @temperature,
+          top_p: @top_p, deterministic: @deterministic,
+          view_around: @view_around, view_depth: @view_depth,
           max_tool_turns: max_tool_turns, tools: @tools.dup,
           llm_tools: bound_tools, handler: @handler,
           relation_handler: @relation_handler, llm_handler: @llm_handler,

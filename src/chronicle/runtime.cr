@@ -2745,24 +2745,26 @@ module Chronicle
       ctx : Packs::BehaviorContext,
       graph : GraphProjection,
     ) : LlmBehaviorInvocation
-      system = build_llm_system(behavior)
-      user = build_llm_user_message(behavior, event, graph)
       tool_defs = resolve_behavior_tools(behavior)
       bound_tools = behavior.llm_tools.to_h { |tool| {tool.name, tool} }
 
+      assembled = assemble_behavior_prompt(behavior, event, graph)
+      so_mode = assembled.structured_output_mode
+      tool_hashes = tool_defs.map { |tool_def| JSON.parse(tool_def.to_json).as_h }
+
       base_builder = Crig::Completion::Request::CompletionRequestBuilder.new(
-        user
+        assembled.messages.first.content
       )
       base_builder = base_builder
-        .preamble(system)
-        .model(behavior.model || "claude-sonnet-4-5")
-        .temperature(behavior.temperature)
-        .max_tokens(behavior.max_tokens.to_i64)
+        .preamble(assembled.system)
+        .model(assembled.model)
+        .temperature(assembled.temperature)
+        .max_tokens(assembled.max_tokens.to_i64)
       base_builder = tool_defs.empty? ? base_builder : base_builder.tools(tool_defs)
 
       running_messages = [] of Crig::Completion::Message
+      hash_messages = assembled.messages.dup
       final_response = nil
-      so_mode = structured_output_mode(behavior)
       # The successful llm.requested event id (last successful request — with
       # retries, failed attempts remain in the log but provenance points at
       # the request whose response fed the handler) and the tool.requested ids
@@ -2770,43 +2772,28 @@ module Chronicle
       successful_llm_request_id : String? = nil
       tool_request_event_ids = [] of String
 
-      Math.max(1, behavior.max_tool_turns).times do |turn_idx|
-        payload = JSON.build do |json|
-          json.object do
-            json.field "behavior", behavior.name
-            json.field "system", system
-            json.field "user", user
-            json.field "model", behavior.model.to_s
-            json.field "max_tokens", behavior.max_tokens
-            json.field "temperature", behavior.temperature
-            json.field "turn_index", turn_idx
-            json.field "messages" do
-              json.array do
-                running_messages.each { |message| serialize_running_message(message, json) }
-              end
-            end
-            # Structured-output schema (upstream `_hash_turn_prompt` includes
-            # output_schema): a typed request hashes distinctly from an
-            # untyped one, so a cached response can never be served across a
-            # schema boundary.
-            if schema_json = behavior.output_schema_json
-              json.field "output_schema_name", behavior.output_schema_name
-              json.field "output_schema_json", JSON::Any.new(schema_json)
-            end
-            # The resolved mode contributes to the prompt hash only when
-            # native — prompt-mode payloads stay byte-identical to pre-v1.3
-            # (upstream `_hash_turn_prompt` adds structured_output_mode only
-            # when native).
-            if so_mode == "native"
-              json.field "structured_output_mode", "native"
-            end
-          end
-        end
+      Math.max(1, behavior.max_tool_turns).times do |_turn_idx|
+        # Per-turn prompt hash, matching upstream `_hash_turn_prompt`
+        # (CONTRACT v0.7): model/system/messages/schema/tokens/temp/top_p/
+        # deterministic/tools, plus structured_output_mode only when native.
+        # The running message list makes each turn in a tool loop distinct.
+        prompt_payload = Prompt.canonical_prompt_payload(
+          model: assembled.model,
+          system: assembled.system,
+          messages: hash_messages,
+          output_schema_json: assembled.output_schema_json,
+          max_tokens: assembled.max_tokens,
+          temperature: assembled.temperature,
+          top_p: assembled.top_p,
+          deterministic: assembled.deterministic?,
+          tools: tool_hashes.empty? ? nil : tool_hashes,
+          structured_output_mode: so_mode,
+        )
 
         effect = EffectRequest.new(
           "llm_behavior_#{next_seq}",
           EffectKind::Model,
-          payload,
+          Prompt.canonical_json(JSON::Any.new(prompt_payload)),
         )
 
         builder = running_messages.empty? ? base_builder : base_builder.messages(running_messages)
@@ -2831,6 +2818,13 @@ module Chronicle
         end
 
         running_messages << Crig::Completion::Message.from(response.choice)
+        hash_messages << LLMMessage.new(
+          role: Role::Assistant,
+          content: response.choice.first.text.try(&.text) || "",
+          tool_calls: calls.map do |call|
+            ToolCall.new(call.id, call.function.name, call.function.arguments.as_h? || {} of String => JSON::Any)
+          end,
+        )
         calls.each do |call|
           name = call.function.name
           args = call.function.arguments.to_json
@@ -2843,6 +2837,7 @@ module Chronicle
             external_io_mode: ExternalIOMode::RuntimeRecorded,
           ), tool_request_event_ids, bound_tools)
           running_messages << Crig::Completion::Message.tool_result_with_call_id(call.id, call.call_id, output)
+          hash_messages << LLMMessage.new(role: Role::Tool, content: output, tool_use_id: call.id, tool_name: name)
         end
       end
 
@@ -2918,49 +2913,6 @@ module Chronicle
       declared + bound
     end
 
-    # Render one running-conversation message into the turn-payload JSON so each
-    # turn's prompt hash (and cache key) reflects the accumulated tool feedback.
-    # `Message` carries a generic `to_json(io)` (no JSON::Serializable), so the
-    # role plus the text / tool-call / tool-result content is built explicitly.
-    private def serialize_running_message(message : Crig::Completion::Message, json : JSON::Builder) : Nil
-      json.object do
-        json.field "role" do
-          case message.role
-          in .assistant? then json.string "assistant"
-          in .user?      then json.string "user"
-          in .system?    then json.string "system"
-          end
-        end
-        json.field "content" do
-          json.array do
-            message.content.each do |item|
-              json.object do
-                case item
-                when Crig::Completion::UserContent
-                  json.field "kind", "user"
-                  if tool_result = item.tool_result
-                    json.field "tool_result", tool_result.id
-                    texts = tool_result.content.map(&.text)
-                    json.field "tool_result_text", texts.join(", ")
-                  end
-                  json.field "text", item.text.try(&.text)
-                when Crig::Completion::AssistantContent
-                  json.field "kind", "assistant"
-                  if call = item.tool_call
-                    json.field "tool_call", call.id
-                    json.field "tool_name", call.function.name
-                    json.field "arguments", call.function.arguments
-                  else
-                    json.field "text", item.text.try(&.text)
-                  end
-                end
-              end
-            end
-          end
-        end
-      end
-    end
-
     # The model asked for a tool the behavior did not declare. Refuse loudly
     # with a behavior.failed event carrying reason="tool.unknown_tool" and the
     # requested tool name, mirroring upstream `_loop`'s undeclared-tool check
@@ -3014,39 +2966,49 @@ module Chronicle
       end
     end
 
-    # System prompt: the behavior description composed with its (Optional)
-    # named prompt body, mirroring upstream `_resolve_description`.
-    private def build_llm_system(behavior : Packs::PackBehavior) : String
-      parts = [] of String
-      parts << behavior.description.strip unless behavior.description.empty?
-      template = behavior.prompt_template
-      parts << template.strip unless template.nil? || template.strip.empty?
-      return "You are executing the #{behavior.name} behavior." if parts.empty?
-      parts.join("\n\n")
-    end
-
-    # User message: the triggering event plus a bounded serialization of the
-    # current graph so the model has context to act on.
-    private def build_llm_user_message(
+    # Assemble one behavior's prompt through the ported vendor pipeline
+    # (`activegraph.llm.prompt.assemble_prompt`, upstream `b.build_prompt`):
+    # system prompt (frame goal/constraints + description + schema example),
+    # a view-scoped graph-context block, the volatile-stripped triggering
+    # event, and the auto-derived task instruction. The same AssembledPrompt
+    # feeds both the provider request and the per-turn cache hash, so a fork
+    # that rebuilds the same content hits the cache.
+    private def assemble_behavior_prompt(
       behavior : Packs::PackBehavior,
       event : Event,
       graph : GraphProjection,
-    ) : String
-      String.build do |io|
-        io << "## Triggering event\n"
-        io << event.canonical_json
-        io << "\n\n## Graph context\n"
-        io << "{"
-        graph.all_objects.each_with_index do |obj, index|
-          io << ',' unless index == 0
-          io << obj.id.to_json << ":{\"type\":" << obj.type.to_json << ",\"data\":"
-          io << obj.data
-          io << '}'
-        end
-        io << '}'
-        io << "\n\nClassified by behavior: "
-        io << behavior.name
-      end
+    ) : Prompt::AssembledPrompt
+      so_mode = structured_output_mode(behavior)
+      view = if around_path = behavior.view_around
+               around_id = begin
+                 Packs.resolve_where_path(JSON.parse(event.payload), around_path.split('.')).as_s?
+               rescue JSON::ParseException
+                 nil
+               end
+               graph.build_view(ViewSpec.new(around: around_id, depth: behavior.view_depth || 1))
+             else
+               graph.build_view
+             end
+
+      Prompt.assemble_prompt(
+        behavior_name: behavior.name,
+        description: behavior.description,
+        model: behavior.model || "claude-sonnet-4-5",
+        output_schema_name: behavior.output_schema_name,
+        output_schema_json: behavior.output_schema_json,
+        creates: behavior.creates,
+        view: view,
+        event: event,
+        frame: @frame_stack.current,
+        around: behavior.view_around,
+        depth: behavior.view_depth,
+        max_tokens: behavior.max_tokens,
+        temperature: behavior.temperature,
+        top_p: behavior.top_p,
+        deterministic: behavior.deterministic?,
+        prompt_template: behavior.prompt_template,
+        structured_output_mode: so_mode,
+      )
     end
 
     private def record_behavior_started(behavior : Packs::PackBehavior, event : Event) : Nil
@@ -3837,6 +3799,30 @@ module Chronicle
             json.field "provider", target.try(&.provider)
             json.field "model", target.try(&.model)
             json.field "content", response.choice.first.text.try(&.text)
+            # v1.0.3 #4: carry every content block (text + tool_use) so a
+            # replay/fork cache harvested from events (`LLMCache.from_events`)
+            # reconstructs tool-calling turns instead of degrading them to text.
+            json.field "content_blocks" do
+              json.array do
+                response.choice.each do |item|
+                  json.object do
+                    if call = item.tool_call
+                      json.field "type", "tool_call"
+                      json.field "tool_call" do
+                        json.object do
+                          json.field "id", call.id
+                          json.field "name", call.function.name
+                          json.field "arguments", call.function.arguments
+                        end
+                      end
+                    else
+                      json.field "type", "text"
+                      json.field "text", item.text.try(&.text)
+                    end
+                  end
+                end
+              end
+            end
             # The runtime-measurable response metadata (upstream
             # `LLMResponse.to_dict()`): cache_hit and latency ride the
             # responded event so trace consumers can render the CONTRACT #18

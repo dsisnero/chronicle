@@ -399,6 +399,14 @@ module Chronicle
       event
     end
 
+    # Vendor-faithful convenience matching upstream `Graph.emit(event_type,
+    # payload)`: build the envelope (id from the projection's IDGen, sequence
+    # from the single monotonic counter) and emit it. Lets behaviors emit custom
+    # events without hand-rolling an envelope/sequence.
+    def emit(type : String, payload : String, *, actor : String = "system", caused_by : String? = nil) : Event
+      emit(build_event(type, payload, actor, caused_by))
+    end
+
     def add_sink(
       sink : Sink,
       name : String? = nil,
@@ -566,8 +574,14 @@ module Chronicle
         objs = objs.select { |obj| obj.id == around } if center
       end
 
+      # Recent events come from the authoritative per-run log when a store is
+      # attached (upstream serializes `graph.events`, the full log). Falling
+      # back to `@applied_events` keeps store-less projections working. The
+      # parent and a replay/fork of the same prefix therefore render identical
+      # view blocks — required for replay-stable prompt hashes.
+      log = @event_store.try(&.iter_events) || @applied_events
       recent = if spec.recent_events > 0
-                 @applied_events.last(Math.min(spec.recent_events, @applied_events.size))
+                 log.last(Math.min(spec.recent_events, log.size))
                else
                  [] of Event
                end
@@ -682,8 +696,19 @@ module Chronicle
       )
     end
 
+    # The next envelope sequence for a graph mutation. When a durable/log store
+    # is attached it is the single ordering authority (upstream: the store
+    # stamps `seq`; there is one monotonic ordering per run, not one counter per
+    # emitter). Without a store, fall back to the projection's own applied-event
+    # count. Using the store count here keeps graph-mutation events and
+    # runtime-emitted events on ONE monotonically increasing stream, so the
+    # merged log encodes directly (`EventLog.from_events`).
     private def next_sequence : UInt64
-      (@applied_events.size + 1).to_u64
+      if store = @event_store
+        (store.count + 1).to_u64
+      else
+        (@applied_events.size + 1).to_u64
+      end
     end
 
     private def object_created_payload(id : String, type : String, data : String, provenance : ProvenanceStamp? = nil) : String

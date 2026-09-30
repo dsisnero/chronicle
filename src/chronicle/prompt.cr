@@ -574,20 +574,62 @@ module Chronicle
       prompt_template : String? = nil,
       structured_output_mode : String = "prompt",
     ) : AssembledPrompt forall T
-      schema_json = schema_to_json(output_schema)
-      schema_name = schema_name(output_schema)
+      assemble_prompt(
+        behavior_name: behavior_name,
+        description: description,
+        model: model,
+        output_schema_name: schema_name(output_schema),
+        output_schema_json: schema_to_json(output_schema),
+        creates: creates,
+        view: view,
+        event: event,
+        frame: frame,
+        around: around,
+        depth: depth,
+        max_tokens: max_tokens,
+        temperature: temperature,
+        top_p: top_p,
+        deterministic: deterministic,
+        prompt_template: prompt_template,
+        structured_output_mode: structured_output_mode,
+      )
+    end
 
+    # Runtime-schema form: the pack DSL resolves `output_schema` to a
+    # `(name, json_schema)` pair at compile time, so the runtime assembles the
+    # same prompt from those values without needing the schema type. Ported from
+    # the same `assemble_prompt`; the vendor's `b.build_prompt(...)` path.
+    def assemble_prompt(
+      *,
+      behavior_name : String,
+      description : String,
+      model : String,
+      output_schema_name : String?,
+      output_schema_json : Hash(String, JSON::Any)?,
+      creates : Array(String),
+      view : View,
+      event : Event,
+      frame : Frame?,
+      around : String?,
+      depth : Int32?,
+      max_tokens : Int32,
+      temperature : Float64,
+      top_p : Float64,
+      deterministic : Bool,
+      prompt_template : String? = nil,
+      structured_output_mode : String = "prompt",
+    ) : AssembledPrompt
       system = build_system_prompt(
         behavior_name: behavior_name,
         description: description,
         frame: frame,
-        output_schema_name: schema_name,
-        output_schema_json: schema_json,
+        output_schema_name: output_schema_name,
+        output_schema_json: output_schema_json,
         structured_output_mode: structured_output_mode,
       )
 
       view_block = serialize_view(view, around: around, depth: depth)
-      instruction = build_instruction(creates: creates, output_schema_name: schema_name)
+      instruction = build_instruction(creates: creates, output_schema_name: output_schema_name)
 
       user_text = if template = prompt_template
                     apply_prompt_template(template, system: system, view: view_block, event: serialize_event(event), instruction: instruction)
@@ -605,8 +647,8 @@ module Chronicle
         max_tokens: max_tokens,
         temperature: eff_temperature,
         top_p: eff_top_p,
-        output_schema_name: schema_name,
-        output_schema_json: schema_json,
+        output_schema_name: output_schema_name,
+        output_schema_json: output_schema_json,
         deterministic: deterministic,
         structured_output_mode: structured_output_mode,
         sections: {
