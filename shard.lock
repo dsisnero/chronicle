@@ -114,7 +114,7 @@ shards:
 
   opentelemetry-sdk:
     git: https://github.com/dsisnero/opentelemetry-sdk.cr.git
-    version: 0.6.4+git.commit.d259fba3fd75efd421c39fce5d3a9b7656faca5d
+    version: 0.6.4
 
   parse_date:
     git: https://github.com/wyhaines/parsedate.cr.git
@@ -182,7 +182,7 @@ shards:
 
   tracing-opentelemetry:
     git: https://github.com/dsisnero/tracing-opentelemetry.git
-    version: 0.1.0+git.commit.e9767efb77e86d756e5d2ccae44f585ce897448c
+    version: 0.1.0+git.commit.7758db3bf9379428fd000040efdf5bcf943f6448
 
   ultraviolet:
     git: https://github.com/dsisnero/ultraviolet.git
