@@ -26,7 +26,7 @@ module Chronicle
 
     def gauge(name : String, tags : Hash(String, String), value : Float64) : Nil
       instrument = gauge_for(name, tags)
-      value_key = "#{instrument_key(name, tags)}=#{tags.keys.sort.map { |key| tags[key] }.join("\u001f")}"
+      value_key = "#{instrument_key(name, tags)}=#{tags.keys.sort!.map { |key| tags[key] }.join("\u001f")}"
       delta = @lock.synchronize do
         previous = @gauge_values[value_key]? || 0.0
         @gauge_values[value_key] = value
@@ -66,7 +66,7 @@ module Chronicle
     end
 
     private def instrument_key(name : String, tags : Hash(String, String)) : String
-      "#{name}\u001e#{tags.keys.sort.join("\u001f")}"
+      "#{name}\u001e#{tags.keys.sort!.join("\u001f")}"
     end
 
     private def creation_lock(key : String) : Mutex

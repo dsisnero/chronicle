@@ -74,18 +74,16 @@ module Chronicle
       lifecycle = [] of BehaviorLifecycle
       effects = [] of EffectRequest
       scheduled.each do |event, registration|
-        begin
-          emitted = registration.handler.call(event, graph)
-          if emitted.size > @limits.max_fan_out || effects.size + emitted.size > @limits.max_pending_effects
-            lifecycle << BehaviorLifecycle.new(registration.id, event.id, BehaviorStatus::Suppressed)
-            next
-          end
-
-          effects.concat(emitted)
-          lifecycle << BehaviorLifecycle.new(registration.id, event.id, BehaviorStatus::Completed)
-        rescue
-          lifecycle << BehaviorLifecycle.new(registration.id, event.id, BehaviorStatus::Failed)
+        emitted = registration.handler.call(event, graph)
+        if emitted.size > @limits.max_fan_out || effects.size + emitted.size > @limits.max_pending_effects
+          lifecycle << BehaviorLifecycle.new(registration.id, event.id, BehaviorStatus::Suppressed)
+          next
         end
+
+        effects.concat(emitted)
+        lifecycle << BehaviorLifecycle.new(registration.id, event.id, BehaviorStatus::Completed)
+      rescue
+        lifecycle << BehaviorLifecycle.new(registration.id, event.id, BehaviorStatus::Failed)
       end
 
       RunnerResult.new(lifecycle, effects)
