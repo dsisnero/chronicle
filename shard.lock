@@ -114,7 +114,7 @@ shards:
 
   opentelemetry-sdk:
     git: https://github.com/dsisnero/opentelemetry-sdk.cr.git
-    version: 0.6.4+git.commit.4b5d58115b497ae2caaa7e7ce3790710cb765059
+    version: 0.6.4+git.commit.d259fba3fd75efd421c39fce5d3a9b7656faca5d
 
   parse_date:
     git: https://github.com/wyhaines/parsedate.cr.git
