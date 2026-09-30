@@ -54,8 +54,18 @@ make test
 Then run the examples:
 
 ```bash
+# Chronicle-specific demos
 crystal run examples/deepseek_routing.cr
 crystal run examples/save_patch_replay.cr
+
+# Ports of vendor/activegraph/examples/*.py (offline, scripted providers)
+crystal run examples/quickstart.cr
+crystal run examples/resume_and_fork.cr
+crystal run examples/llm_claim_extraction.cr
+crystal run examples/operate_a_run.cr
+crystal run examples/diligence_real_run.cr
+crystal run examples/diligence_with_tools.cr
+crystal run examples/babyagi.cr
 ```
 
 A tiny program — build a graph, then ask the Cypher subset for matches:
