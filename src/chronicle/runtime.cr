@@ -958,7 +958,7 @@ module Chronicle
         json.object { json.field "goal", prompt }
       end,
       )
-      @store.append(goal_event)
+      emit_runtime_event(goal_event)
       user_message = record_chat_message("user", prompt, goal_event.id)
       return @response_text if budget_exhausted?
 
@@ -1398,7 +1398,7 @@ module Chronicle
           json.object { json.field "goal", goal }
         end,
       )
-      @store.append(event)
+      emit_runtime_event(event)
       run_until_idle
     end
 
@@ -2214,7 +2214,7 @@ module Chronicle
           end
         end,
       )
-      @store.append(event)
+      emit_runtime_event(event)
       DevOverride.new(
         event_id: event.id, run_id: @run_id, actor: actor, reason: reason,
         target_gate: target_gate, scope: scope,
@@ -3232,7 +3232,7 @@ module Chronicle
           end
         end,
       )
-      @store.append(event)
+      emit_runtime_event(event)
       event
     end
 
@@ -3300,7 +3300,7 @@ module Chronicle
           end
         end,
       )
-      @store.append(event)
+      emit_runtime_event(event)
       event
     end
 
@@ -3329,7 +3329,7 @@ module Chronicle
         type: "budget.exhausted", actor: "runtime", caused_by: nil,
         timestamp: Time.utc, payload: payload,
       )
-      @store.append(evt)
+      emit_runtime_event(evt)
     end
 
     private def record_chat_message(role : String, content : String, caused_by : String?) : Event
@@ -3349,7 +3349,7 @@ module Chronicle
           end
         end,
       )
-      @store.append(event)
+      emit_runtime_event(event)
       event
     end
 
@@ -3711,7 +3711,7 @@ module Chronicle
           end
         end,
       )
-      @store.append(event)
+      emit_runtime_event(event)
       true
     end
 
@@ -3726,7 +3726,7 @@ module Chronicle
         timestamp: Time.utc,
         payload: %({"reason":"no recorded eligible fallback remains"}),
       )
-      @store.append(event)
+      emit_runtime_event(event)
       event
     end
 
@@ -3772,7 +3772,7 @@ module Chronicle
           end
         end,
       )
-      @store.append(event)
+      emit_runtime_event(event)
       event
     end
 
@@ -3834,7 +3834,7 @@ module Chronicle
           end
         end,
       )
-      @store.append(event)
+      emit_runtime_event(event)
       event
     end
 
@@ -3898,7 +3898,7 @@ module Chronicle
           end
         end,
       )
-      @store.append(event)
+      emit_runtime_event(event)
       event
     end
 
@@ -3988,7 +3988,7 @@ module Chronicle
         timestamp: Time.utc,
         payload: payload,
       )
-      @store.append(event)
+      emit_runtime_event(event)
       event
     end
 
@@ -4077,6 +4077,21 @@ module Chronicle
       output
     end
 
+    # Vendor parity (activegraph `Graph.emit` is the single mutation path):
+    # every runtime-emitted event goes through the graph when one is attached,
+    # so `graph.events` is the complete per-run log — goal.created, behavior.*,
+    # llm.*, tool.*, authority.*, runtime.*, and pack.loaded all included. The
+    # graph then applies/projects, appends to the store, and offers sinks.
+    # Graph-less runtimes fall back to appending directly to the store.
+    private def emit_runtime_event(event : Event) : Event
+      if graph = @graph
+        graph.emit(event)
+      else
+        @store.append(event)
+      end
+      event
+    end
+
     private def append_event(type : String, payload : String, actor : String = "runtime") : Event
       event = Event.new(
         schema_version: 1_u16, sequence: next_seq,
@@ -4085,7 +4100,7 @@ module Chronicle
         frame_id: current_frame_id,
         timestamp: Time.utc, payload: payload,
       )
-      @store.append(event)
+      emit_runtime_event(event)
       @metrics.counter("activegraph_events_emitted_total", {"event_type" => event.type})
       event
     end
@@ -4104,7 +4119,7 @@ module Chronicle
           end
         end,
       )
-      @store.append(event)
+      emit_runtime_event(event)
       event
     end
 
@@ -4125,7 +4140,7 @@ module Chronicle
           end
         end,
       )
-      @store.append(event)
+      emit_runtime_event(event)
       event
     end
   end
