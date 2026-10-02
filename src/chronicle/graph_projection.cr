@@ -535,14 +535,37 @@ module Chronicle
       merged = merge_object_data(obj.data, value)
       diff = compute_diff(obj.data, merged)
 
-      applied = Patch.new(
+      # Vendor parity (activegraph `Graph.patch_object`): emit a durable
+      # `patch.applied` event so the update is in the authoritative log and
+      # survives replay/fork. The projection's `apply` performs the merge.
+      payload = JSON.build do |json|
+        json.object do
+          json.field "patch" do
+            json.object do
+              json.field "id", id
+              json.field "target", target
+              json.field "op", "update"
+              json.field "value" do
+                json.raw(value)
+              end
+              json.field "expected_version", ver
+              json.field "proposed_by", actor
+              json.field "status", "applied"
+            end
+          end
+          json.field "target", target
+          json.field "diff" do
+            json.raw(diff || "{}")
+          end
+        end
+      end
+      emit(build_event("patch.applied", payload, actor, nil))
+
+      applied = @store.get_patch(id) || Patch.new(
         id: id, target: target, op: PatchOp::Update,
-        value: merged, expected_version: ver,
+        value: value, expected_version: ver,
         proposed_by: actor, status: PatchState::Applied,
       )
-
-      @store.put_patch(applied)
-      @store.put_object(GraphObject.new(obj.id, obj.type, merged, ver + 1))
       ids = @patch_ids_by_target.fetch(target, [] of String)
       @patch_ids_by_target[target] = ids + [id]
 
@@ -850,31 +873,28 @@ module Chronicle
       cur
     end
 
+    # Per-field `{old, new}` for fields that actually change (upstream
+    # `_diff`): the shape the trace printer and `patch.applied` consumers
+    # expect. Nil when nothing changed.
     private def compute_diff(old_data : String, new_value : String) : String?
       return nil if old_data == new_value
-      # Simple field-level diff as JSON
       old_h = JSON.parse(old_data).as_h? || {} of String => JSON::Any
       new_h = JSON.parse(new_value).as_h? || {} of String => JSON::Any
-      added = new_h.reject { |k, _| old_h.has_key?(k) }
-      removed = old_h.reject { |k, _| new_h.has_key?(k) }
-      changed = old_h.select { |k, v| new_h[k]? != v && new_h.has_key?(k) }
 
+      diff_map = {} of String => JSON::Any
+      new_h.each do |key, new_v|
+        old_v = old_h[key]?
+        if old_v.nil? || !JsonCompare.json_equal?(old_v, new_v)
+          diff_map[key] = JSON::Any.new({
+            "old" => old_v || JSON::Any.new(nil),
+            "new" => new_v,
+          })
+        end
+      end
+      return nil if diff_map.empty?
       JSON.build do |json|
         json.object do
-          json.field "added", added
-          json.field "removed", removed.keys
-          json.field "changed" do
-            json.object do
-              changed.each do |k, v|
-                json.field k do
-                  json.object do
-                    json.field "from", v
-                    json.field "to", new_h[k]
-                  end
-                end
-              end
-            end
-          end
+          diff_map.each { |key, change| json.field(key) { json.raw(change.to_json) } }
         end
       end
     rescue JSON::ParseException

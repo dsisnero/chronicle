@@ -472,14 +472,21 @@ module Chronicle
         end
         job = JSON.parse(STDIN.gets_to_end).as_h
         limits = {} of String => Float64 | String
+        # Vendor parity (sandbox/_child.py): a 0 limit is omitted, not an
+        # immediately-exhausted budget. The trial child configures no LLM
+        # provider, so max_llm_calls=0 is key-freedom by construction, not a
+        # budget dimension.
         if value = job["max_events"]?
-          limits["max_events"] = value.as_i.to_f
+          max_events = value.as_i
+          limits["max_events"] = max_events.to_f if max_events > 0
         end
         if value = job["max_llm_calls"]?
-          limits["max_llm_calls"] = value.as_i.to_f
+          max_llm_calls = value.as_i
+          limits["max_llm_calls"] = max_llm_calls.to_f if max_llm_calls > 0
         end
         if value = job["wall_clock_seconds"]?
-          limits["max_seconds"] = value.as_f
+          wall_clock_seconds = value.as_f
+          limits["max_seconds"] = wall_clock_seconds if wall_clock_seconds > 0
         end
         agent = Crig::Agent(ChronicleTrialModel).new(model: ChronicleTrialModel.new, preamble: "")
         runtime = Chronicle::Runtime(ChronicleTrialModel).load(job["store_path"].as_s, job["run_id"].as_s, agent, budget: Chronicle::Budget.new(limits: limits))
