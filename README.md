@@ -169,16 +169,97 @@ numeric-aware comparison semantics.
 
 ## Documentation
 
-- [docs/architecture.md](docs/architecture.md) — the log-primary,
-  Sans-IO architecture and module map.
+Start here:
+
+- [docs/index.md](docs/index.md) — documentation home and map.
+- [docs/quickstart.md](docs/quickstart.md) — build a graph, register
+  behaviors, run a goal, read the trace.
+
+Concepts:
+
+- [docs/concepts/events.md](docs/concepts/events.md) — the event envelope and
+  the append-only log.
+- [docs/concepts/graph.md](docs/concepts/graph.md) — the graph projection and
+  write/emit surface.
+- [docs/concepts/relations.md](docs/concepts/relations.md) — relations and
+  relation behaviors.
+- [docs/concepts/behaviors.md](docs/concepts/behaviors.md) — reactive and LLM
+  behaviors.
+- [docs/concepts/views.md](docs/concepts/views.md) — scoped read views.
+- [docs/concepts/patches.md](docs/concepts/patches.md) — version-checked
+  patches and the `proposed → applied | rejected` lifecycle.
+- [docs/concepts/patterns.md](docs/concepts/patterns.md) — the Cypher subset
+  and pattern subscriptions.
+- [docs/concepts/policies.md](docs/concepts/policies.md) — pack policies and
+  approval gates.
+- [docs/concepts/frames.md](docs/concepts/frames.md) — mission frames.
+- [docs/concepts/replay.md](docs/concepts/replay.md) — the LLM/tool replay
+  cache and deterministic replay.
+- [docs/concepts/forking.md](docs/concepts/forking.md) — fork, load, diff.
+- [docs/concepts/failure-model.md](docs/concepts/failure-model.md) — failure
+  events and reason codes.
+- [docs/concepts/type-system.md](docs/concepts/type-system.md) — object types,
+  relation types, and `JSON::Serializable` schemas.
+
+Guides:
+
+- [docs/guides/authoring-packs.md](docs/guides/authoring-packs.md) — build a
+  Crystal pack: types, behaviors, tools, settings, policies.
+- [docs/guides/fork-test-promote.md](docs/guides/fork-test-promote.md) —
+  fork, trial, and promote a candidate pack.
+- [docs/guides/operating-in-production.md](docs/guides/operating-in-production.md)
+  — persistence, observability, budgets, and approval gates.
+- [docs/guides/using-falkordb.md](docs/guides/using-falkordb.md) — the
+  FalkorDB graph-store backend.
+
+Cookbook:
+
+- [docs/cookbook/common-patterns.md](docs/cookbook/common-patterns.md) —
+  recipes for common graph/behavior shapes.
+- [docs/cookbook/debugging.md](docs/cookbook/debugging.md) — read the trace
+  and diagnose behaviors.
+- [docs/cookbook/multi-run-scripts.md](docs/cookbook/multi-run-scripts.md) —
+  running several goals from one process.
+- [docs/cookbook/migration-from-v0-7.md](docs/cookbook/migration-from-v0-7.md)
+  — migrating v0.7-era code.
+
+Reference:
+
+- [docs/reference/cli.md](docs/reference/cli.md) — the `chronicle-cli`
+  command surface.
+- [docs/reference/errors.md](docs/reference/errors.md) — error classes and
+  reason codes.
+- [docs/reference/llm-providers.md](docs/reference/llm-providers.md) — the
+  Crig `ModelExecutor`/provider seam.
+- [docs/reference/reason-codes.md](docs/reference/reason-codes.md) — the
+  budget/failure reason-code table.
+- API reference:
+  [index](docs/reference/api/index.md),
+  [graph](docs/reference/api/graph.md),
+  [runtime](docs/reference/api/runtime.md),
+  [behaviors](docs/reference/api/behaviors.md),
+  [packs](docs/reference/api/packs.md),
+  [store](docs/reference/api/store.md),
+  [tools](docs/reference/api/tools.md),
+  [observability](docs/reference/api/observability.md),
+  [sandbox](docs/reference/api/sandbox.md),
+  [errors](docs/reference/api/errors.md).
+
+Development:
+
+- [docs/architecture.md](docs/architecture.md) — the log-primary, Sans-IO
+  architecture and module map.
 - [docs/development.md](docs/development.md) — local commands and gates.
-- [docs/coding-guidelines.md](docs/coding-guidelines.md) — Crystal idioms
-  and repo conventions.
+- [docs/coding-guidelines.md](docs/coding-guidelines.md) — Crystal idioms and
+  repo conventions.
 - [docs/testing.md](docs/testing.md) — the deterministic test discipline.
 - [docs/pr-workflow.md](docs/pr-workflow.md) — contribution workflow.
+
+Project:
+
 - [CHANGELOG.md](CHANGELOG.md) — release history.
 - [plans/parity.md](plans/parity.md) — the activegraph parity plan and
-  per-phase tracking.
+  per-phase tracking (including intentional divergences).
 
 ## What this is not
 

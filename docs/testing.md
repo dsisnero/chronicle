@@ -23,7 +23,12 @@ Before submitting a change, also run `make format-check` and `make lint`.
 - A source-policy spec (`spec/core_io_safety_spec.cr`) keeps the core
   Sans-IO: it must not reference direct I/O, environment access, or process
   capabilities (time and randomness are permitted; only routing must be
-  deterministic).
+  deterministic). Genuine platform-edge files are exempted there
+  (e.g. `prometheus_http.cr`, which owns an `HTTP::Server`).
+- Sequencing is guarded: `spec/chronicle/event_sequence_monotonic_spec.cr`
+  proves runtime and graph events share one strictly-increasing stream, and
+  `spec/chronicle/memory_store_sequencing_spec.cr` proves the store (not the
+  emitter) stamps `sequence`.
 
 ## Interactive specs
 

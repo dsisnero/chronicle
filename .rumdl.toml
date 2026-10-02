@@ -10,3 +10,8 @@ exclude = [
     "LICENSE.md",
 ]
 respect-gitignore = true
+
+[MD013]
+# Code-heavy Crystal docs: keep the 80-char prose limit but allow long
+# lines inside fenced code blocks.
+code-blocks = false

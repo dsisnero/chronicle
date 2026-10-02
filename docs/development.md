@@ -15,6 +15,35 @@ make clean            # clear temp/ scratch artifacts
 `make test` runs `crystal spec` with a repo-local `CRYSTAL_CACHE_DIR` so the
 external SSD's default cache is not relied on.
 
+## Examples
+
+Runnable programs live in `examples/`. They run offline against scripted
+providers — no API key, no network:
+
+```bash
+crystal run examples/quickstart.cr
+crystal run examples/resume_and_fork.cr
+crystal run examples/llm_claim_extraction.cr
+crystal run examples/operate_a_run.cr
+crystal run examples/diligence_real_run.cr
+crystal run examples/diligence_with_tools.cr
+crystal run examples/babyagi.cr
+
+crystal run examples/save_patch_replay.cr     # event-sourcing cycle
+crystal run examples/deepseek_routing.cr      # needs DEEPSEEK_API_KEY
+```
+
+`examples/support/example_support.cr` holds the shared scripted text/tool-call
+models and runtime construction. The seven vendor ports mirror
+`vendor/activegraph/examples/*.py`; see the README and `docs/index.md`.
+
+## Dependencies
+
+`shards update <name>` refreshes one pinned dependency and rewrites
+`shard.lock`; `shards update` refreshes all. The telemetry shards resolve
+from released versions (`opentelemetry-sdk`, `opentelemetry-api`,
+`nbchannel`, `tracing-opentelemetry`). Keep `vendor/activegraph/` pinned.
+
 ## Workflow
 
 - Work phase-by-phase from `plans/parity.md`; the plan tracks ported vs
